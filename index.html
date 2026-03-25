@@ -1295,17 +1295,6 @@ function App(){
     const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`highenough_${type}_${Date.now()}.json`;a.click();
     pop("Exported ✓");
   }
-  function addDemos(){
-    const demos=[{name:"Jordan Lee",handle:"@jordanlee",bio:"Just vibes.",color:"#10a37f",age:24,interests:["Music 🎵","Gaming 🎮","Art 🎨"]},{name:"Sam Rivera",handle:"@samr",bio:"Coffee & code.",color:"#e0466e",age:27,interests:["Tech 💻","Travel ✈️","Photography 📷"]},{name:"Alex Kim",handle:"@alexkim",bio:"Rizz is a lifestyle.",color:"#4f80e2",age:22,interests:["Fashion 👗","Dance 💃","Comedy 😄"]},{name:"Riley Cho",handle:"@rileycho",bio:"Living the dream.",color:"#c08a2e",age:25,interests:["Fitness 💪","Food 🍜","Movies 🎬"]}];
-    const ex=new Set(profiles.map(p=>p.handle));
-    const add=demos.filter(d=>!ex.has(d.handle)).map(d=>({...d,id:uid(),photo:null,links:{},ratings:[
-      {...Object.fromEntries(CATS.map(c=>[c.id,Math.floor(Math.random()*40+55)])),raterId:"B1",raterName:"Bot A",ts:Date.now()-3*24*60*60*1000},
-      {...Object.fromEntries(CATS.map(c=>[c.id,Math.floor(Math.random()*40+55)])),raterId:"B2",raterName:"Bot B",ts:Date.now()-60*60*1000},
-      {...Object.fromEntries(CATS.map(c=>[c.id,Math.floor(Math.random()*40+55)])),raterId:"B3",raterName:"Bot C",ts:Date.now()-2*60*60*1000},
-    ],createdAt:Date.now()}));
-    if(!add.length)return pop("Already added!");
-    upd(prev=>({...prev,profiles:[...(prev.profiles||[]),...add]}));pop(`Added ${add.length} people`);
-  }
 
   useEffect(()=>{document.body.style.background=T.bg;document.body.style.color=T.txt;},[T.bg,T.txt]);
 
