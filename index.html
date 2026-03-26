@@ -188,7 +188,7 @@ function loadScript(src,cb){
 }
 
 /* ── AUTH SCREEN ── */
-function AuthScreen({T,onAuthed}){
+function AuthScreen({T,onAuthed,connErr}){
   const [mode,setMode]=useState("login"); // login | signup | forgot
   const [email,setEmail]=useState("");
   const [pass,setPass]=useState("");
@@ -210,13 +210,13 @@ function AuthScreen({T,onAuthed}){
         if(error) return setMsg({text:error.message==="Invalid login credentials"?"Incorrect email or password. Try again.":error.message,error:true});
         onAuthed(data.user);
       } else if(mode==="signup"){
-        const {data,error}=await sb.auth.signUp({email:email.trim(),password:pass,options:{data:{full_name:name.trim()}}});
+        const {data,error}=await sb.auth.signUp({email:email.trim(),password:pass,options:{data:{full_name:name.trim()},emailRedirectTo:window.location.href}});
         if(error) return setMsg({text:error.message,error:true});
-        if(data.user&&!data.user.confirmed_at){
-          setMsg({text:"Check your email for a confirmation link, then log in.",error:false});
-          setMode("login");
-        } else if(data.user){
+        if(data.session){
           onAuthed(data.user);
+        } else if(data.user){
+          setMsg({text:"Account created! Check your email to confirm, then sign in.",error:false});
+          setMode("login");
         }
       } else {
         const {error}=await sb.auth.resetPasswordForEmail(email.trim(),{redirectTo:window.location.href});
@@ -224,7 +224,10 @@ function AuthScreen({T,onAuthed}){
         setMsg({text:"Password reset link sent to your email.",error:false});
         setMode("login");
       }
-    } catch(e){setMsg({text:"Something went wrong. Try again.",error:true});}
+    } catch(e){
+      console.error("Auth error:",e);
+      setMsg({text:e.message||"Failed to connect. Check your internet and try again.",error:true});
+    }
     finally{setLoading(false);}
   }
 
@@ -238,6 +241,7 @@ function AuthScreen({T,onAuthed}){
       </div>
 
       <div style={{background:T.card,border:`1px solid ${T.b1}`,borderRadius:20,padding:"26px 22px 22px"}}>
+        {connErr&&<div style={{padding:"10px 13px",borderRadius:10,marginBottom:16,fontSize:13,background:"#a0303018",border:"1px solid #a0303040",color:"#d06060"}}>{connErr}</div>}
         <div style={{fontWeight:700,fontSize:18,color:T.txt,marginBottom:6}}>
           {mode==="login"?"Welcome back":mode==="signup"?"Create account":"Reset password"}
         </div>
@@ -915,6 +919,7 @@ function App(){
   const [authUser,setAuthUser]=useState(null);  // Supabase auth user
   const [profile,setProfile]=useState(null);     // profile row from DB
   const [authLoading,setAuthLoading]=useState(true);
+  const [connErr,setConnErr]=useState("");
 
   // ── App state ──
   const [profiles,setProfiles]=useState([]);
@@ -955,6 +960,10 @@ function App(){
   // Supabase auth remembers the user automatically via cookies/localStorage
   // User never has to log in again unless they explicitly log out
   useEffect(()=>{
+    // Test connection first
+    fetch(`${SUPABASE_URL}/rest/v1/profiles?limit=1`,{
+      headers:{"apikey":SUPABASE_ANON,"Authorization":`Bearer ${SUPABASE_ANON}`}
+    }).catch(()=>setConnErr("Cannot reach server. Check your internet connection."));
     // Check existing session
     sb.auth.getSession().then(({data:{session}})=>{
       if(session?.user){
@@ -1161,7 +1170,7 @@ function App(){
   </div>;
 
   // ── Not signed in ──
-  if(!authUser) return <AuthScreen T={DK} onAuthed={handleAuthed}/>;
+  if(!authUser) return <AuthScreen T={DK} onAuthed={handleAuthed} connErr={connErr}/>;
 
   // ── Signed in but no profile yet ──
   if(!profile) return <ProfileSetup user={authUser} T={T} onDone={handleProfileCreated}/>;
@@ -1243,3 +1252,4 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
 </script>
 </body>
 </html>
+
