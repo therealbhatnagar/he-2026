@@ -1,0 +1,1248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+<title>HighEnough</title>
+<script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#09090f;font-family:'Inter',sans-serif;-webkit-font-smoothing:antialiased}
+::-webkit-scrollbar{width:3px}
+::-webkit-scrollbar-thumb{background:#1e1e2c;border-radius:99px}
+input[type=range]{-webkit-appearance:none;appearance:none;background:transparent;width:100%}
+input[type=range]::-webkit-slider-runnable-track{height:3px;background:#14141e;border-radius:99px}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;margin-top:-6.5px;cursor:pointer;background:#7b72e9;box-shadow:0 1px 6px rgba(0,0,0,.5)}
+input[type=number]{-moz-appearance:textfield}
+input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none}
+button{font-family:'Inter',sans-serif;transition:opacity .12s,transform .1s;letter-spacing:-.01em}
+button:active{opacity:.75;transform:scale(.97)}
+a{color:#7b72e9;text-decoration:none}
+@keyframes fu{from{opacity:0;transform:translateX(-50%) translateY(10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+@keyframes ci{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+@keyframes su{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:scale(1)}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes sh{0%{background-position:200% center}100%{background-position:-200% center}}
+@keyframes fl{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {useState,useEffect,useRef,useCallback}=React;
+
+/* ── SUPABASE ── */
+const SUPABASE_URL  = "https://xtaphfculumytsycpeud.supabase.co";
+const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh0YXBoZmN1bHVteXRzeWNwZXVkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQzOTIwNDAsImV4cCI6MjA4OTk2ODA0MH0.rc6b7ksxzHfCjeaS7sX_XXkcOx9eBKu8DwOVWBzGCdU";
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+
+/* ── CONSTANTS ── */
+const CATS=[
+  {id:"vibe",    label:"Vibe",     emoji:"✨"},
+  {id:"humor",   label:"Humor",    emoji:"😂"},
+  {id:"kindness",label:"Kindness", emoji:"💛"},
+  {id:"rizz",    label:"Rizz",     emoji:"🔥"},
+  {id:"loyalty", label:"Loyalty",  emoji:"🤝"},
+  {id:"drip",    label:"Drip",     emoji:"💧"}
+];
+const PALETTE=["#7b72e9","#10a37f","#e0466e","#4f80e2","#c08a2e","#2cba9a","#9b6ee8","#d95c4a"];
+const INTERESTS=["Gaming 🎮","Music 🎵","Sports ⚽","Art 🎨","Food 🍜","Travel ✈️","Fitness 💪","Tech 💻","Fashion 👗","Books 📚","Movies 🎬","Anime 🌸","Photography 📷","Cooking 🍳","Dance 💃","Comedy 😄"];
+const REPORT_REASONS=[
+  {id:"spam",     label:"Spam",            desc:"Fake ratings or repeated content"},
+  {id:"harass",   label:"Harassment",      desc:"Threatening or abusive behaviour"},
+  {id:"fake",     label:"Fake Profile",    desc:"Impersonating someone else"},
+  {id:"inapp",    label:"Inappropriate",   desc:"Offensive content or photos"},
+  {id:"underage", label:"Underage User",   desc:"Appears to be under 13"},
+  {id:"other",    label:"Other",           desc:"Something else entirely"},
+];
+const AC="#7b72e9";
+const ADMIN_CODE="HE2025";
+
+const avg=a=>a.length?a.reduce((s,v)=>s+v,0)/a.length:0;
+const ini=n=>(n||"?").split(" ").map(w=>w[0]).join("").toUpperCase().slice(0,2);
+const ago=ts=>{const d=Date.now()-ts,m=Math.floor(d/60000),h=Math.floor(d/3600000),dy=Math.floor(d/86400000);return dy>0?`${dy}d`:h>0?`${h}h`:m>0?`${m}m`:"now";};
+
+const pScore=p=>{const r=p.ratings||[];if(!r.length)return null;return Math.round(r.reduce((s,r2)=>s+avg(CATS.map(c=>r2[c.id]||0)),0));};
+const cAvg=(p,c)=>{const r=p.ratings||[];return r.length?Math.round(avg(r.map(r2=>r2[c]||0))):0;};
+const fmtScore=s=>{if(s==null)return"—";if(s>=10000)return`${(s/1000).toFixed(1)}K`;if(s>=1000)return`${(s/1000).toFixed(2)}K`;return String(s);};
+
+const TIERS=[
+  {label:"Ghost",   emoji:"👤",min:0,   max:0,    color:"#4c5266",grad:["#3e4257","#4c5266"],glow:"#4c526618"},
+  {label:"Spark",   emoji:"⚡",min:1,   max:79,   color:"#7a8098",grad:["#636780","#7a8098"],glow:"#7a809820"},
+  {label:"Ember",   emoji:"🔥",min:80,  max:249,  color:"#a07840",grad:["#8a6230","#c49050"],glow:"#a0784028"},
+  {label:"Blaze",   emoji:"💥",min:250, max:599,  color:"#b84e48",grad:["#9a3840","#cc6860"],glow:"#b84e4828"},
+  {label:"Nova",    emoji:"🌌",min:600, max:1299, color:"#7c56c0",grad:["#6340a8","#9470d8"],glow:"#7c56c030"},
+  {label:"Stellar", emoji:"🌠",min:1300,max:2799, color:"#3878b0",grad:["#2860a0","#4a90c8"],glow:"#3878b030"},
+  {label:"HighEnough",emoji:"👑",min:2800,max:Infinity,color:"#c09038",grad:["#a87828","#d8ac50"],glow:"#c0903840"},
+];
+const tierOf=sc=>{if(sc==null||sc===0)return TIERS[0];for(let i=TIERS.length-1;i>=0;i--){if(sc>=TIERS[i].min)return TIERS[i];}return TIERS[0];};
+const tierPct=sc=>{if(!sc)return 0;const t=tierOf(sc);if(t.max===Infinity)return 1;return Math.min((sc-t.min)/(t.max-t.min+1),1);};
+
+/* ── LOCAL STORAGE (session only) ── */
+const SK="he_session";
+const getLoc=()=>{try{return JSON.parse(localStorage.getItem(SK))||{};}catch{return{};}};
+const setLoc=v=>{try{localStorage.setItem(SK,JSON.stringify(v));}catch{}};
+
+/* ── THEMES ── */
+const DK={bg:"#09090f",surf:"#0f0f18",card:"#111119",b1:"#1c1c2c",b2:"#262638",txt:"#dde0f0",mu:"#4e5270",faint:"#0d0d18",inp:"#0c0c18",nav:"#09090f",ov:"rgba(0,0,8,.93)"};
+const LT={bg:"#f3f3f8",surf:"#ffffff",card:"#ffffff",b1:"#e2e2ee",b2:"#ccccde",txt:"#18182c",mu:"#6e6e8a",faint:"#ebebf8",inp:"#f7f7fc",nav:"#ffffff",ov:"rgba(8,8,28,.72)"};
+
+/* ── SVG ICONS ── */
+function NavIcon({name,active,size=22}){
+  const sw=active?2.2:1.6;
+  const p={width:size,height:size,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:sw,strokeLinecap:"round",strokeLinejoin:"round"};
+  if(name==="feed")   return <svg {...p}><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/></svg>;
+  if(name==="search") return <svg {...p}><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></svg>;
+  if(name==="board")  return <svg {...p}><rect x="2" y="14" width="5" height="7" rx="1"/><rect x="9.5" y="9" width="5" height="12" rx="1"/><rect x="17" y="4" width="5" height="17" rx="1"/></svg>;
+  if(name==="ratings")return <svg {...p}><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>;
+  if(name==="profile")return <svg {...p}><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>;
+  return null;
+}
+function BellIcon({size=19}){return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>;}
+function ChevronIcon({size=14}){return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>;}
+function XIcon({size=13}){return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>;}
+function QrIcon({size=16}){return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="3" height="3"/><rect x="19" y="14" width="2" height="2"/><rect x="14" y="19" width="2" height="2"/><rect x="18" y="18" width="3" height="3" rx=".5"/></svg>;}
+function EditIcon({size=14}){return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>;}
+function CamIcon({size=16}){return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>;}
+function ShieldIcon({size=15}){return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>;}
+function FlagIcon({size=15}){return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>;}
+function DotsIcon({size=16}){return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="5" r="1.5" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="12" cy="19" r="1.5" fill="currentColor" stroke="none"/></svg>;}
+
+/* ── ATOMS ── */
+function TierBadge({sc,size="md"}){
+  const t=tierOf(sc??0),isFama=t.label==="HighEnough";
+  const sz={sm:{px:"3px 9px",fs:10,ef:11},md:{px:"4px 12px",fs:12,ef:13},lg:{px:"7px 16px",fs:13,ef:16}}[size];
+  const shimmer=isFama?{background:`linear-gradient(90deg,${t.grad[0]},${t.grad[1]},${t.grad[0]})`,backgroundSize:"200% auto",animation:"sh 2.6s linear infinite",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",backgroundClip:"text"}:{color:t.color};
+  return <span style={{display:"inline-flex",alignItems:"center",gap:4,background:isFama?`linear-gradient(135deg,${t.grad[0]}28,${t.grad[1]}18)`:`${t.color}14`,border:`1px solid ${t.color}${isFama?"50":"28"}`,borderRadius:6,padding:sz.px,whiteSpace:"nowrap",boxShadow:isFama?`0 0 12px ${t.glow}`:"none"}}>
+    <span style={{fontSize:sz.ef,lineHeight:1,animation:isFama?"fl 3s ease infinite":"none"}}>{t.emoji}</span>
+    <span style={{fontSize:sz.fs,fontFamily:"'JetBrains Mono',monospace",fontWeight:700,...shimmer}}>{t.label}</span>
+  </span>;
+}
+
+function ScorePill({sc}){
+  if(sc==null)return null;
+  const t=tierOf(sc);
+  return <div style={{textAlign:"center",background:`${t.color}12`,border:`1px solid ${t.color}28`,borderRadius:10,padding:"5px 11px",minWidth:60}}>
+    <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:18,fontWeight:700,color:t.color,lineHeight:1}}>{fmtScore(sc)}</div>
+    <div style={{fontSize:9,color:t.color,opacity:.8,marginTop:2,fontWeight:600,letterSpacing:.5}}>{t.emoji} pts</div>
+  </div>;
+}
+
+function Ring({sc,size=76}){
+  const t=tierOf(sc??0),pct=tierPct(sc??0),r=(size-8)/2,circ=2*Math.PI*r;
+  const isFama=t.label==="HighEnough";
+  return <div style={{position:"relative",width:size,height:size,flexShrink:0}}>
+    <svg width={size} height={size} style={{position:"absolute",top:0,left:0}}>
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={`${t.color}20`} strokeWidth={6}/>
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={t.color} strokeWidth={6} strokeDasharray={`${pct*circ} ${circ}`} strokeLinecap="round" transform={`rotate(-90 ${size/2} ${size/2})`} style={{filter:`drop-shadow(0 0 ${isFama?8:4}px ${t.color}88)`,transition:"stroke-dasharray .9s"}}/>
+    </svg>
+    <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
+      <span style={{fontSize:size*.16,lineHeight:1}}>{t.emoji}</span>
+      <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:size*.19,fontWeight:700,color:t.color,lineHeight:1.15}}>{fmtScore(sc)}</span>
+      <span style={{fontSize:size*.09,fontWeight:600,color:t.color,opacity:.75,letterSpacing:.3}}>{t.label}</span>
+    </div>
+  </div>;
+}
+
+function Bar({v,color,T}){return <div style={{height:4,background:T.faint,borderRadius:99,overflow:"hidden"}}><div style={{width:`${Math.min(v,100)}%`,height:"100%",background:color,borderRadius:99,transition:"width .7s",opacity:.85}}/></div>;}
+
+function Ava({p,size=46,T,badge,onClick}){
+  const c=p?.color||AC;
+  const sc=pScore(p||{});const t=tierOf(sc??0);const isFama=t.label==="HighEnough";
+  return <div onClick={onClick} style={{width:size,height:size,borderRadius:"50%",flexShrink:0,background:`${c}18`,border:`1.5px solid ${c}40`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:size*.3,color:c,fontFamily:"'JetBrains Mono',monospace",overflow:"hidden",cursor:onClick?"pointer":"default",position:"relative",boxShadow:isFama?`0 0 0 2.5px ${t.color}40,0 0 12px ${t.glow}`:`0 0 0 2.5px ${c}14`}}>
+    {p?.photo?<img src={p.photo} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:ini(p?.name)}
+    {badge>0&&<div style={{position:"absolute",top:-2,right:-2,minWidth:15,height:15,borderRadius:99,background:"#d84040",border:`1.5px solid ${T?.nav||"#09090f"}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:8,color:"#fff",fontWeight:700,padding:"0 3px"}}>{badge>9?"9+":badge}</div>}
+  </div>;
+}
+
+function Tag({label,color,T}){return <span style={{background:`${color}14`,border:`1px solid ${color}28`,borderRadius:5,padding:"2px 9px",fontSize:11,color,fontWeight:600,whiteSpace:"nowrap"}}>{label}</span>;}
+function Pill({on,onChange,color}){return <div onClick={()=>onChange(!on)} style={{width:44,height:24,borderRadius:99,background:on?color:"#222236",position:"relative",cursor:"pointer",transition:"background .2s",flexShrink:0}}><div style={{position:"absolute",top:3,left:on?20:3,width:18,height:18,borderRadius:"50%",background:"#fff",transition:"left .2s"}}/></div>;}
+function Toast({msg,T}){return msg?<div style={{position:"fixed",bottom:92,left:"50%",transform:"translateX(-50%)",background:T.surf,border:`1px solid ${T.b2}`,borderRadius:12,padding:"11px 22px",color:T.txt,fontSize:13,fontWeight:600,zIndex:500,whiteSpace:"nowrap",animation:"fu .2s ease",boxShadow:"0 12px 40px rgba(0,0,0,.5)"}}>{msg}</div>:null;}
+function Spinner(){return <div style={{width:18,height:18,border:"2px solid #2a2a40",borderTopColor:AC,borderRadius:"50%",animation:"spin .55s linear infinite",display:"inline-block"}}/>;}
+
+function Overlay({onBg,children,T,wide}){
+  return <div onClick={e=>e.target===e.currentTarget&&onBg()} style={{position:"fixed",inset:0,zIndex:200,background:T.ov,backdropFilter:"blur(16px)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+    <div style={{background:T.card,border:`1px solid ${T.b1}`,borderRadius:22,padding:"24px 20px 20px",width:"100%",maxWidth:wide?510:430,position:"relative",maxHeight:"92vh",overflowY:"auto",boxShadow:"0 40px 100px rgba(0,0,0,.7)",animation:"su .2s ease"}}>
+      <button onClick={onBg} style={{position:"absolute",top:14,right:14,background:T.faint,border:`1px solid ${T.b1}`,color:T.mu,cursor:"pointer",width:26,height:26,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center"}}><XIcon/></button>
+      {children}
+    </div>
+  </div>;
+}
+
+function SRow({icon,label,desc,val,onChange,T}){
+  return <div style={{display:"flex",alignItems:"center",gap:12,padding:"3px 0"}}>
+    <span style={{fontSize:18,width:26,textAlign:"center",opacity:.8}}>{icon}</span>
+    <div style={{flex:1}}><div style={{fontSize:14,color:T.txt,fontWeight:500}}>{label}</div>{desc&&<div style={{fontSize:12,color:T.mu,marginTop:1}}>{desc}</div>}</div>
+    <Pill on={val} onChange={onChange} color={AC}/>
+  </div>;
+}
+
+function loadScript(src,cb){
+  if(src.includes("jsQR")&&window.jsQR)return cb();
+  if(src.includes("qrious")&&window.QRious)return cb();
+  const s=document.createElement("script");s.src=src;s.onload=cb;document.head.appendChild(s);
+}
+
+/* ── AUTH SCREEN ── */
+function AuthScreen({T,onAuthed}){
+  const [mode,setMode]=useState("login"); // login | signup | forgot
+  const [email,setEmail]=useState("");
+  const [pass,setPass]=useState("");
+  const [name,setName]=useState("");
+  const [loading,setLoading]=useState(false);
+  const [msg,setMsg]=useState({text:"",error:false});
+  const [showPass,setShowPass]=useState(false);
+
+  const inp={width:"100%",padding:"13px 14px",background:T.inp,border:`1px solid ${T.b1}`,borderRadius:12,color:T.txt,fontSize:15,outline:"none",boxSizing:"border-box",fontFamily:"'Inter',sans-serif",letterSpacing:"-.01em"};
+
+  async function handleSubmit(){
+    if(!email.trim()||(!pass&&mode!=="forgot")) return setMsg({text:"Please fill in all fields",error:true});
+    if(mode==="signup"&&!name.trim()) return setMsg({text:"Please enter your name",error:true});
+    if(pass&&pass.length<6&&mode!=="forgot") return setMsg({text:"Password must be at least 6 characters",error:true});
+    setLoading(true);setMsg({text:"",error:false});
+    try{
+      if(mode==="login"){
+        const {data,error}=await sb.auth.signInWithPassword({email:email.trim(),password:pass});
+        if(error) return setMsg({text:error.message==="Invalid login credentials"?"Incorrect email or password. Try again.":error.message,error:true});
+        onAuthed(data.user);
+      } else if(mode==="signup"){
+        const {data,error}=await sb.auth.signUp({email:email.trim(),password:pass,options:{data:{full_name:name.trim()},emailRedirectTo:window.location.href}});
+        if(error) return setMsg({text:error.message,error:true});
+        if(data.session){
+          onAuthed(data.user);
+        } else if(data.user){
+          setMsg({text:"Account created! Check your email to confirm, then sign in.",error:false});
+          setMode("login");
+        }
+      } else {
+        const {error}=await sb.auth.resetPasswordForEmail(email.trim(),{redirectTo:window.location.href});
+        if(error) return setMsg({text:error.message,error:true});
+        setMsg({text:"Password reset link sent to your email.",error:false});
+        setMode("login");
+      }
+    } catch(e){
+      console.error("Auth error:",e);
+      setMsg({text:e.message||"Failed to connect. Check your internet and try again.",error:true});
+    }
+    finally{setLoading(false);}
+  }
+
+  return <div style={{minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",padding:24,position:"relative",overflow:"hidden"}}>
+    <div style={{position:"absolute",top:-140,right:-110,width:400,height:400,borderRadius:"50%",background:`radial-gradient(circle,${AC}10,transparent 68%)`,pointerEvents:"none"}}/>
+    <div style={{position:"absolute",bottom:-120,left:-90,width:320,height:320,borderRadius:"50%",background:`radial-gradient(circle,${AC}0b,transparent 68%)`,pointerEvents:"none"}}/>
+    <div style={{width:"100%",maxWidth:360,animation:"ci .4s ease",position:"relative"}}>
+      <div style={{textAlign:"center",marginBottom:36}}>
+        <div style={{fontWeight:800,fontSize:44,letterSpacing:"-2px",lineHeight:1,color:T.txt}}>High<span style={{color:AC,fontWeight:300,letterSpacing:"0.04em"}}>Enough</span></div>
+        <div style={{fontSize:11,color:T.mu,marginTop:8,letterSpacing:"0.18em",textTransform:"uppercase",fontWeight:500}}>Rate · Rise · Repeat</div>
+      </div>
+
+      <div style={{background:T.card,border:`1px solid ${T.b1}`,borderRadius:20,padding:"26px 22px 22px"}}>
+        <div style={{fontWeight:700,fontSize:18,color:T.txt,marginBottom:6}}>
+          {mode==="login"?"Welcome back":mode==="signup"?"Create account":"Reset password"}
+        </div>
+        <div style={{fontSize:13,color:T.mu,marginBottom:22}}>
+          {mode==="login"?"Sign in to your account":mode==="signup"?"Join HighEnough today":"Enter your email to reset"}
+        </div>
+
+        {mode==="signup"&&<div style={{marginBottom:14}}>
+          <label style={{fontSize:11,color:T.mu,textTransform:"uppercase",letterSpacing:.7,display:"block",marginBottom:5,fontWeight:600}}>Full Name</label>
+          <input value={name} onChange={e=>setName(e.target.value)} placeholder="Your name" style={inp}/>
+        </div>}
+
+        <div style={{marginBottom:14}}>
+          <label style={{fontSize:11,color:T.mu,textTransform:"uppercase",letterSpacing:.7,display:"block",marginBottom:5,fontWeight:600}}>Email</label>
+          <input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@example.com" style={inp} onKeyDown={e=>e.key==="Enter"&&handleSubmit()}/>
+        </div>
+
+        {mode!=="forgot"&&<div style={{marginBottom:20}}>
+          <label style={{fontSize:11,color:T.mu,textTransform:"uppercase",letterSpacing:.7,display:"block",marginBottom:5,fontWeight:600}}>Password</label>
+          <div style={{position:"relative"}}>
+            <input type={showPass?"text":"password"} value={pass} onChange={e=>setPass(e.target.value)} placeholder="Min 6 characters" style={{...inp,paddingRight:48}} onKeyDown={e=>e.key==="Enter"&&handleSubmit()}/>
+            <button onClick={()=>setShowPass(v=>!v)} style={{position:"absolute",right:14,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",color:T.mu,cursor:"pointer",fontSize:13,fontWeight:600}}>{showPass?"Hide":"Show"}</button>
+          </div>
+        </div>}
+
+        {msg.text&&<div style={{padding:"10px 13px",borderRadius:10,marginBottom:14,fontSize:13,background:msg.error?"#a0303018":"#10a37f18",border:`1px solid ${msg.error?"#a0303040":"#10a37f40"}`,color:msg.error?"#d06060":"#10a37f"}}>{msg.text}</div>}
+
+        <button onClick={handleSubmit} disabled={loading} style={{width:"100%",padding:"13px 0",background:loading?T.faint:`linear-gradient(135deg,${AC}e0,${AC}90)`,border:"none",borderRadius:12,color:loading?T.mu:"#fff",fontWeight:700,fontSize:15,cursor:loading?"default":"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:10,transition:"all .2s"}}>
+          {loading?<><Spinner/> Please wait…</>:mode==="login"?"Sign In →":mode==="signup"?"Create Account →":"Send Reset Link"}
+        </button>
+
+        <div style={{marginTop:18,display:"flex",flexDirection:"column",gap:10,alignItems:"center"}}>
+          {mode==="login"&&<>
+            <button onClick={()=>{setMode("forgot");setMsg({text:"",error:false});}} style={{background:"none",border:"none",color:T.mu,fontSize:13,cursor:"pointer"}}>Forgot password?</button>
+            <div style={{fontSize:13,color:T.mu}}>Don't have an account? <button onClick={()=>{setMode("signup");setMsg({text:"",error:false});}} style={{background:"none",border:"none",color:AC,fontWeight:600,cursor:"pointer",fontSize:13}}>Sign up</button></div>
+          </>}
+          {mode==="signup"&&<div style={{fontSize:13,color:T.mu}}>Already have an account? <button onClick={()=>{setMode("login");setMsg({text:"",error:false});}} style={{background:"none",border:"none",color:AC,fontWeight:600,cursor:"pointer",fontSize:13}}>Sign in</button></div>}
+          {mode==="forgot"&&<button onClick={()=>{setMode("login");setMsg({text:"",error:false});}} style={{background:"none",border:"none",color:T.mu,fontSize:13,cursor:"pointer"}}>← Back to sign in</button>}
+        </div>
+      </div>
+      <p style={{textAlign:"center",fontSize:11,color:T.mu,marginTop:16,lineHeight:1.6,opacity:.7}}>By signing up you agree to our Terms & Privacy Policy</p>
+    </div>
+  </div>;
+}
+
+/* ── PROFILE SETUP (after first sign up) ── */
+function ProfileSetup({user,T,onDone}){
+  const [nm,setNm]=useState(user.user_metadata?.full_name||"");
+  const [hd,setHd]=useState("");
+  const [bio,setBio]=useState("");
+  const [col,setCol]=useState(PALETTE[0]);
+  const [loading,setLoading]=useState(false);
+  const [err,setErr]=useState("");
+  const inp={width:"100%",padding:"12px 14px",background:T.inp,border:`1px solid ${T.b1}`,borderRadius:12,color:T.txt,fontSize:14,outline:"none",boxSizing:"border-box",fontFamily:"'Inter',sans-serif"};
+
+  async function create(){
+    if(!nm.trim()) return setErr("Please enter your name");
+    setLoading(true);setErr("");
+    const handle=hd.trim()||`@${nm.trim().split(" ")[0].toLowerCase().replace(/[^a-z0-9]/g,"")}`;
+    const profile={
+      id:user.id, name:nm.trim(), handle,
+      bio:bio.trim(), color:col, age:null,
+      photo:null, interests:[], links:{},
+      email:user.email, created_at:new Date().toISOString()
+    };
+    const {error}=await sb.from("profiles").upsert(profile);
+    if(error){setErr("Could not save profile. Try again.");setLoading(false);return;}
+    onDone(profile);
+  }
+
+  return <div style={{minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
+    <div style={{width:"100%",maxWidth:380,animation:"ci .4s ease"}}>
+      <div style={{textAlign:"center",marginBottom:28}}>
+        <div style={{fontWeight:800,fontSize:38,letterSpacing:"-2px",color:T.txt}}>High<span style={{color:AC,fontWeight:300,letterSpacing:"0.04em"}}>Enough</span></div>
+        <div style={{fontSize:13,color:T.mu,marginTop:8}}>Set up your profile</div>
+      </div>
+      <div style={{display:"flex",justifyContent:"center",marginBottom:16}}>
+        <Ava p={{name:nm||"?",color:col,photo:null}} size={84} T={T}/>
+      </div>
+      <div style={{display:"flex",gap:6,justifyContent:"center",marginBottom:22}}>
+        {PALETTE.map(c=><div key={c} onClick={()=>setCol(c)} style={{width:22,height:22,borderRadius:"50%",background:c,cursor:"pointer",outline:col===c?`2.5px solid ${T.txt}`:"2.5px solid transparent",outlineOffset:2,transform:col===c?"scale(1.2)":"scale(1)",transition:"transform .11s"}}/>)}
+      </div>
+      {[{l:"Display Name *",v:nm,s:setNm,p:"Your name"},{l:"Handle",v:hd,s:setHd,p:"@username (optional)"},{l:"Bio",v:bio,s:setBio,p:"A short line about you…"}].map(f=><div key={f.l} style={{marginBottom:13}}>
+        <label style={{fontSize:11,color:T.mu,textTransform:"uppercase",letterSpacing:.7,display:"block",marginBottom:4,fontWeight:600}}>{f.l}</label>
+        <input value={f.v} onChange={e=>f.s(e.target.value)} placeholder={f.p} style={inp}/>
+      </div>)}
+      {err&&<div style={{color:"#d06060",fontSize:13,marginBottom:12,padding:"9px 12px",background:"#a0303018",borderRadius:9,border:"1px solid #a0303030"}}>{err}</div>}
+      <button disabled={loading} onClick={create} style={{width:"100%",padding:"14px 0",background:loading?T.faint:`linear-gradient(135deg,${col}e0,${col}90)`,border:"none",borderRadius:12,color:loading?T.mu:"#fff",fontWeight:700,fontSize:15,cursor:loading?"default":"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:10}}>
+        {loading?<><Spinner/>Saving…</>:"Continue →"}
+      </button>
+    </div>
+  </div>;
+}
+
+/* ── TIER MAP ── */
+function TierMapPanel({T,onClose}){
+  return <Overlay onBg={onClose} T={T} wide>
+    <div style={{fontWeight:700,fontSize:18,color:T.txt,marginBottom:5}}>Tier System</div>
+    <div style={{fontSize:13,color:T.mu,marginBottom:18,lineHeight:1.6}}>Scores grow unlimited. Each rater adds their average (0–100 pts) to your total. More ratings = higher score.</div>
+    <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:T.mu,marginBottom:14,padding:"9px 12px",background:T.faint,borderRadius:8,border:`1px solid ${T.b1}`}}>Score = sum of each rater's average across 6 categories</div>
+    <div style={{display:"flex",flexDirection:"column",gap:8}}>
+      {[...TIERS].reverse().map(t=>{const isFama=t.label==="HighEnough";
+        return <div key={t.label} style={{display:"flex",alignItems:"center",gap:12,background:isFama?`${t.color}0e`:T.faint,border:`1px solid ${isFama?t.color+"40":T.b1}`,borderRadius:12,padding:"11px 14px"}}>
+          <span style={{fontSize:22,animation:isFama?"fl 3s ease infinite":"none",flexShrink:0}}>{t.emoji}</span>
+          <div style={{flex:1}}>
+            <div style={{fontWeight:700,fontSize:14,color:t.color}}>{t.label}</div>
+            <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:T.mu,marginTop:1}}>{t.max===Infinity?`${t.min.toLocaleString()}+ pts`:`${t.min.toLocaleString()} – ${t.max.toLocaleString()} pts`}</div>
+          </div>
+          {isFama&&<span style={{fontSize:10,color:t.color,fontWeight:700,fontFamily:"'JetBrains Mono',monospace",opacity:.8}}>TOP</span>}
+        </div>;
+      })}
+    </div>
+  </Overlay>;
+}
+
+/* ── QR MODAL ── */
+function QRModal({profile,T,onClose}){
+  const url=`${location.origin}${location.pathname}?uid=${profile.id}`;
+  const ref=useRef(null);const[cp,setCp]=useState(false);
+  useEffect(()=>{loadScript("https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js",()=>{if(ref.current)new window.QRious({element:ref.current,value:url,size:170,background:"transparent",foreground:profile.color,backgroundAlpha:0,level:"M"});});},[]);
+  return <Overlay onBg={onClose} T={T}><div style={{textAlign:"center"}}>
+    <Ava p={profile} size={62} T={T}/>
+    <div style={{fontWeight:700,fontSize:18,color:T.txt,marginTop:12}}>{profile.name}</div>
+    <div style={{marginTop:6,marginBottom:18,display:"flex",gap:7,justifyContent:"center",flexWrap:"wrap"}}><Tag label={`#${profile.id.slice(0,8)}`} color={T.mu} T={T}/><TierBadge sc={pScore(profile)} size="sm"/></div>
+    <div style={{margin:"0 auto 16px",width:190,height:190,background:T.faint,border:`1px solid ${T.b1}`,borderRadius:16,display:"flex",alignItems:"center",justifyContent:"center"}}><canvas ref={ref}/></div>
+    <p style={{color:T.mu,fontSize:11,fontFamily:"'JetBrains Mono',monospace",wordBreak:"break-all",lineHeight:1.8,marginBottom:16}}>{url}</p>
+    <button onClick={()=>{navigator.clipboard?.writeText(url);setCp(true);setTimeout(()=>setCp(false),2000);}} style={{padding:"11px 28px",background:`linear-gradient(135deg,${profile.color}e0,${profile.color}90)`,border:"none",borderRadius:11,color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}}>{cp?"Copied ✓":"Copy Link"}</button>
+  </div></Overlay>;
+}
+
+/* ── RATE MODAL ── */
+function RateModal({target,raterId,raterName,existing,T,onClose,onSubmit}){
+  const isEdit=!!existing;
+  const [vals,setVals]=useState(isEdit?Object.fromEntries(CATS.map(c=>[c.id,existing[c.id]||0])):Object.fromEntries(CATS.map(c=>[c.id,50])));
+  const contribution=Math.round(avg(CATS.map(c=>vals[c.id]||0)));
+  const currentSc=pScore(target)||0;
+  const projSc=isEdit?currentSc-Math.round(avg(CATS.map(c=>existing[c.id]||0)))+contribution:currentSc+contribution;
+  const tBefore=tierOf(currentSc),tAfter=tierOf(projSc);
+  const tierUp=TIERS.indexOf(tAfter)>TIERS.indexOf(tBefore);
+  return <Overlay onBg={onClose} T={T}>
+    <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16}}>
+      <Ava p={target} size={48} T={T}/>
+      <div style={{flex:1}}>
+        <div style={{fontWeight:600,fontSize:16,color:T.txt}}>{isEdit?"Edit Rating —":"Rate"} {target.name}</div>
+        <TierBadge sc={pScore(target)} size="sm"/>
+      </div>
+      <div style={{textAlign:"center"}}>
+        <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:20,fontWeight:700,color:tierUp?tAfter.color:T.txt,lineHeight:1,transition:"color .3s"}}>{contribution}</div>
+        <div style={{fontSize:9,color:T.mu,letterSpacing:.5,marginTop:2}}>pts</div>
+      </div>
+    </div>
+    {tierUp&&<div style={{background:`${tAfter.color}14`,border:`1px solid ${tAfter.color}30`,borderRadius:10,padding:"8px 12px",marginBottom:14,fontSize:12,color:tAfter.color,fontWeight:600,display:"flex",alignItems:"center",gap:6}}><span>{tAfter.emoji}</span> This rating will push them to {tAfter.label}!</div>}
+    {isEdit&&<div style={{background:`${AC}10`,border:`1px solid ${AC}28`,borderRadius:10,padding:"8px 12px",marginBottom:12,fontSize:12,color:AC,fontWeight:600}}>✏️ Updating your previous rating</div>}
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      {CATS.map(c=><div key={c.id}>
+        <div style={{display:"flex",justifyContent:"space-between",marginBottom:5}}>
+          <span style={{fontSize:13,color:T.txt,fontWeight:500}}>{c.emoji} {c.label}</span>
+          <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:13,color:T.txt,fontWeight:600}}>{vals[c.id]}</span>
+        </div>
+        <input type="range" min={0} max={100} value={vals[c.id]} onChange={e=>setVals(v=>({...v,[c.id]:+e.target.value}))} style={{width:"100%",cursor:"pointer"}}/>
+      </div>)}
+    </div>
+    <button onClick={()=>onSubmit(target.id,{...vals,raterId,raterName,ts:Date.now()})} style={{marginTop:20,width:"100%",padding:"13px 0",background:`linear-gradient(135deg,${target.color}e0,${target.color}90)`,border:"none",borderRadius:12,color:"#fff",fontWeight:700,fontSize:14,cursor:"pointer"}}>{isEdit?"Update Rating ✓":"Submit Rating ✓"}</button>
+  </Overlay>;
+}
+
+/* ── VIEW MODAL ── */
+function ViewModal({profile,isSelf,myId,T,onClose,onRate,onQR,onBlock,onUnblock,onReport,isBlocked,onTierMap}){
+  const sc=pScore(profile),n=(profile.ratings||[]).length,t=tierOf(sc??0);
+  const pct=tierPct(sc??0),next=sc!=null?TIERS[TIERS.indexOf(t)+1]:null;
+  const myR=profile.ratings?.find(r=>r.raterId===myId);
+  const links=profile.links||{};
+  return <Overlay onBg={onClose} T={T} wide>
+    <div style={{display:"flex",alignItems:"flex-start",gap:14,marginBottom:14}}>
+      <Ava p={profile} size={62} T={T}/>
+      <div style={{flex:1}}>
+        <div style={{fontWeight:700,fontSize:19,color:T.txt,lineHeight:1.2}}>{profile.name}{profile.age&&<span style={{fontSize:13,color:T.mu,fontWeight:400,marginLeft:8}}>· {profile.age}</span>}</div>
+        <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:T.mu,marginTop:2}}>{profile.handle}</div>
+        {profile.bio&&<p style={{color:T.mu,fontSize:12,marginTop:5,lineHeight:1.5}}>{profile.bio}</p>}
+      </div>
+      <Ring sc={sc} size={72}/>
+    </div>
+    {/* Tier progress bar */}
+    <div style={{marginBottom:14}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+        <TierBadge sc={sc} size="sm"/>
+        {next&&<span style={{fontSize:11,color:T.mu,fontFamily:"'JetBrains Mono',monospace"}}>{next.emoji} {next.label} at {next.min.toLocaleString()}</span>}
+      </div>
+      <div style={{height:4,background:T.b1,borderRadius:99,overflow:"hidden"}}><div style={{width:`${pct*100}%`,height:"100%",background:t.color,borderRadius:99,opacity:.8,transition:"width .9s"}}/></div>
+    </div>
+    {(profile.interests||[]).length>0&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:12}}>{profile.interests.map(i=><Tag key={i} label={i} color={profile.color} T={T}/>)}</div>}
+    {(links.instagram||links.twitter||links.tiktok||links.website)&&<div style={{display:"flex",gap:7,flexWrap:"wrap",marginBottom:12}}>
+      {links.instagram&&<a href={`https://instagram.com/${links.instagram.replace("@","")}`} target="_blank" rel="noreferrer" style={{fontSize:11,color:"#c96090",background:"#c9609014",border:"1px solid #c9609028",borderRadius:6,padding:"3px 10px",fontWeight:600}}>📸 {links.instagram}</a>}
+      {links.twitter&&<a href={`https://x.com/${links.twitter.replace("@","")}`} target="_blank" rel="noreferrer" style={{fontSize:11,color:"#6090c8",background:"#6090c814",border:"1px solid #6090c828",borderRadius:6,padding:"3px 10px",fontWeight:600}}>𝕏 {links.twitter}</a>}
+      {links.tiktok&&<a href={`https://tiktok.com/@${links.tiktok.replace("@","")}`} target="_blank" rel="noreferrer" style={{fontSize:11,color:T.mu,background:T.faint,border:`1px solid ${T.b1}`,borderRadius:6,padding:"3px 10px",fontWeight:600}}>🎵 {links.tiktok}</a>}
+      {links.website&&<a href={links.website} target="_blank" rel="noreferrer" style={{fontSize:11,color:AC,background:`${AC}14`,border:`1px solid ${AC}28`,borderRadius:6,padding:"3px 10px",fontWeight:600}}>🔗 Site</a>}
+    </div>}
+    <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}>
+      <Tag label={`${n} rating${n!==1?"s":""}`} color={T.mu} T={T}/>
+      {sc!=null&&<Tag label={`${fmtScore(sc)} pts`} color={t.color} T={T}/>}
+    </div>
+    <div style={{height:1,background:T.b1,marginBottom:13}}/>
+    {n>0?<div style={{display:"flex",flexDirection:"column",gap:10}}>{CATS.map(c=>{const v=cAvg(profile,c.id);return <div key={c.id}>
+      <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{fontSize:13,color:T.mu}}>{c.emoji} {c.label}</span><span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:12,color:T.txt,fontWeight:600}}>{v}/100</span></div>
+      <Bar v={v} color={profile.color} T={T}/>
+    </div>;})}</div>:<p style={{color:T.mu,textAlign:"center",padding:"18px 0",fontSize:13}}>No ratings yet</p>}
+    {myR&&!isSelf&&<><div style={{height:1,background:T.b1,margin:"12px 0"}}/>
+      <div style={{background:T.faint,border:`1px solid ${T.b1}`,borderRadius:10,padding:"10px 13px"}}>
+        <div style={{fontSize:10,color:T.mu,marginBottom:6,textTransform:"uppercase",letterSpacing:1,fontWeight:600}}>Your Rating</div>
+        <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>{CATS.map(c=><Tag key={c.id} label={`${c.emoji} ${myR[c.id]}`} color={T.mu} T={T}/>)}</div>
+      </div></>}
+    <div style={{display:"flex",gap:8,marginTop:18}}>
+      {isSelf
+        ?<button onClick={()=>{onClose();onQR(profile);}} style={{flex:1,padding:"12px 0",background:`linear-gradient(135deg,${profile.color}e0,${profile.color}90)`,border:"none",borderRadius:11,color:"#fff",fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:7}}><QrIcon size={16}/>Share QR</button>
+        :<button onClick={()=>{onClose();onRate(profile,myR);}} disabled={isBlocked} style={{flex:1,padding:"12px 0",background:isBlocked?T.faint:`linear-gradient(135deg,${profile.color}e0,${profile.color}90)`,border:isBlocked?`1px solid ${T.b1}`:"none",borderRadius:11,color:isBlocked?T.mu:"#fff",fontWeight:700,cursor:isBlocked?"default":"pointer",opacity:isBlocked?.5:1}}>{myR?"Edit Rating":"Rate"}</button>}
+    </div>
+    {!isSelf&&<div style={{display:"flex",gap:8,marginTop:10}}>
+      <button onClick={()=>{isBlocked?onUnblock(profile.id):onBlock(profile.id);onClose();}} style={{flex:1,padding:"9px 0",background:"transparent",border:`1px solid ${T.b1}`,borderRadius:10,color:isBlocked?"#38a060":T.mu,fontSize:12,fontWeight:500,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}><ShieldIcon size={13}/>{isBlocked?"Unblock":"Block"}</button>
+      <button onClick={()=>{onClose();onReport(profile);}} style={{flex:1,padding:"9px 0",background:"transparent",border:"1px solid #7a303030",borderRadius:10,color:"#c07070",fontSize:12,fontWeight:500,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}><FlagIcon size={13}/>Report</button>
+    </div>}
+  </Overlay>;
+}
+
+/* ── REPORT MODAL ── */
+function ReportModal({target,T,onClose,onSubmit}){
+  const [reason,setReason]=useState(null);const[alsoBlock,setAlsoBlock]=useState(true);const[done,setDone]=useState(false);
+  if(done)return <Overlay onBg={onClose} T={T}><div style={{textAlign:"center",padding:"16px 0 8px"}}><div style={{fontSize:44,marginBottom:14}}>✅</div><div style={{fontWeight:700,fontSize:17,color:T.txt,marginBottom:8}}>Report submitted</div><p style={{fontSize:13,color:T.mu,lineHeight:1.6,marginBottom:20}}>Thanks for keeping HighEnough safe.{alsoBlock?` ${target.name} has been blocked.`:""}</p><button onClick={onClose} style={{width:"100%",padding:"12px 0",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:11,color:T.txt,fontWeight:600,cursor:"pointer"}}>Done</button></div></Overlay>;
+  return <Overlay onBg={onClose} T={T}>
+    <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:18}}><div style={{width:32,height:32,borderRadius:9,background:"#a0303014",border:"1px solid #a0303030",display:"flex",alignItems:"center",justifyContent:"center",color:"#c05050"}}><FlagIcon size={16}/></div><div><div style={{fontWeight:700,fontSize:16,color:T.txt}}>Report {target.name}</div></div></div>
+    <div style={{fontSize:12,color:T.mu,marginBottom:12,fontWeight:500}}>Why are you reporting this profile?</div>
+    <div style={{display:"flex",flexDirection:"column",gap:7,marginBottom:18}}>
+      {REPORT_REASONS.map(r=><div key={r.id} onClick={()=>setReason(r.id)} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 13px",background:reason===r.id?`${AC}10`:T.faint,border:`1px solid ${reason===r.id?AC+"40":T.b1}`,borderRadius:10,cursor:"pointer",transition:"all .12s"}}>
+        <div style={{width:18,height:18,borderRadius:"50%",border:`2px solid ${reason===r.id?AC:T.b2}`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+          {reason===r.id&&<div style={{width:9,height:9,borderRadius:"50%",background:AC}}/>}
+        </div>
+        <div><div style={{fontSize:13,fontWeight:600,color:T.txt}}>{r.label}</div><div style={{fontSize:11,color:T.mu,marginTop:1}}>{r.desc}</div></div>
+      </div>)}
+    </div>
+    <div onClick={()=>setAlsoBlock(!alsoBlock)} style={{display:"flex",alignItems:"center",gap:11,padding:"11px 13px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:10,cursor:"pointer",marginBottom:16}}>
+      <div style={{width:18,height:18,borderRadius:4,border:`2px solid ${alsoBlock?AC:T.b2}`,background:alsoBlock?AC:"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"all .12s"}}>{alsoBlock&&<svg width="10" height="10" viewBox="0 0 10 10" fill="none"><polyline points="1.5,5 4,7.5 8.5,2.5" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>}</div>
+      <div><div style={{fontSize:13,fontWeight:500,color:T.txt}}>Also block this person</div><div style={{fontSize:11,color:T.mu,marginTop:1}}>They won't be able to rate or see you</div></div>
+    </div>
+    <button onClick={()=>{if(!reason)return;onSubmit(target.id,reason,alsoBlock);setDone(true);}} disabled={!reason} style={{width:"100%",padding:"12px 0",background:reason?"#a04040":"transparent",border:reason?"none":`1px solid ${T.b1}`,borderRadius:11,color:reason?"#fff":T.mu,fontWeight:700,fontSize:14,cursor:reason?"pointer":"default",display:"flex",alignItems:"center",justifyContent:"center",gap:7}}><FlagIcon size={15}/>Submit Report</button>
+  </Overlay>;
+}
+
+/* ── BLOCKED LIST ── */
+function BlockedListPanel({blocked,profiles,T,onClose,onUnblock}){
+  const blockedProfiles=profiles.filter(p=>blocked.includes(p.id));
+  return <Overlay onBg={onClose} T={T}>
+    <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:18}}><div style={{width:32,height:32,borderRadius:9,background:`${AC}14`,border:`1px solid ${AC}28`,display:"flex",alignItems:"center",justifyContent:"center",color:AC}}><ShieldIcon size={16}/></div><div style={{fontWeight:700,fontSize:17,color:T.txt}}>Blocked Users</div></div>
+    {blockedProfiles.length===0?<div style={{textAlign:"center",padding:"32px 0",color:T.mu}}><div style={{fontSize:28,marginBottom:8,opacity:.3}}>◎</div><div style={{fontWeight:500}}>No blocked users</div></div>
+      :<div style={{display:"flex",flexDirection:"column",gap:8}}>{blockedProfiles.map(p=><div key={p.id} style={{display:"flex",alignItems:"center",gap:11,padding:"11px 13px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:12}}>
+        <Ava p={p} size={42} T={T}/><div style={{flex:1}}><div style={{fontWeight:600,fontSize:14,color:T.txt}}>{p.name}</div><div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:T.mu}}>{p.handle}</div></div>
+        <button onClick={()=>onUnblock(p.id)} style={{padding:"7px 14px",background:"transparent",border:`1px solid ${T.b2}`,borderRadius:8,color:T.mu,fontSize:12,fontWeight:600,cursor:"pointer"}}>Unblock</button>
+      </div>)}</div>}
+  </Overlay>;
+}
+
+/* ── DOTS MENU ── */
+function DotsMenu({p,isBlocked,T,onBlock,onUnblock,onReport,onClose}){
+  function MI({icon,label,color,onClick}){const[h,setH]=useState(false);return<div onClick={onClick} onMouseEnter={()=>setH(true)} onMouseLeave={()=>setH(false)} style={{display:"flex",alignItems:"center",gap:10,padding:"11px 15px",cursor:"pointer",background:h?"rgba(255,255,255,.04)":"transparent",color,transition:"background .1s"}}>{icon}<span style={{fontSize:13,fontWeight:500}}>{label}</span></div>;}
+  return <div style={{position:"absolute",top:38,right:8,zIndex:50,background:T.surf,border:`1px solid ${T.b2}`,borderRadius:12,minWidth:170,boxShadow:"0 12px 40px rgba(0,0,0,.4)",overflow:"hidden",animation:"su .12s ease"}}>
+    {isBlocked?<MI icon={<ShieldIcon size={14}/>} label="Unblock" color={AC} onClick={()=>{onUnblock();onClose();}}/>:<MI icon={<ShieldIcon size={14}/>} label="Block User" color="#c07070" onClick={()=>{onBlock();onClose();}}/>}
+    <div style={{height:1,background:T.b1}}/>
+    <MI icon={<FlagIcon size={14}/>} label="Report" color="#c07070" onClick={()=>{onReport();onClose();}}/>
+  </div>;
+}
+
+/* ── PHOTO MODAL ── */
+function PhotoModal({profile,T,onClose,onSave}){
+  const [prev,setPrev]=useState(profile.photo||null);const[cam,setCam]=useState(false);const[stream,setStream]=useState(null);
+  const vRef=useRef(null);const cRef=useRef(null);
+  useEffect(()=>()=>stream?.getTracks().forEach(t=>t.stop()),[]);
+  function pick(){const i=document.createElement("input");i.type="file";i.accept="image/*";i.onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>setPrev(ev.target.result);r.readAsDataURL(f);};i.click();}
+  async function startCam(){try{const s=await navigator.mediaDevices.getUserMedia({video:{facingMode:"user"}});setStream(s);setCam(true);setTimeout(()=>{if(vRef.current)vRef.current.srcObject=s;},100);}catch{alert("Camera unavailable");}}
+  function stopCam(){stream?.getTracks().forEach(t=>t.stop());setStream(null);setCam(false);}
+  function snap(){const v=vRef.current,c=cRef.current;if(!v||!c)return;c.width=v.videoWidth;c.height=v.videoHeight;c.getContext("2d").drawImage(v,0,0);setPrev(c.toDataURL("image/jpeg",.85));stopCam();}
+  return <Overlay onBg={()=>{stopCam();onClose();}} T={T}>
+    <div style={{fontWeight:700,fontSize:17,color:T.txt,marginBottom:16}}>Profile Photo</div>
+    <div style={{display:"flex",justifyContent:"center",marginBottom:16}}>
+      <div style={{width:104,height:104,borderRadius:"50%",overflow:"hidden",border:`2px solid ${profile.color}50`,background:T.faint,display:"flex",alignItems:"center",justifyContent:"center"}}>
+        {cam?<video ref={vRef} autoPlay playsInline style={{width:"100%",height:"100%",objectFit:"cover"}}/>:prev?<img src={prev} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:32,fontWeight:700,color:profile.color}}>{ini(profile.name)}</span>}
+      </div>
+      <canvas ref={cRef} style={{display:"none"}}/>
+    </div>
+    {cam?<div style={{display:"flex",gap:8}}><button onClick={snap} style={{flex:1,padding:"11px 0",background:`${profile.color}cc`,border:"none",borderRadius:11,color:"#fff",fontWeight:700,cursor:"pointer"}}>Capture</button><button onClick={stopCam} style={{flex:1,padding:"11px 0",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:11,color:T.mu,cursor:"pointer"}}>Cancel</button></div>
+      :<div style={{display:"flex",flexDirection:"column",gap:8}}>
+        <button onClick={pick} style={{padding:"11px 0",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:11,color:T.txt,fontWeight:500,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}><CamIcon size={15}/>Choose from Gallery</button>
+        <button onClick={startCam} style={{padding:"11px 0",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:11,color:T.txt,fontWeight:500,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}><CamIcon size={15}/>Take Photo</button>
+        {prev&&<button onClick={()=>setPrev(null)} style={{padding:"11px 0",background:"transparent",border:"1px solid #c0404040",borderRadius:11,color:"#c06060",fontWeight:500,cursor:"pointer"}}>Remove Photo</button>}
+        <div style={{height:1,background:T.b1}}/>
+        <button onClick={()=>onSave(prev)} style={{padding:"12px 0",background:`linear-gradient(135deg,${profile.color}e0,${profile.color}90)`,border:"none",borderRadius:11,color:"#fff",fontWeight:700,cursor:"pointer"}}>Save Photo</button>
+      </div>}
+  </Overlay>;
+}
+
+/* ── SCORE CARD ── */
+function ScoreCardModal({profile,T,onClose}){
+  const sc=pScore(profile),n=(profile.ratings||[]).length,t=tierOf(sc??0);
+  const canvasRef=useRef(null);const[saved,setSaved]=useState(false);
+  useEffect(()=>{
+    const canvas=canvasRef.current;if(!canvas)return;
+    const ctx=canvas.getContext("2d");const W=800,H=800;canvas.width=W;canvas.height=H;
+    const bg=ctx.createLinearGradient(0,0,W,H);bg.addColorStop(0,"#0d0c1e");bg.addColorStop(1,"#09090f");
+    ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
+    const glow=ctx.createRadialGradient(W/2,H/2,0,W/2,H/2,340);
+    glow.addColorStop(0,t.color+"28");glow.addColorStop(1,"transparent");
+    ctx.fillStyle=glow;ctx.fillRect(0,0,W,H);
+    ctx.fillStyle="#12111e";ctx.beginPath();ctx.roundRect(60,60,W-120,H-120,32);ctx.fill();
+    ctx.strokeStyle=t.color+"40";ctx.lineWidth=1.5;ctx.stroke();
+    ctx.font="600 28px Inter,Arial";ctx.fillStyle="#ffffff40";ctx.textAlign="left";ctx.fillText("HighEnough",96,118);
+    ctx.beginPath();ctx.arc(W/2,240,80,0,Math.PI*2);ctx.fillStyle=profile.color+"30";ctx.fill();ctx.strokeStyle=profile.color+"70";ctx.lineWidth=3;ctx.stroke();
+    ctx.font="bold 52px Inter,Arial";ctx.fillStyle=profile.color;ctx.textAlign="center";ctx.fillText(ini(profile.name),W/2,257);
+    ctx.font="bold 48px Inter,Arial";ctx.fillStyle="#f0f0ff";ctx.fillText(profile.name,W/2,350);
+    ctx.font="500 26px monospace";ctx.fillStyle="#5a5a90";ctx.fillText(profile.handle,W/2,390);
+    ctx.font="bold 120px monospace";ctx.fillStyle=t.color;ctx.fillText(sc!=null?fmtScore(sc):"—",W/2,510);
+    ctx.font="bold 28px Inter,Arial";ctx.fillStyle=t.color;ctx.fillText(`${t.emoji} ${t.label}`,W/2,568);
+    const bW=88,bH=8,bY=640,gap=14,allW=CATS.length*(bW+gap)-gap,startX=(W-allW)/2;
+    CATS.forEach((c,i)=>{const v=cAvg(profile,c.id)/100,x=startX+i*(bW+gap);ctx.fillStyle="#1e1e2c";ctx.beginPath();ctx.roundRect(x,bY,bW,bH,4);ctx.fill();if(v>0){ctx.fillStyle=profile.color+"cc";ctx.beginPath();ctx.roundRect(x,bY,bW*v,bH,4);ctx.fill();}ctx.font="500 18px Inter,Arial";ctx.fillStyle="#5a5a90";ctx.fillText(c.emoji,x+bW/2,bY+32);});
+    ctx.font="500 22px Inter,Arial";ctx.fillStyle="#3a3a60";ctx.fillText(`${n} rating${n!==1?"s":""}`,W/2,740);
+  },[profile]);
+  function download(){const canvas=canvasRef.current;if(!canvas)return;const a=document.createElement("a");a.download=`${profile.name.replace(/\s+/g,"_")}_HighEnough.png`;a.href=canvas.toDataURL("image/png");a.click();setSaved(true);setTimeout(()=>setSaved(false),2000);}
+  return <Overlay onBg={onClose} T={T} wide>
+    <div style={{fontWeight:700,fontSize:17,color:T.txt,marginBottom:4}}>Score Card</div>
+    <div style={{fontSize:12,color:T.mu,marginBottom:14}}>Download and share your rank</div>
+    <canvas ref={canvasRef} style={{width:"100%",borderRadius:14,border:`1px solid ${T.b1}`,display:"block",marginBottom:14}}/>
+    <div style={{display:"flex",gap:8}}>
+      <button onClick={download} style={{flex:1,padding:"12px 0",background:`linear-gradient(135deg,${AC}e0,${AC}90)`,border:"none",borderRadius:11,color:"#fff",fontWeight:700,fontSize:14,cursor:"pointer"}}>{saved?"Saved ✓":"⬇ Download"}</button>
+      <button onClick={()=>{const canvas=canvasRef.current;if(!canvas)return;canvas.toBlob(b=>{try{navigator.share({files:[new File([b],"highenough.png",{type:"image/png"})],title:"My HighEnough Score"});}catch{download();}});}} style={{padding:"12px 16px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:11,color:T.mu,fontWeight:600,fontSize:13,cursor:"pointer"}}>Share</button>
+    </div>
+  </Overlay>;
+}
+
+/* ── SETTINGS ── */
+function SettingsModal({me,prefs,T,onClose,onSaveProfile,onSavePrefs,onEditPhoto,onShowBlocked,onLogout,onDelete}){
+  const [tab,setTab]=useState("profile");
+  const [nm,setNm]=useState(me.name);const[hd,setHd]=useState(me.handle);const[bio,setBio]=useState(me.bio||"");const[col,setCol]=useState(me.color);
+  const [age,setAge]=useState(me.age||"");const[ints,setInts]=useState(me.interests||[]);
+  const [links,setLinks]=useState(me.links||{instagram:"",twitter:"",tiktok:"",website:""});
+  const [ok,setOk]=useState(false);const[logQ,setLogQ]=useState(false);const[delQ,setDelQ]=useState(false);
+  function sv(){onSaveProfile({name:nm.trim()||me.name,handle:hd.trim()||me.handle,bio:bio.trim(),color:col,age:age?parseInt(age):null,interests:ints,links});setOk(true);setTimeout(()=>setOk(false),2000);}
+  function togInt(i){setInts(prev=>prev.includes(i)?prev.filter(x=>x!==i):[...prev,i].slice(0,6));}
+  const inp={width:"100%",padding:"10px 13px",background:T.inp,border:`1px solid ${T.b1}`,borderRadius:10,color:T.txt,fontSize:13,outline:"none",boxSizing:"border-box",fontFamily:"'Inter',sans-serif"};
+  const TABS=[{id:"profile",label:"Profile"},{id:"more",label:"Details"},{id:"look",label:"Look"},{id:"privacy",label:"Privacy"},{id:"account",label:"Account"}];
+  return <Overlay onBg={onClose} T={T} wide>
+    <div style={{fontWeight:700,fontSize:18,color:T.txt,marginBottom:14}}>Settings</div>
+    <div style={{display:"flex",gap:1,marginBottom:18,overflowX:"auto",paddingBottom:2}}>
+      {TABS.map(t=><button key={t.id} onClick={()=>setTab(t.id)} style={{padding:"6px 12px",borderRadius:7,border:tab===t.id?`1px solid ${T.b1}`:"1px solid transparent",cursor:"pointer",whiteSpace:"nowrap",background:tab===t.id?T.faint:"transparent",color:tab===t.id?T.txt:T.mu,fontWeight:tab===t.id?600:400,fontSize:12,transition:"all .12s"}}>{t.label}</button>)}
+    </div>
+    {tab==="profile"&&<div>
+      <div style={{display:"flex",justifyContent:"center",marginBottom:12}}><div style={{position:"relative"}}><Ava p={{...me,color:col}} size={76} T={T}/><button onClick={onEditPhoto} style={{position:"absolute",bottom:-3,right:-3,width:24,height:24,borderRadius:"50%",background:`${col}cc`,border:`2px solid ${T.card}`,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><EditIcon size={11}/></button></div></div>
+      <div style={{display:"flex",gap:7,justifyContent:"center",marginBottom:18}}>{PALETTE.map(c=><div key={c} onClick={()=>setCol(c)} style={{width:22,height:22,borderRadius:"50%",background:c,cursor:"pointer",outline:col===c?`2.5px solid ${T.txt}`:"2.5px solid transparent",outlineOffset:2,transform:col===c?"scale(1.25)":"scale(1)",transition:"transform .12s"}}/>)}</div>
+      {[{l:"Display Name",v:nm,s:setNm,p:"Your name"},{l:"Handle",v:hd,s:setHd,p:"@username"},{l:"Bio",v:bio,s:setBio,p:"A short line about you…"}].map(f=><div key={f.l} style={{marginBottom:11}}><label style={{fontSize:11,color:T.mu,textTransform:"uppercase",letterSpacing:.8,display:"block",marginBottom:4,fontWeight:600}}>{f.l}</label><input value={f.v} onChange={e=>f.s(e.target.value)} placeholder={f.p} style={inp}/></div>)}
+      <div style={{padding:"9px 12px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:9,marginBottom:13,fontSize:12,color:T.mu}}>Email: <span style={{color:T.txt,fontWeight:500}}>{me.email}</span></div>
+      <button onClick={sv} style={{width:"100%",padding:"12px 0",background:`linear-gradient(135deg,${col}e0,${col}90)`,border:"none",borderRadius:11,color:"#fff",fontWeight:700,fontSize:14,cursor:"pointer"}}>{ok?"Saved ✓":"Save Changes"}</button>
+    </div>}
+    {tab==="more"&&<div>
+      <label style={{fontSize:11,color:T.mu,textTransform:"uppercase",letterSpacing:.8,display:"block",marginBottom:5,fontWeight:600}}>Age</label>
+      <input type="number" value={age} onChange={e=>setAge(e.target.value)} placeholder="Your age" min={13} max={99} style={{...inp,marginBottom:16}}/>
+      <label style={{fontSize:11,color:T.mu,textTransform:"uppercase",letterSpacing:.8,display:"block",marginBottom:7,fontWeight:600}}>Interests ({ints.length}/6)</label>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:16}}>{INTERESTS.map(i=><div key={i} onClick={()=>togInt(i)} style={{padding:"5px 12px",borderRadius:6,cursor:"pointer",fontSize:12,fontWeight:500,background:ints.includes(i)?`${AC}1a`:T.faint,border:`1px solid ${ints.includes(i)?AC+"44":T.b1}`,color:ints.includes(i)?AC:T.mu,transition:"all .12s"}}>{i}</div>)}</div>
+      <label style={{fontSize:11,color:T.mu,textTransform:"uppercase",letterSpacing:.8,display:"block",marginBottom:7,fontWeight:600}}>Social Links</label>
+      {[{k:"instagram",ph:"@username"},{k:"twitter",ph:"@username"},{k:"tiktok",ph:"@username"},{k:"website",ph:"https://yoursite.com"}].map(f=><div key={f.k} style={{marginBottom:9}}><div style={{fontSize:11,color:T.mu,marginBottom:3,textTransform:"capitalize"}}>{f.k}</div><input value={links[f.k]||""} onChange={e=>setLinks(l=>({...l,[f.k]:e.target.value}))} placeholder={f.ph} style={inp}/></div>)}
+      <button onClick={sv} style={{width:"100%",padding:"12px 0",marginTop:6,background:`linear-gradient(135deg,${AC}e0,${AC}90)`,border:"none",borderRadius:11,color:"#fff",fontWeight:700,fontSize:14,cursor:"pointer"}}>{ok?"Saved ✓":"Save Details"}</button>
+    </div>}
+    {tab==="look"&&<div style={{display:"flex",flexDirection:"column",gap:16}}>
+      <SRow icon="🌙" label="Dark Mode" val={prefs.dark} onChange={v=>onSavePrefs({...prefs,dark:v})} T={T}/>
+      <div style={{height:1,background:T.b1}}/>
+      <SRow icon="▤" label="Compact Cards" val={prefs.compact} onChange={v=>onSavePrefs({...prefs,compact:v})} T={T}/>
+    </div>}
+    {tab==="privacy"&&<div style={{display:"flex",flexDirection:"column",gap:16}}>
+      <SRow icon="◎" label="Anonymous Ratings" desc="Hide your name when rating others" val={prefs.anon} onChange={v=>onSavePrefs({...prefs,anon:v})} T={T}/>
+      <div style={{height:1,background:T.b1}}/>
+      <button onClick={()=>{onClose();onShowBlocked();}} style={{display:"flex",alignItems:"center",gap:10,padding:"11px 13px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:10,cursor:"pointer",width:"100%"}}>
+        <div style={{width:28,height:28,borderRadius:8,background:`${AC}14`,border:`1px solid ${AC}28`,display:"flex",alignItems:"center",justifyContent:"center",color:AC,flexShrink:0}}><ShieldIcon size={14}/></div>
+        <div style={{flex:1,textAlign:"left"}}><div style={{fontSize:13,color:T.txt,fontWeight:500}}>Blocked Users</div><div style={{fontSize:11,color:T.mu,marginTop:1}}>Manage people you have blocked</div></div>
+        <ChevronIcon size={13}/>
+      </button>
+    </div>}
+    {tab==="account"&&<div>
+      <div style={{padding:"10px 13px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:9,marginBottom:8,fontSize:12,color:T.mu}}>Member since <strong style={{color:T.txt}}>{new Date(me.created_at||Date.now()).toLocaleDateString()}</strong></div>
+      <div style={{padding:"10px 13px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:9,marginBottom:20,fontSize:12,color:T.mu}}>Email: <strong style={{color:T.txt}}>{me.email}</strong></div>
+      <div style={{height:1,background:T.b1,marginBottom:14}}/>
+      {!logQ?<button onClick={()=>setLogQ(true)} style={{width:"100%",padding:"12px 0",background:"transparent",border:`1px solid ${T.b1}`,borderRadius:11,color:T.mu,fontWeight:600,fontSize:13,cursor:"pointer",marginBottom:8}}>Log Out</button>
+        :<div style={{background:T.faint,border:`1px solid ${T.b1}`,borderRadius:11,padding:"13px 14px",marginBottom:8}}><p style={{color:T.txt,fontSize:13,fontWeight:500,marginBottom:11}}>Log out of your account?</p><div style={{display:"flex",gap:7}}><button onClick={()=>{onClose();onLogout();}} style={{flex:1,padding:"9px 0",background:AC,border:"none",borderRadius:9,color:"#fff",fontWeight:700,cursor:"pointer",fontSize:13}}>Log Out</button><button onClick={()=>setLogQ(false)} style={{flex:1,padding:"9px 0",background:"transparent",border:`1px solid ${T.b1}`,borderRadius:9,color:T.mu,cursor:"pointer",fontSize:13}}>Cancel</button></div></div>}
+      {!delQ?<button onClick={()=>setDelQ(true)} style={{width:"100%",padding:"12px 0",background:"transparent",border:"1px solid #7a303040",borderRadius:11,color:"#c06060",fontWeight:600,fontSize:13,cursor:"pointer"}}>Delete Account</button>
+        :<div style={{background:"#7a303010",border:"1px solid #7a303030",borderRadius:11,padding:"13px 14px"}}><p style={{color:"#c06060",fontSize:13,fontWeight:500,marginBottom:11}}>This permanently deletes all your data.</p><div style={{display:"flex",gap:7}}><button onClick={()=>{onClose();onDelete();}} style={{flex:1,padding:"9px 0",background:"#a04040",border:"none",borderRadius:9,color:"#fff",fontWeight:700,cursor:"pointer",fontSize:13}}>Delete</button><button onClick={()=>setDelQ(false)} style={{flex:1,padding:"9px 0",background:"transparent",border:`1px solid ${T.b1}`,borderRadius:9,color:T.mu,cursor:"pointer",fontSize:13}}>Cancel</button></div></div>}
+    </div>}
+  </Overlay>;
+}
+
+/* ── ADMIN PANEL ── */
+function AdminLock({T,onUnlock,onClose}){
+  const [code,setCode]=useState("");const[err,setErr]=useState(false);
+  function tryUnlock(){if(code===ADMIN_CODE){onUnlock();}else{setErr(true);setCode("");setTimeout(()=>setErr(false),1200);}}
+  return <Overlay onBg={onClose} T={T}><div style={{textAlign:"center",padding:"8px 0"}}>
+    <div style={{fontSize:36,marginBottom:12}}>🔐</div>
+    <div style={{fontWeight:700,fontSize:17,color:T.txt,marginBottom:4}}>Admin Access</div>
+    <div style={{fontSize:12,color:T.mu,marginBottom:20}}>Enter admin code</div>
+    <input type="password" value={code} onChange={e=>setCode(e.target.value)} onKeyDown={e=>e.key==="Enter"&&tryUnlock()} placeholder="Admin code" style={{width:"100%",padding:"12px 14px",background:T.inp,border:`1px solid ${err?"#c06060":T.b1}`,borderRadius:11,color:T.txt,fontSize:16,outline:"none",textAlign:"center",letterSpacing:"0.2em",boxSizing:"border-box",marginBottom:8,transition:"border-color .2s"}}/>
+    {err&&<div style={{fontSize:12,color:"#c06060",marginBottom:8}}>Incorrect code</div>}
+    <button onClick={tryUnlock} style={{width:"100%",padding:"12px 0",background:`linear-gradient(135deg,${AC}e0,${AC}90)`,border:"none",borderRadius:11,color:"#fff",fontWeight:700,fontSize:14,cursor:"pointer",marginTop:4}}>Unlock</button>
+  </div></Overlay>;
+}
+
+function AdminPanel({profiles,reports,blocked,T,onClose,onDeleteProfile,onClearRatings,onExport}){
+  const [tab,setTab]=useState("overview");const[search,setSearch]=useState("");const[confirmDel,setConfirmDel]=useState(null);
+  const totalRatings=profiles.reduce((s,p)=>s+(p.ratings||[]).length,0);
+  const filtered=profiles.filter(p=>p.name.toLowerCase().includes(search.toLowerCase())||p.handle.toLowerCase().includes(search.toLowerCase())||p.id.includes(search.toUpperCase()));
+  const TABS=[{id:"overview",label:"Overview"},{id:"users",label:"Users"},{id:"reports",label:`Reports${reports.length?` (${reports.length})`:""}`},{id:"export",label:"Export"}];
+  return <Overlay onBg={onClose} T={T} wide>
+    <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}><div style={{width:32,height:32,borderRadius:9,background:"#c09030" +"14",border:"1px solid #c0903028",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>👑</div><div style={{flex:1}}><div style={{fontWeight:700,fontSize:17,color:T.txt}}>Admin Panel</div><div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:T.mu}}>HighEnough · {profiles.length} users</div></div></div>
+    <div style={{display:"flex",gap:4,marginBottom:18,background:T.faint,borderRadius:10,padding:3}}>
+      {TABS.map(t=><button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,padding:"7px 0",borderRadius:8,border:"none",cursor:"pointer",background:tab===t.id?T.card:"transparent",color:tab===t.id?T.txt:T.mu,fontWeight:tab===t.id?600:400,fontSize:11,transition:"all .12s"}}>{t.label}</button>)}
+    </div>
+    {tab==="overview"&&<div>
+      {[{label:"Total Users",val:profiles.length,color:AC},{label:"Total Ratings",val:totalRatings,color:"#10a37f"},{label:"Reports",val:reports.length,color:"#c06060"},{label:"Blocks",val:blocked.length,color:"#c08a2e"}].map(s=><div key={s.label} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 14px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:11,marginBottom:8}}><span style={{fontSize:13,color:T.mu,fontWeight:500}}>{s.label}</span><span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:18,fontWeight:700,color:s.color}}>{s.val}</span></div>)}
+    </div>}
+    {tab==="users"&&<div>
+      <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search users…" style={{width:"100%",padding:"10px 13px",background:T.inp,border:`1px solid ${T.b1}`,borderRadius:10,color:T.txt,fontSize:13,outline:"none",marginBottom:12,boxSizing:"border-box"}}/>
+      <div style={{maxHeight:360,overflowY:"auto",display:"flex",flexDirection:"column",gap:7}}>
+        {filtered.map(p=>{const sc=pScore(p);const t=tierOf(sc??0);return<div key={p.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:10}}>
+          <Ava p={p} size={38} T={T}/><div style={{flex:1,minWidth:0}}><div style={{fontWeight:600,fontSize:13,color:T.txt}}>{p.name}</div><div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:T.mu}}>{p.handle}</div><div style={{marginTop:3}}><TierBadge sc={sc} size="sm"/></div></div>
+          <div style={{textAlign:"right",flexShrink:0}}><div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:14,fontWeight:700,color:t.color}}>{sc!=null?fmtScore(sc):"—"}</div><div style={{display:"flex",gap:5,marginTop:6,justifyContent:"flex-end"}}>
+            <button onClick={()=>onClearRatings(p.id)} style={{padding:"4px 8px",background:"transparent",border:`1px solid ${T.b2}`,borderRadius:6,color:T.mu,fontSize:10,cursor:"pointer"}}>Clear</button>
+            {confirmDel===p.id?<><button onClick={()=>{onDeleteProfile(p.id);setConfirmDel(null);}} style={{padding:"4px 8px",background:"#a04040",border:"none",borderRadius:6,color:"#fff",fontSize:10,cursor:"pointer",fontWeight:700}}>✓</button><button onClick={()=>setConfirmDel(null)} style={{padding:"4px 8px",background:"transparent",border:`1px solid ${T.b1}`,borderRadius:6,color:T.mu,fontSize:10,cursor:"pointer"}}>✕</button></>:<button onClick={()=>setConfirmDel(p.id)} style={{padding:"4px 8px",background:"#a0303018",border:"1px solid #a0303030",borderRadius:6,color:"#c06060",fontSize:10,cursor:"pointer"}}>Del</button>}
+          </div></div>
+        </div>;})}
+      </div>
+    </div>}
+    {tab==="reports"&&<div>
+      {reports.length===0?<div style={{textAlign:"center",padding:"32px 0",color:T.mu}}><div style={{fontWeight:500}}>No reports yet</div></div>
+        :<div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:400,overflowY:"auto"}}>{reports.map((r,i)=>{const target=profiles.find(p=>p.id===r.targetId);const reason=REPORT_REASONS.find(x=>x.id===r.reasonId);return<div key={i} style={{padding:"11px 13px",background:T.faint,border:"1px solid #a0303025",borderRadius:11}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:5}}><span style={{fontSize:12,fontWeight:600,color:"#c07070"}}>{reason?.label||r.reasonId}</span><span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:T.mu}}>{new Date(r.ts).toLocaleDateString()}</span></div><div style={{fontSize:12,color:T.mu}}>Reported: <strong style={{color:T.txt}}>{target?.name||r.targetId}</strong></div></div>;})}
+        </div>}
+    </div>}
+    {tab==="export"&&<div>
+      <div style={{fontSize:13,color:T.mu,marginBottom:14,lineHeight:1.6}}>Export data as JSON for backup.</div>
+      {[{label:"Export All Data",desc:"Profiles, ratings, reports",fn:()=>onExport("all")},{label:"Export Profiles Only",fn:()=>onExport("profiles")},{label:"Export Reports",fn:()=>onExport("reports")}].map(e=><div key={e.label} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"13px 14px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:11,marginBottom:8}}><div><div style={{fontSize:13,fontWeight:600,color:T.txt}}>{e.label}</div>{e.desc&&<div style={{fontSize:11,color:T.mu,marginTop:2}}>{e.desc}</div>}</div><button onClick={e.fn} style={{padding:"7px 14px",background:`${AC}18`,border:`1px solid ${AC}30`,borderRadius:8,color:AC,fontSize:12,fontWeight:600,cursor:"pointer",flexShrink:0,marginLeft:12}}>Export</button></div>)}
+    </div>}
+  </Overlay>;
+}
+
+/* ── FEED CARD ── */
+function FeedCard({p,myId,compact,T,onRate,onView,onBlock,onUnblock,onReport,isBlocked,idx}){
+  const myR=p.ratings?.find(r=>r.raterId===myId);
+  const sc=pScore(p);
+  const [hov,setHov]=useState(false);const[menuOpen,setMenuOpen]=useState(false);
+  const menuRef=useRef(null);
+  useEffect(()=>{
+    if(!menuOpen)return;
+    function h(e){if(menuRef.current&&!menuRef.current.contains(e.target))setMenuOpen(false);}
+    document.addEventListener("mousedown",h);document.addEventListener("touchstart",h);
+    return()=>{document.removeEventListener("mousedown",h);document.removeEventListener("touchstart",h);};
+  },[menuOpen]);
+  return <div onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)} style={{background:T.card,border:`1px solid ${hov?T.b2:T.b1}`,borderRadius:16,padding:compact?"11px 13px":"15px 16px",position:"relative",overflow:"visible",transform:hov?"translateY(-2px)":"",transition:"all .18s",animation:"ci .28s ease both",animationDelay:`${idx*35}ms`}}>
+    <div ref={menuRef} style={{position:"absolute",top:10,right:10,zIndex:50}}>
+      <button onClick={e=>{e.stopPropagation();setMenuOpen(v=>!v);}} style={{width:28,height:28,borderRadius:7,background:menuOpen?T.faint:"transparent",border:`1px solid ${menuOpen?T.b2:"transparent"}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:T.mu,transition:"all .12s"}}><DotsIcon size={15}/></button>
+      {menuOpen&&<DotsMenu p={p} isBlocked={isBlocked} T={T} onBlock={()=>onBlock(p.id)} onUnblock={()=>onUnblock(p.id)} onReport={()=>onReport(p)} onClose={()=>setMenuOpen(false)}/>}
+    </div>
+    <div style={{display:"flex",alignItems:"center",gap:11}}>
+      <Ava p={p} size={compact?38:48} T={T}/>
+      <div style={{flex:1,minWidth:0,paddingRight:22}}>
+        <div style={{fontWeight:600,fontSize:14,color:T.txt,display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
+          {p.name}{p.age?<span style={{fontSize:11,color:T.mu,fontWeight:400}}>· {p.age}</span>:null}
+          {myR&&<span style={{fontSize:9,background:"#38a06018",color:"#38a060",borderRadius:4,padding:"1px 6px",fontFamily:"'JetBrains Mono',monospace",fontWeight:600,border:"1px solid #38a06028"}}>rated</span>}
+          {isBlocked&&<span style={{fontSize:9,background:"#a0303018",color:"#c06060",borderRadius:4,padding:"1px 6px",fontFamily:"'JetBrains Mono',monospace",fontWeight:600,border:"1px solid #a0303028"}}>blocked</span>}
+        </div>
+        <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:T.mu,marginTop:1}}>{p.handle}</div>
+        {!compact&&p.bio&&<p style={{color:T.mu,fontSize:12,marginTop:3,lineHeight:1.45}}>{p.bio}</p>}
+        {!compact&&(p.interests||[]).length>0&&<div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:5}}>{p.interests.slice(0,3).map(i=><span key={i} style={{fontSize:10,background:T.faint,border:`1px solid ${T.b1}`,borderRadius:4,padding:"1px 7px",color:T.mu}}>{i}</span>)}</div>}
+      </div>
+      {sc!=null&&<ScorePill sc={sc}/>}
+    </div>
+    {!compact&&<div style={{marginTop:9}}><TierBadge sc={sc} size="sm"/></div>}
+    <div style={{display:"flex",gap:6,marginTop:11}}>
+      <button onClick={()=>onRate(p,myR)} disabled={isBlocked} style={{flex:1,padding:"8px 0",background:isBlocked?T.faint:`${p.color}14`,border:`1px solid ${isBlocked?T.b1:p.color+"30"}`,borderRadius:8,color:isBlocked?T.mu:p.color,fontSize:12,fontWeight:600,cursor:isBlocked?"default":"pointer",opacity:isBlocked?.5:1}}>{myR?"Edit Rating":"Rate"}</button>
+      <button onClick={()=>onView(p)} style={{padding:"8px 11px",background:"transparent",border:`1px solid ${T.b1}`,borderRadius:8,color:T.mu,fontSize:12,cursor:"pointer",display:"flex",alignItems:"center"}}><ChevronIcon size={13}/></button>
+    </div>
+  </div>;
+}
+
+/* ── LEADERBOARD ── */
+function LeaderboardTab({profiles,myId,T,onView,onTierMap}){
+  const [sub,setSub]=useState("all");
+  const now=Date.now(),week=7*24*60*60*1000;
+  const allR=[...profiles].map(p=>({...p,sc:pScore(p)??-1,n:(p.ratings||[]).length})).sort((a,b)=>b.sc-a.sc);
+  const trending=[...profiles].map(p=>{const rc=(p.ratings||[]).filter(r=>r.ts&&now-r.ts<week);return{...p,sc:pScore(p)??-1,tC:rc.length};}).sort((a,b)=>b.tC-a.tC).filter(p=>p.tC>0);
+  const rising=[...profiles].map(p=>{const rc=(p.ratings||[]).filter(r=>r.ts&&now-r.ts<week);const gain=Math.round(rc.reduce((s,r)=>s+avg(CATS.map(c=>r[c.id]||0)),0));return{...p,sc:pScore(p)??-1,gain};}).filter(p=>p.gain>0).sort((a,b)=>b.gain-a.gain);
+  const list=sub==="all"?allR:sub==="trending"?trending:rising;
+  const top3=sub==="all"?allR.slice(0,3):[];
+  return <div style={{padding:"0 14px"}}>
+    <button onClick={onTierMap} style={{width:"100%",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:12,padding:"10px 14px",marginBottom:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"space-between",animation:"ci .3s ease"}} onMouseEnter={e=>e.currentTarget.style.borderColor=T.b2} onMouseLeave={e=>e.currentTarget.style.borderColor=T.b1}>
+      <span style={{fontSize:12,fontWeight:600,color:T.txt}}>View Tier System</span>
+      <div style={{display:"flex",gap:5,alignItems:"center"}}>{TIERS.slice(1).map(t=><span key={t.label} style={{fontSize:13}}>{t.emoji}</span>)}<ChevronIcon size={13}/></div>
+    </button>
+    {top3.length>=3&&<div style={{display:"flex",alignItems:"flex-end",justifyContent:"center",gap:6,marginBottom:22,padding:"0 4px"}}>
+      {[top3[1],top3[0],top3[2]].map((p,i)=>{const hs=[82,114,72];const meds=["🥈","🥇","🥉"];const t=tierOf(p.sc);
+        return <div key={p.id} onClick={()=>onView(p)} style={{flex:1,textAlign:"center",cursor:"pointer",animation:`ci .4s ease ${i*80}ms both`}}>
+          <div style={{display:"flex",justifyContent:"center",marginBottom:6}}><Ava p={p} size={i===1?60:46} T={T}/></div>
+          <div style={{fontSize:i===1?20:15}}>{meds[i]}</div>
+          <div style={{fontSize:11,fontWeight:600,color:T.txt,marginTop:3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name.split(" ")[0]}</div>
+          <div style={{marginTop:4,display:"flex",justifyContent:"center"}}><TierBadge sc={p.sc>=0?p.sc:null} size="sm"/></div>
+          <div style={{height:hs[i],background:T.faint,border:`1px solid ${t.color}30`,borderRadius:"10px 10px 0 0",marginTop:7,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
+            <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:i===1?18:13,fontWeight:700,color:t.color}}>{fmtScore(p.sc>=0?p.sc:null)}</div>
+          </div>
+        </div>;
+      })}
+    </div>}
+    <div style={{display:"flex",background:T.faint,borderRadius:10,padding:3,marginBottom:13}}>
+      {[["all","All Time"],["trending","Trending"],["rising","Rising"]].map(([t,l])=>
+        <button key={t} onClick={()=>setSub(t)} style={{flex:1,padding:"7px 0",borderRadius:8,border:sub===t?`1px solid ${T.b1}`:"1px solid transparent",cursor:"pointer",background:sub===t?T.card:"transparent",color:sub===t?T.txt:T.mu,fontWeight:sub===t?600:400,fontSize:12,transition:"all .12s"}}>{l}</button>)}
+    </div>
+    {list.length===0&&<div style={{textAlign:"center",padding:"36px 0",color:T.mu}}><div style={{fontSize:13,fontWeight:500}}>Nothing here yet</div></div>}
+    {list.slice(top3.length>0&&sub==="all"?3:0).map((p,i)=>{const t=tierOf(p.sc),rank=i+(sub==="all"?4:1);
+      return <div key={p.id} onClick={()=>onView(p)} style={{display:"flex",alignItems:"center",gap:11,padding:"11px 13px",background:T.card,border:`1px solid ${T.b1}`,borderRadius:12,marginBottom:6,cursor:"pointer",transition:"all .14s",animation:`ci .28s ease ${i*35}ms both`}} onMouseEnter={e=>{e.currentTarget.style.borderColor=T.b2;e.currentTarget.style.transform="translateX(4px)";}} onMouseLeave={e=>{e.currentTarget.style.borderColor=T.b1;e.currentTarget.style.transform="";}}>
+        <div style={{width:26,textAlign:"center",fontFamily:"'JetBrains Mono',monospace",fontSize:11,fontWeight:600,color:T.mu}}>#{rank}</div>
+        <Ava p={p} size={40} T={T}/>
+        <div style={{flex:1,minWidth:0}}><div style={{fontWeight:600,fontSize:14,color:T.txt}}>{p.name}{p.id===myId&&<span style={{fontSize:9,marginLeft:6,background:`${AC}18`,color:AC,borderRadius:4,padding:"1px 5px",fontFamily:"'JetBrains Mono',monospace"}}>you</span>}</div><div style={{marginTop:3}}><TierBadge sc={p.sc>=0?p.sc:null} size="sm"/></div></div>
+        <div style={{textAlign:"right",flexShrink:0}}><div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:16,fontWeight:700,color:t.color}}>{fmtScore(p.sc>=0?p.sc:null)}</div></div>
+      </div>;})}
+  </div>;
+}
+
+/* ── RATINGS DASH ── */
+function RatingsDash({profiles,myId,T,onView,onRate}){
+  const me=profiles.find(p=>p.id===myId)||{ratings:[]};
+  const iRated=profiles.filter(p=>p.id!==myId&&p.ratings?.some(r=>r.raterId===myId));
+  const ratedMe=profiles.filter(p=>p.id!==myId&&me.ratings?.some(r=>r.raterId===p.id));
+  const [tab,setTab]=useState("me");const list=tab==="me"?iRated:ratedMe;
+  return <div style={{padding:"0 14px"}}>
+    <div style={{display:"flex",background:T.faint,borderRadius:10,padding:3,marginBottom:14}}>
+      {[["me",`I Rated (${iRated.length})`],["they",`Rated Me (${ratedMe.length})`]].map(([t,l])=>
+        <button key={t} onClick={()=>setTab(t)} style={{flex:1,padding:"8px 0",borderRadius:8,border:tab===t?`1px solid ${T.b1}`:"1px solid transparent",cursor:"pointer",background:tab===t?T.card:"transparent",color:tab===t?T.txt:T.mu,fontWeight:tab===t?600:400,fontSize:12,transition:"all .12s"}}>{l}</button>)}
+    </div>
+    {list.length===0&&<div style={{textAlign:"center",padding:"40px 0",color:T.mu}}><div style={{fontWeight:500,fontSize:13}}>{tab==="me"?"You haven't rated anyone yet":"Nobody has rated you yet"}</div></div>}
+    {list.map((p,i)=>{const rel=tab==="me"?p.ratings?.find(r=>r.raterId===myId):me.ratings?.find(r=>r.raterId===p.id);const contrib=rel?Math.round(avg(CATS.map(c=>rel[c.id]||0))):null;
+      return <div key={p.id} style={{background:T.card,border:`1px solid ${T.b1}`,borderRadius:13,padding:"12px 14px",display:"flex",alignItems:"center",gap:11,marginBottom:8,animation:`ci .28s ease ${i*35}ms both`}}>
+        <Ava p={p} size={44} T={T}/>
+        <div style={{flex:1,minWidth:0}}><div style={{fontWeight:600,fontSize:14,color:T.txt}}>{p.name}</div><div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:T.mu}}>{p.handle}</div>{rel&&<div style={{marginTop:4,display:"flex",gap:4,flexWrap:"wrap"}}>{CATS.map(c=><span key={c.id} style={{fontSize:10,color:T.mu}}>{c.emoji} {rel[c.id]}</span>)}</div>}</div>
+        <div style={{textAlign:"right",flexShrink:0}}>
+          {contrib!=null&&<div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:16,fontWeight:700,color:T.txt}}>+{contrib}</div>}
+          <div style={{display:"flex",gap:5,marginTop:7,justifyContent:"flex-end"}}>
+            <button onClick={()=>onView(p)} style={{padding:"4px 9px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:6,color:T.mu,fontSize:11,cursor:"pointer"}}>View</button>
+            {tab==="me"&&<button onClick={()=>onRate(p,rel)} style={{padding:"4px 9px",background:`${p.color}14`,border:`1px solid ${p.color}28`,borderRadius:6,color:p.color,fontSize:11,cursor:"pointer",fontWeight:600,display:"flex",alignItems:"center",gap:4}}><EditIcon size={10}/>Edit</button>}
+          </div>
+        </div>
+      </div>;})}
+  </div>;
+}
+
+/* ── SEARCH ── */
+function SearchTab({profiles,myId,T,onView,onRate}){
+  const [q,setQ]=useState("");const[res,setRes]=useState(null);const[err,setErr]=useState("");const[mode,setMode]=useState("search");
+  const [stream,setStream]=useState(null);const vRef=useRef(null);const cRef=useRef(null);const raf=useRef(null);
+  useEffect(()=>()=>{cancelAnimationFrame(raf.current);stream?.getTracks().forEach(t=>t.stop());},[]);
+  function findP(raw){if(!raw.trim())return;let id=raw.trim();try{id=new URL(raw).searchParams.get("uid")||id;}catch{}id=id.replace(/[^A-Z0-9]/gi,"").toUpperCase().slice(0,36);const f=profiles.find(p=>p.id===id||p.id.startsWith(id.slice(0,6)));f?(setRes(f),setErr("")):(setErr("Profile not found"),setRes(null));}
+  async function startCam(){loadScript("https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js",async()=>{try{const s=await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}});setStream(s);setMode("cam");setTimeout(()=>{if(vRef.current){vRef.current.srcObject=s;vRef.current.play();loop();}},200);}catch{setErr("Camera unavailable");}});}
+  function loop(){raf.current=requestAnimationFrame(()=>{const v=vRef.current,c=cRef.current;if(!v||!c||!window.jsQR){loop();return;}if(v.readyState>=2){c.width=v.videoWidth;c.height=v.videoHeight;const ctx=c.getContext("2d");ctx.drawImage(v,0,0);const d=ctx.getImageData(0,0,c.width,c.height);const code=window.jsQR(d.data,d.width,d.height);if(code){stopCam();findP(code.data);return;}}loop();});}
+  function stopCam(){cancelAnimationFrame(raf.current);stream?.getTracks().forEach(t=>t.stop());setStream(null);setMode("search");}
+  function fromGallery(){loadScript("https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js",()=>{const i=document.createElement("input");i.type="file";i.accept="image/*";i.onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>{const img=new Image();img.onload=()=>{const c=document.createElement("canvas");c.width=img.width;c.height=img.height;c.getContext("2d").drawImage(img,0,0);const d=c.getContext("2d").getImageData(0,0,c.width,c.height);const code=window.jsQR(d.data,d.width,d.height);code?findP(code.data):setErr("No QR found in image");};img.src=ev.target.result;};r.readAsDataURL(f);};i.click();});}
+  const filtered=q.length>1?profiles.filter(p=>p.id!==myId&&(p.name.toLowerCase().includes(q.toLowerCase())||p.handle.toLowerCase().includes(q.toLowerCase()))).slice(0,7):[];
+  return <div style={{padding:"0 14px"}}>
+    <div style={{display:"flex",background:T.faint,borderRadius:10,padding:3,marginBottom:12}}>
+      {[["search","🔍 Search"],["cam","📷 Scan"],["gallery","🖼️ Photo"],["paste","🔗 Link"]].map(([m,l])=><button key={m} onClick={()=>{if(m==="cam")startCam();else if(m==="gallery")fromGallery();else{stopCam();setMode(m);}}} style={{flex:1,padding:"8px 0",borderRadius:8,border:mode===m?`1px solid ${T.b1}`:"1px solid transparent",cursor:"pointer",background:mode===m?T.card:"transparent",color:mode===m?T.txt:T.mu,fontWeight:mode===m?600:400,fontSize:11,transition:"all .12s"}}>{l}</button>)}
+    </div>
+    {(mode==="search"||mode==="paste")&&<div>
+      <div style={{display:"flex",gap:8,marginBottom:12}}>
+        <input value={q} onChange={e=>setQ(e.target.value)} onKeyDown={e=>e.key==="Enter"&&findP(q)} placeholder={mode==="paste"?"Paste profile link…":"Search by name or handle…"} style={{flex:1,padding:"11px 13px",background:T.inp,border:`1px solid ${T.b1}`,borderRadius:11,color:T.txt,fontSize:13,outline:"none"}}/>
+        <button onClick={()=>findP(q)} style={{padding:"11px 14px",background:`${AC}18`,border:`1px solid ${AC}30`,borderRadius:11,color:AC,fontWeight:600,cursor:"pointer",fontSize:15}}>→</button>
+      </div>
+      {filtered.map(p=><div key={p.id} onClick={()=>setRes(p)} style={{display:"flex",alignItems:"center",gap:10,padding:"11px 12px",background:T.card,borderRadius:12,marginBottom:7,cursor:"pointer",border:`1px solid ${T.b1}`,transition:"border-color .14s"}} onMouseEnter={e=>e.currentTarget.style.borderColor=T.b2} onMouseLeave={e=>e.currentTarget.style.borderColor=T.b1}>
+        <Ava p={p} size={40} T={T}/><div style={{flex:1}}><div style={{fontWeight:600,color:T.txt,fontSize:13}}>{p.name}</div><div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:T.mu}}>{p.handle}</div></div><ChevronIcon size={13}/>
+      </div>)}
+    </div>}
+    {mode==="cam"&&<div style={{marginBottom:14}}>
+      <div style={{position:"relative",width:"100%",maxWidth:380,margin:"0 auto",aspectRatio:"1",background:"#000",borderRadius:18,overflow:"hidden",marginBottom:10}}>
+        <video ref={vRef} autoPlay playsInline muted style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+        <canvas ref={cRef} style={{display:"none"}}/>
+        <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{width:"62%",height:"62%",border:`2px solid ${AC}cc`,borderRadius:14,boxShadow:"0 0 0 9999px rgba(0,0,0,.45)"}}/></div>
+        <div style={{position:"absolute",bottom:14,left:0,right:0,textAlign:"center",color:"#fff",fontSize:12,opacity:.8}}>Point camera at QR code</div>
+      </div>
+      <button onClick={()=>{stopCam();setMode("search");}} style={{width:"100%",padding:"10px 0",background:"transparent",border:`1px solid ${T.b1}`,borderRadius:12,color:T.mu,cursor:"pointer",fontWeight:600}}>Cancel</button>
+    </div>}
+    {err&&<div style={{color:"#c06060",fontSize:13,padding:"9px 12px",background:"#a0303018",borderRadius:9,marginBottom:12,border:"1px solid #a0303030"}}>{err}</div>}
+    {res&&<div style={{background:T.card,border:`1px solid ${res.color}30`,borderRadius:14,padding:"14px 14px",animation:"su .2s ease"}}>
+      <div style={{display:"flex",alignItems:"center",gap:11,marginBottom:12}}><Ava p={res} size={50} T={T}/><div style={{flex:1}}><div style={{fontWeight:700,fontSize:15,color:T.txt}}>{res.name}</div><div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:T.mu}}>{res.handle}</div>{res.bio&&<p style={{fontSize:12,color:T.mu,marginTop:3}}>{res.bio}</p>}</div><ScorePill sc={pScore(res)}/></div>
+      <div style={{display:"flex",gap:7}}>
+        <button onClick={()=>onView(res)} style={{flex:1,padding:"9px 0",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:9,color:T.txt,fontWeight:600,cursor:"pointer",fontSize:13}}>View Profile</button>
+        {res.id!==myId&&<button onClick={()=>onRate(res,res.ratings?.find(r=>r.raterId===myId))} style={{flex:1,padding:"9px 0",background:`${res.color}14`,border:`1px solid ${res.color}30`,borderRadius:9,color:res.color,fontWeight:600,cursor:"pointer",fontSize:13}}>Rate</button>}
+      </div>
+    </div>}
+  </div>;
+}
+
+/* ── PROFILE TAB ── */
+function ProfileTab({me,myP,prefs,T,onQR,onSettings,onEditPhoto,onScoreCard,onTierMap}){
+  const sc=pScore(myP),t=tierOf(sc??0),pct=tierPct(sc??0),next=sc!=null?TIERS[TIERS.indexOf(t)+1]:null;
+  const n=(myP.ratings||[]).length;
+  return <div style={{padding:"0 14px"}}>
+    {/* Hero Card */}
+    <div style={{background:T.card,border:`1px solid ${T.b1}`,borderRadius:18,padding:"20px 18px",marginBottom:14,animation:"ci .3s ease"}}>
+      <div style={{display:"flex",alignItems:"flex-start",gap:14,marginBottom:14}}>
+        <div style={{position:"relative",cursor:"pointer"}} onClick={onEditPhoto}>
+          <Ava p={myP} size={70} T={T}/>
+          <div style={{position:"absolute",bottom:-2,right:-2,width:22,height:22,borderRadius:"50%",background:`${me.color}cc`,border:`2px solid ${T.card}`,display:"flex",alignItems:"center",justifyContent:"center"}}><EditIcon size={10}/></div>
+        </div>
+        <div style={{flex:1}}>
+          <div style={{fontWeight:700,fontSize:19,color:T.txt,lineHeight:1.2}}>{me.name}{me.age&&<span style={{fontSize:13,color:T.mu,fontWeight:400,marginLeft:8}}>· {me.age}</span>}</div>
+          <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:T.mu,marginTop:2}}>{me.handle}</div>
+          {me.bio&&<p style={{color:T.mu,fontSize:12,marginTop:4,lineHeight:1.5}}>{me.bio}</p>}
+          <div style={{marginTop:6,display:"flex",gap:6,flexWrap:"wrap"}}>
+            <TierBadge sc={sc} size="sm"/>
+            {sc!=null&&<button onClick={onScoreCard} style={{padding:"3px 9px",background:`${AC}14`,border:`1px solid ${AC}28`,borderRadius:5,color:AC,fontSize:11,fontWeight:600,cursor:"pointer"}}>Score Card</button>}
+          </div>
+        </div>
+        {sc!=null&&<ScorePill sc={sc}/>}
+      </div>
+      {/* Tier progress */}
+      <div style={{marginBottom:14}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}}>
+          <span style={{fontSize:11,color:T.mu,fontWeight:500}}>Progress</span>
+          {next?<span style={{fontSize:11,color:T.mu,fontFamily:"'JetBrains Mono',monospace"}}>{next.emoji} {next.label} at {next.min.toLocaleString()}</span>:<span style={{fontSize:11,color:t.color,fontWeight:600}}>Top tier 🔝</span>}
+        </div>
+        <div style={{height:4,background:T.b1,borderRadius:99,overflow:"hidden"}}><div style={{width:`${pct*100}%`,height:"100%",background:t.color,borderRadius:99,opacity:.85,transition:"width .9s"}}/></div>
+      </div>
+      {/* Stats row */}
+      <div style={{display:"flex",background:T.faint,borderRadius:11,overflow:"hidden",marginBottom:14}}>
+        {[{l:"Score",v:sc!=null?fmtScore(sc):"—",c:t.color},{l:"Ratings",v:n,c:T.mu},{l:"Tier",v:t.label,c:t.color}].map((s,i)=><div key={s.l} style={{flex:1,textAlign:"center",padding:"10px 0",borderRight:i<2?`1px solid ${T.b1}`:"none"}}><div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:15,fontWeight:700,color:s.c}}>{s.v}</div><div style={{fontSize:10,color:T.mu,marginTop:1,textTransform:"uppercase",letterSpacing:.5}}>{s.l}</div></div>)}
+      </div>
+      {/* Category breakdown */}
+      {n>0&&<div style={{marginBottom:14}}>{CATS.map(c=>{const v=cAvg(myP,c.id);return<div key={c.id} style={{marginBottom:8}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{fontSize:12,color:T.mu}}>{c.emoji} {c.label}</span><span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:T.txt,fontWeight:600}}>{v}/100</span></div><Bar v={v} color={me.color} T={T}/></div>;})}
+      </div>}
+      {n===0&&<div style={{padding:"12px 0",textAlign:"center",color:T.mu,fontSize:13,marginBottom:8}}>No ratings yet — share your QR to get rated!</div>}
+      <div style={{display:"flex",gap:8}}>
+        <button onClick={onQR} style={{flex:1,padding:"9px 0",background:`${me.color}14`,border:`1px solid ${me.color}30`,borderRadius:9,color:me.color,fontWeight:600,fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}><QrIcon size={14}/>Share QR</button>
+        <button onClick={onSettings} style={{padding:"9px 14px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:9,color:T.mu,fontSize:12,fontWeight:500,cursor:"pointer"}}>Settings</button>
+        <button onClick={onTierMap} style={{padding:"9px 14px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:9,color:T.mu,fontSize:12,fontWeight:500,cursor:"pointer"}}>Tiers</button>
+      </div>
+    </div>
+  </div>;
+}
+
+/* ── NOTIFS PANEL ── */
+function NotifsPanel({notifs,profiles,T,onClose,onMark,onView}){
+  return <div onClick={e=>e.target===e.currentTarget&&onClose()} style={{position:"fixed",inset:0,zIndex:150,background:T.ov,backdropFilter:"blur(10px)"}}>
+    <div style={{position:"absolute",top:0,right:0,bottom:0,width:"min(360px,100vw)",background:T.surf,borderLeft:`1px solid ${T.b1}`,display:"flex",flexDirection:"column",boxShadow:"-8px 0 40px rgba(0,0,0,.5)"}}>
+      <div style={{padding:"18px 16px 12px",borderBottom:`1px solid ${T.b1}`,display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
+        <div style={{fontWeight:700,fontSize:17,color:T.txt}}>Notifications</div>
+        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          {notifs.some(n=>!n.read)&&<button onClick={()=>onMark("all")} style={{fontSize:11,color:AC,background:`${AC}18`,border:`1px solid ${AC}30`,borderRadius:7,padding:"5px 10px",cursor:"pointer",fontWeight:600}}>Mark all read</button>}
+          <button onClick={onClose} style={{background:T.faint,border:`1px solid ${T.b1}`,color:T.mu,cursor:"pointer",width:26,height:26,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center"}}><XIcon/></button>
+        </div>
+      </div>
+      <div style={{flex:1,overflowY:"auto"}}>
+        {notifs.length===0&&<div style={{textAlign:"center",padding:"60px 20px",color:T.mu}}><BellIcon size={32}/><div style={{fontWeight:500,marginTop:12}}>No notifications yet</div></div>}
+        {notifs.map((n,i)=>{const actor=profiles.find(p=>p.id===n.actorId);const icons={rating:"⭐",edit:"✏️",tier:"🏆"};
+          return <div key={i} onClick={()=>{onMark(i);if(actor)onView(actor);onClose();}} style={{display:"flex",gap:11,padding:"13px 16px",borderBottom:`1px solid ${T.b1}`,background:n.read?"transparent":T.faint,cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background=T.faint} onMouseLeave={e=>e.currentTarget.style.background=n.read?"transparent":T.faint}>
+            <div style={{position:"relative",flexShrink:0}}><Ava p={actor||{name:"?",color:AC}} size={40} T={T}/><div style={{position:"absolute",bottom:-2,right:-2,width:17,height:17,borderRadius:"50%",background:T.surf,display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,border:`1px solid ${T.b1}`}}>{icons[n.type]||"📢"}</div></div>
+            <div style={{flex:1}}><div style={{fontSize:13,color:T.txt,lineHeight:1.4}}><strong>{actor?.name||"Someone"}</strong> {n.text}</div><div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:T.mu,marginTop:2}}>{ago(n.ts)}</div></div>
+            {!n.read&&<div style={{width:7,height:7,borderRadius:"50%",background:AC,flexShrink:0,marginTop:5}}/>}
+          </div>;})}
+      </div>
+    </div>
+  </div>;
+}
+
+/* ══════════════════════════════════════════════════════
+   APP
+══════════════════════════════════════════════════════ */
+const DP={dark:true,compact:false,anon:false};
+
+function App(){
+  // ── Auth state ──
+  const [authUser,setAuthUser]=useState(null);
+  const [profile,setProfile]=useState(null);
+  const [authLoading,setAuthLoading]=useState(true);
+
+  // ── App state ──
+  const [profiles,setProfiles]=useState([]);
+  const [notifs,setNotifs]=useState([]);
+  const [blocked,setBlocked]=useState([]);
+  const [reports,setReports]=useState([]);
+  const [prefs,setPrefs]=useState(DP);
+
+  // ── UI state ──
+  const [tab,setTab]=useState("feed");
+  const [rateT,setRateT]=useState(null);
+  const [viewT,setViewT]=useState(null);
+  const [qrT,setQRT]=useState(null);
+  const [settings,setSettings]=useState(false);
+  const [photo,setPhoto]=useState(false);
+  const [scoreCard,setScoreCard]=useState(null);
+  const [reportT,setReportT]=useState(null);
+  const [showBlocked,setShowBlocked]=useState(false);
+  const [showNotifs,setShowNotifs]=useState(false);
+  const [tierMap,setTierMap]=useState(false);
+  const [showAdminLock,setShowAdminLock]=useState(false);
+  const [showAdmin,setShowAdmin]=useState(false);
+  const [adminTaps,setAdminTaps]=useState(0);
+  const [toast,setToast]=useState(null);
+  const adminTapTimer=useRef(null);
+
+  const T=prefs.dark?DK:LT;
+
+  const pop=(msg)=>{setToast(msg);setTimeout(()=>setToast(null),2500);};
+
+  // ── Load prefs from localStorage ──
+  useEffect(()=>{
+    const saved=getLoc();
+    if(saved.prefs) setPrefs(p=>({...p,...saved.prefs}));
+  },[]);
+
+  // ── Auth listener — this is the KEY fix ──
+  // Supabase auth remembers the user automatically via cookies/localStorage
+  // User never has to log in again unless they explicitly log out
+  useEffect(()=>{
+    // Check existing session
+    sb.auth.getSession().then(({data:{session}})=>{
+      if(session?.user){
+        setAuthUser(session.user);
+        loadUserProfile(session.user.id);
+      } else {
+        setAuthLoading(false);
+      }
+    });
+    // Listen for auth changes
+    const {data:{subscription}}=sb.auth.onAuthStateChange(async(event,session)=>{
+      if(event==="SIGNED_IN"&&session?.user){
+        setAuthUser(session.user);
+        loadUserProfile(session.user.id);
+      } else if(event==="SIGNED_OUT"){
+        setAuthUser(null);setProfile(null);setProfiles([]);setNotifs([]);setBlocked([]);
+        setAuthLoading(false);
+      }
+    });
+    return()=>subscription.unsubscribe();
+  },[]);
+
+  async function loadUserProfile(userId){
+    setAuthLoading(true);
+    const {data,error}=await sb.from("profiles").select("*").eq("id",userId).single();
+    if(data){
+      setProfile(data);
+      loadAppData(data);
+    } else {
+      // New user — needs to set up profile
+      setProfile(null);
+    }
+    setAuthLoading(false);
+  }
+
+  async function loadAppData(myProfile){
+    // Load all profiles + ratings
+    const [profilesRes,ratingsRes,blocksRes,notifsRes]=await Promise.all([
+      sb.from("profiles").select("*"),
+      sb.from("ratings").select("*"),
+      sb.from("blocks").select("blocked_id").eq("blocker_id",myProfile.id),
+      sb.from("notifications").select("*").eq("target_id",myProfile.id).order("created_at",{ascending:false}).limit(60),
+    ]);
+    if(profilesRes.data){
+      const allRatings=ratingsRes.data||[];
+      const merged=profilesRes.data.map(p=>({
+        ...p,
+        ratings:allRatings.filter(r=>r.target_id===p.id).map(r=>({
+          raterId:r.rater_id,raterName:r.rater_name||"",
+          vibe:r.vibe,humor:r.humor,kindness:r.kindness,
+          rizz:r.rizz,loyalty:r.loyalty,drip:r.drip,
+          ts:new Date(r.updated_at).getTime()
+        }))
+      }));
+      setProfiles(merged);
+    }
+    if(blocksRes.data) setBlocked(blocksRes.data.map(r=>r.blocked_id));
+    if(notifsRes.data) setNotifs(notifsRes.data.map(n=>({type:n.type,actorId:n.actor_id,text:n.text,ts:new Date(n.created_at).getTime(),read:n.read})));
+
+    // Subscribe to new notifications realtime
+    sb.channel(`notifs_${myProfile.id}`)
+      .on("postgres_changes",{event:"INSERT",schema:"public",table:"notifications",filter:`target_id=eq.${myProfile.id}`},
+        payload=>{
+          const n=payload.new;
+          setNotifs(prev=>[{type:n.type,actorId:n.actor_id,text:n.text,ts:new Date(n.created_at).getTime(),read:false},...prev].slice(0,60));
+        })
+      .subscribe();
+  }
+
+  // ── Poll for new profiles/ratings every 30s ──
+  useEffect(()=>{
+    if(!profile) return;
+    const interval=setInterval(async()=>{
+      const [pr,rr]=await Promise.all([sb.from("profiles").select("*"),sb.from("ratings").select("*")]);
+      if(pr.data&&rr.data){
+        const allR=rr.data;
+        setProfiles(pr.data.map(p=>({...p,ratings:allR.filter(r=>r.target_id===p.id).map(r=>({raterId:r.rater_id,raterName:r.rater_name||"",vibe:r.vibe,humor:r.humor,kindness:r.kindness,rizz:r.rizz,loyalty:r.loyalty,drip:r.drip,ts:new Date(r.updated_at).getTime()}))})));
+      }
+    },30000);
+    return()=>clearInterval(interval);
+  },[profile?.id]);
+
+  function handleAdminTap(){
+    const next=adminTaps+1;setAdminTaps(next);
+    clearTimeout(adminTapTimer.current);
+    if(next>=5){setShowAdminLock(true);setAdminTaps(0);}
+    else{adminTapTimer.current=setTimeout(()=>setAdminTaps(0),2500);}
+  }
+
+  async function handleAuthed(user){
+    setAuthUser(user);
+    await loadUserProfile(user.id);
+  }
+
+  async function handleProfileCreated(p){
+    setProfile(p);
+    await loadAppData(p);
+    pop("Welcome to HighEnough ✦");
+  }
+
+  async function handleLogout(){
+    await sb.auth.signOut();
+    setAuthUser(null);setProfile(null);setProfiles([]);setNotifs([]);setBlocked([]);
+    setTab("feed");
+  }
+
+  async function handleDeleteAccount(){
+    if(!profile) return;
+    await sb.from("profiles").delete().eq("id",profile.id);
+    await sb.auth.signOut();
+    setAuthUser(null);setProfile(null);setProfiles([]);
+    pop("Account deleted");
+  }
+
+  async function handleSaveProfile(u){
+    const updated={...profile,...u};
+    const {error}=await sb.from("profiles").upsert({...updated,created_at:updated.created_at||new Date().toISOString()});
+    if(!error){setProfile(updated);setProfiles(prev=>prev.map(p=>p.id===updated.id?updated:p));pop("Profile saved");}
+    else pop("Could not save. Try again.");
+  }
+
+  async function handleSavePhoto(photoData){
+    await handleSaveProfile({photo:photoData});
+    setPhoto(false);pop("Photo updated");
+  }
+
+  function handleSavePrefs(p){
+    setPrefs(p);
+    setLoc({...getLoc(),prefs:p});
+  }
+
+  function handleRate(p,ex){
+    if(blocked.includes(p.id)) return pop("You've blocked this user");
+    setRateT({profile:p,existing:ex});
+  }
+
+  async function handleSubmit(tid,sc2){
+    const isEdit=!!rateT?.existing;
+    // Save rating to Supabase
+    await sb.from("ratings").upsert({
+      rater_id:sc2.raterId,target_id:tid,rater_name:sc2.raterName||"",
+      vibe:sc2.vibe,humor:sc2.humor,kindness:sc2.kindness,
+      rizz:sc2.rizz,loyalty:sc2.loyalty,drip:sc2.drip,
+      updated_at:new Date().toISOString()
+    },{onConflict:"rater_id,target_id"});
+    // Update local state
+    setProfiles(prev=>prev.map(p=>{
+      if(p.id!==tid) return p;
+      const ex=p.ratings?.find(r=>r.raterId===sc2.raterId);
+      const newR={raterId:sc2.raterId,raterName:sc2.raterName,vibe:sc2.vibe,humor:sc2.humor,kindness:sc2.kindness,rizz:sc2.rizz,loyalty:sc2.loyalty,drip:sc2.drip,ts:sc2.ts};
+      return{...p,ratings:ex?p.ratings.map(r=>r.raterId===sc2.raterId?newR:r):[...(p.ratings||[]),newR]};
+    }));
+    // Send notification
+    await sb.from("notifications").insert({target_id:tid,actor_id:profile.id,actor_name:prefs.anon?"Anonymous":profile.name,type:isEdit?"edit":"rating",text:isEdit?"updated their rating of you":"rated you",read:false,created_at:new Date().toISOString()});
+    setRateT(null);
+    pop(isEdit?"Rating updated ✓":"Rating submitted ✓");
+  }
+
+  async function handleBlock(uid){
+    setBlocked(prev=>[...prev.filter(x=>x!==uid),uid]);
+    await sb.from("blocks").upsert({blocker_id:profile.id,blocked_id:uid});
+    pop("User blocked");
+  }
+  async function handleUnblock(uid){
+    setBlocked(prev=>prev.filter(x=>x!==uid));
+    await sb.from("blocks").delete().eq("blocker_id",profile.id).eq("blocked_id",uid);
+    pop("User unblocked");
+  }
+  async function handleReport(targetId,reasonId,alsoBlock){
+    const r={targetId,reasonId,ts:Date.now(),reporterId:profile.id};
+    setReports(prev=>[r,...prev]);
+    await sb.from("reports").insert({reporter_id:profile.id,target_id:targetId,reason:reasonId,created_at:new Date().toISOString()});
+    if(alsoBlock) handleBlock(targetId);
+  }
+
+  function handleMarkNotif(idx){
+    if(idx==="all") setNotifs(prev=>prev.map(n=>({...n,read:true})));
+    else setNotifs(prev=>prev.map((n,i)=>i===idx?{...n,read:true}:n));
+  }
+
+  async function handleAdminDeleteProfile(id){
+    await sb.from("profiles").delete().eq("id",id);
+    setProfiles(prev=>prev.filter(p=>p.id!==id));
+    pop("Profile deleted");
+  }
+  async function handleAdminClearRatings(id){
+    await sb.from("ratings").delete().eq("target_id",id);
+    setProfiles(prev=>prev.map(p=>p.id===id?{...p,ratings:[]}:p));
+    pop("Ratings cleared");
+  }
+  function handleExport(type){
+    const data=type==="all"?{profiles,reports}:type==="profiles"?{profiles}:{reports};
+    const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
+    const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`highenough_${type}_${Date.now()}.json`;a.click();
+    pop("Exported ✓");
+  }
+
+  useEffect(()=>{document.body.style.background=T.bg;document.body.style.color=T.txt;},[T.bg,T.txt]);
+
+  // ── Loading screen ──
+  if(authLoading) return <div style={{minHeight:"100vh",background:DK.bg,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16}}>
+    <div style={{fontWeight:800,fontSize:36,letterSpacing:"-2px",color:DK.txt}}>High<span style={{color:AC,fontWeight:300,letterSpacing:"0.04em"}}>Enough</span></div>
+    <Spinner/>
+  </div>;
+
+  // ── Not signed in ──
+  if(!authUser) return <AuthScreen T={DK} onAuthed={handleAuthed}/>;
+
+  // ── Signed in but no profile yet ──
+  if(!profile) return <ProfileSetup user={authUser} T={T} onDone={handleProfileCreated}/>;
+
+  // ── Main app ──
+  const myP=profiles.find(p=>p.id===profile.id)||{...profile,ratings:[]};
+  const feedProfiles=profiles.filter(p=>p.id!==profile.id&&!blocked.includes(p.id));
+  const unreadN=notifs.filter(n=>!n.read).length;
+  const NAV=[
+    {id:"feed",   icon:"feed",    label:"Feed"},
+    {id:"search", icon:"search",  label:"Search"},
+    {id:"board",  icon:"board",   label:"Board"},
+    {id:"ratings",icon:"ratings", label:"Ratings"},
+    {id:"profile",icon:"profile", label:"Profile"},
+  ];
+  const TITLES={search:"Find People",board:"Leaderboard",ratings:"Ratings"};
+
+  return <>
+    <div style={{minHeight:"100vh",background:T.bg,color:T.txt,paddingBottom:78}}>
+      {/* TOP BAR */}
+      <div style={{background:T.nav,borderBottom:`1px solid ${T.b1}`,padding:"13px 16px",position:"sticky",top:0,zIndex:100,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+        <div style={{fontWeight:800,fontSize:22,letterSpacing:"-1.5px",lineHeight:1,color:T.txt,cursor:"pointer",userSelect:"none"}} onClick={handleAdminTap}>
+          High<span style={{color:AC,fontWeight:300,letterSpacing:"0.05em"}}>Enough</span>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <div style={{position:"relative",cursor:"pointer"}} onClick={()=>setShowNotifs(true)}>
+            <div style={{width:36,height:36,borderRadius:10,background:T.faint,border:`1px solid ${T.b1}`,display:"flex",alignItems:"center",justifyContent:"center",color:T.mu}}><BellIcon/></div>
+            {unreadN>0&&<div style={{position:"absolute",top:-3,right:-3,minWidth:15,height:15,borderRadius:99,background:"#d84040",border:`1.5px solid ${T.nav}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:8,color:"#fff",fontWeight:700,padding:"0 3px"}}>{unreadN>9?"9+":unreadN}</div>}
+          </div>
+          <Ava p={myP} size={36} T={T} onClick={()=>setSettings(true)}/>
+        </div>
+      </div>
+
+      {tab!=="feed"&&tab!=="profile"&&<div style={{padding:"14px 16px 0"}}><div style={{fontWeight:700,fontSize:20,color:T.txt,animation:"ci .22s ease"}}>{TITLES[tab]||""}</div></div>}
+
+      <div style={{paddingTop:tab!=="feed"&&tab!=="profile"?12:0}}>
+        {tab==="feed"&&<div style={{padding:"14px 14px 0"}}>
+          {feedProfiles.length===0
+            ?<div style={{textAlign:"center",padding:"55px 0",color:T.mu}}><div style={{fontSize:36,marginBottom:11,opacity:.3}}>◎</div><div style={{fontWeight:500}}>Nobody here yet</div><div style={{fontSize:12,marginTop:5,opacity:.7}}>Share your QR link so others can find you</div></div>
+            :<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(250px,1fr))",gap:10}}>
+              {feedProfiles.map((p,i)=><FeedCard key={p.id} p={p} myId={profile.id} compact={prefs.compact} T={T} onRate={handleRate} onView={setViewT} onBlock={handleBlock} onUnblock={handleUnblock} onReport={setReportT} isBlocked={blocked.includes(p.id)} idx={i}/>)}
+            </div>}
+        </div>}
+        {tab==="search"  &&<SearchTab profiles={profiles} myId={profile.id} T={T} onView={setViewT} onRate={handleRate}/>}
+        {tab==="board"   &&<LeaderboardTab profiles={profiles} myId={profile.id} T={T} onView={setViewT} onTierMap={()=>setTierMap(true)}/>}
+        {tab==="ratings" &&<RatingsDash profiles={profiles} myId={profile.id} T={T} onView={setViewT} onRate={handleRate}/>}
+        {tab==="profile" &&<ProfileTab me={profile} myP={myP} prefs={prefs} T={T} onQR={()=>setQRT(myP)} onSettings={()=>setSettings(true)} onEditPhoto={()=>setPhoto(true)} onScoreCard={()=>setScoreCard(myP)} onTierMap={()=>setTierMap(true)}/>}
+      </div>
+    </div>
+
+    {/* BOTTOM NAV */}
+    <div style={{position:"fixed",bottom:0,left:0,right:0,background:T.nav,borderTop:`1px solid ${T.b1}`,display:"flex",padding:"9px 0 16px",zIndex:100}}>
+      {NAV.map(({id,icon,label})=>
+        <button key={id} onClick={()=>setTab(id)} style={{flex:1,background:"none",border:"none",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:4,color:tab===id?AC:T.mu,transition:"color .15s"}}>
+          <div style={{padding:"4px 8px",borderRadius:10,background:tab===id?`${AC}14`:"transparent",transition:"background .15s"}}>
+            <NavIcon name={icon} active={tab===id} size={21}/>
+          </div>
+          <span style={{fontSize:8,textTransform:"uppercase",letterSpacing:".08em",fontWeight:tab===id?600:400}}>{label}</span>
+        </button>)}
+    </div>
+
+    {rateT      &&<RateModal target={rateT.profile} raterId={profile.id} raterName={prefs.anon?"Anonymous":profile.name} existing={rateT.existing} T={T} onClose={()=>setRateT(null)} onSubmit={handleSubmit}/>}
+    {viewT      &&<ViewModal profile={viewT} isSelf={viewT.id===profile.id} myId={profile.id} T={T} onClose={()=>setViewT(null)} onRate={handleRate} onQR={setQRT} onBlock={handleBlock} onUnblock={handleUnblock} onReport={setReportT} isBlocked={blocked.includes(viewT.id)} onTierMap={()=>setTierMap(true)}/>}
+    {qrT        &&<QRModal profile={qrT} T={T} onClose={()=>setQRT(null)}/>}
+    {settings   &&<SettingsModal me={profile} prefs={prefs} T={T} onClose={()=>setSettings(false)} onSaveProfile={handleSaveProfile} onSavePrefs={handleSavePrefs} onEditPhoto={()=>{setSettings(false);setPhoto(true);}} onShowBlocked={()=>{setSettings(false);setShowBlocked(true);}} onLogout={handleLogout} onDelete={handleDeleteAccount}/>}
+    {photo      &&<PhotoModal profile={profile} T={T} onClose={()=>setPhoto(false)} onSave={handleSavePhoto}/>}
+    {scoreCard  &&<ScoreCardModal profile={scoreCard} T={T} onClose={()=>setScoreCard(null)}/>}
+    {reportT    &&<ReportModal target={reportT} T={T} onClose={()=>setReportT(null)} onSubmit={handleReport}/>}
+    {showBlocked&&<BlockedListPanel blocked={blocked} profiles={profiles} T={T} onClose={()=>setShowBlocked(false)} onUnblock={handleUnblock}/>}
+    {showNotifs &&<NotifsPanel notifs={notifs} profiles={profiles} T={T} onClose={()=>setShowNotifs(false)} onMark={handleMarkNotif} onView={p=>{setViewT(p);setShowNotifs(false);}}/>}
+    {tierMap    &&<TierMapPanel T={T} onClose={()=>setTierMap(false)}/>}
+    {showAdminLock&&<AdminLock T={T} onClose={()=>setShowAdminLock(false)} onUnlock={()=>{setShowAdminLock(false);setShowAdmin(true);}}/>}
+    {showAdmin  &&<AdminPanel profiles={profiles} reports={reports} blocked={blocked} T={T} onClose={()=>setShowAdmin(false)} onDeleteProfile={handleAdminDeleteProfile} onClearRatings={handleAdminClearRatings} onExport={handleExport}/>}
+    <Toast msg={toast} T={T}/>
+  </>;
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
