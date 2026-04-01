@@ -783,29 +783,88 @@ function ScoreCardModal({profile,T,onClose}){
   const canvasRef=useRef(null);const[saved,setSaved]=useState(false);
   useEffect(()=>{
     const canvas=canvasRef.current;if(!canvas)return;
-    const ctx=canvas.getContext("2d");const W=800,H=800;canvas.width=W;canvas.height=H;
-    const bg=ctx.createLinearGradient(0,0,W,H);bg.addColorStop(0,"#0d0c1e");bg.addColorStop(1,"#09090f");ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
-    const glow=ctx.createRadialGradient(W/2,H/2,0,W/2,H/2,340);glow.addColorStop(0,t.color+"28");glow.addColorStop(1,"transparent");ctx.fillStyle=glow;ctx.fillRect(0,0,W,H);
-    ctx.fillStyle="#12111e";ctx.beginPath();ctx.roundRect(60,60,W-120,H-120,32);ctx.fill();ctx.strokeStyle=t.color+"40";ctx.lineWidth=1.5;ctx.stroke();
-    ctx.font="600 28px Inter,Arial";ctx.fillStyle="#ffffff40";ctx.textAlign="left";ctx.fillText("HighEnough",96,118);
-    ctx.beginPath();ctx.arc(W/2,240,80,0,Math.PI*2);ctx.fillStyle=profile.color+"30";ctx.fill();ctx.strokeStyle=profile.color+"70";ctx.lineWidth=3;ctx.stroke();
-    ctx.font="bold 52px Inter,Arial";ctx.fillStyle=profile.color;ctx.textAlign="center";ctx.fillText(ini(profile.name),W/2,257);
-    ctx.font="bold 46px Inter,Arial";ctx.fillStyle="#f0f0ff";ctx.fillText(profile.name,W/2,348);
-    ctx.font="500 24px monospace";ctx.fillStyle="#5a5a90";ctx.fillText(profile.handle,W/2,386);
-    ctx.font="bold 116px monospace";ctx.fillStyle=t.color;ctx.fillText(sc!=null?fmtScore(sc):"—",W/2,508);
-    ctx.font="bold 30px Inter,Arial";ctx.fillStyle=t.color;ctx.fillText(`${t.emoji} ${t.label}`,W/2,568);
-    const bW=88,bH=8,bY=640,gap=14,allW=CATS.length*(bW+gap)-gap,startX=(W-allW)/2;
-    CATS.forEach((c,i)=>{const v=cAvg(profile,c.id)/100,x=startX+i*(bW+gap);ctx.fillStyle="#1e1e2c";ctx.beginPath();ctx.roundRect(x,bY,bW,bH,4);ctx.fill();if(v>0){ctx.fillStyle=profile.color+"cc";ctx.beginPath();ctx.roundRect(x,bY,bW*v,bH,4);ctx.fill();}ctx.font="500 18px Inter,Arial";ctx.fillStyle="#5a5a90";ctx.fillText(c.emoji,x+bW/2,bY+32);});
-    ctx.font="500 20px Inter,Arial";ctx.fillStyle="#3a3a60";ctx.fillText(`${n} rating${n!==1?"s":""}  ·  #${profile.short_id||shortId(profile.id)}`,W/2,740);
+    const ctx=canvas.getContext("2d");const W=900,H=1100;canvas.width=W;canvas.height=H;
+    // Background
+    const bg=ctx.createLinearGradient(0,0,W,H);bg.addColorStop(0,"#0b0a1a");bg.addColorStop(.5,"#0e0d1f");bg.addColorStop(1,"#09090f");ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
+    // Tier glow blob
+    const glow=ctx.createRadialGradient(W/2,H*0.45,0,W/2,H*0.45,420);glow.addColorStop(0,t.color+"22");glow.addColorStop(1,"transparent");ctx.fillStyle=glow;ctx.fillRect(0,0,W,H);
+    // Card border
+    ctx.strokeStyle=t.color+"50";ctx.lineWidth=1.5;const m=48;ctx.beginPath();ctx.roundRect(m,m,W-m*2,H-m*2,36);ctx.stroke();
+    // Inner subtle card
+    ctx.fillStyle=t.color+"08";ctx.beginPath();ctx.roundRect(m,m,W-m*2,H-m*2,36);ctx.fill();
+    // ── LOGO ──
+    ctx.textAlign="left";
+    ctx.font="800 38px Inter,Arial,sans-serif";ctx.fillStyle="#f0f0ff";ctx.fillText("High",90,130);
+    ctx.font="300 38px Inter,Arial,sans-serif";ctx.fillStyle="#7b72e9";ctx.fillText("Enough",90+ctx.measureText("High").width+2,130);
+    // Tagline
+    ctx.font="500 18px Inter,Arial,sans-serif";ctx.fillStyle="#3a3a68";ctx.fillText("Rate · Rise · Repeat",90,160);
+    // Divider line
+    ctx.strokeStyle=t.color+"25";ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(90,182);ctx.lineTo(W-90,182);ctx.stroke();
+    // ── AVATAR ──
+    const aX=W/2,aY=310,aR=92;
+    ctx.save();
+    // Outer glow ring
+    const aGlow=ctx.createRadialGradient(aX,aY,aR-10,aX,aY,aR+30);aGlow.addColorStop(0,t.color+"50");aGlow.addColorStop(1,"transparent");ctx.fillStyle=aGlow;ctx.beginPath();ctx.arc(aX,aY,aR+30,0,Math.PI*2);ctx.fill();
+    // Avatar circle fill
+    ctx.beginPath();ctx.arc(aX,aY,aR,0,Math.PI*2);ctx.fillStyle=profile.color+"22";ctx.fill();
+    ctx.strokeStyle=profile.color+"80";ctx.lineWidth=3;ctx.stroke();
+    // Avatar initials
+    ctx.font=`bold ${aR*.85}px Inter,Arial`;ctx.fillStyle=profile.color;ctx.textAlign="center";ctx.fillText(ini(profile.name),aX,aY+aR*.3);
+    ctx.restore();
+    // ── NAME + HANDLE ──
+    ctx.textAlign="center";
+    ctx.font="bold 52px Inter,Arial,sans-serif";ctx.fillStyle="#eeeeff";ctx.fillText(profile.name,W/2,458);
+    ctx.font="500 24px 'JetBrains Mono',monospace";ctx.fillStyle="#4a4a78";ctx.fillText(profile.handle,W/2,494);
+    // ── SCORE ──
+    ctx.font="900 130px 'JetBrains Mono',monospace";
+    const gradient=ctx.createLinearGradient(W/2-150,530,W/2+150,530);gradient.addColorStop(0,t.grad[0]);gradient.addColorStop(1,t.grad[1]);ctx.fillStyle=gradient;
+    ctx.fillText(sc!=null?fmtScore(sc):"—",W/2,610);
+    // Tier badge
+    const tierLabel=`${t.emoji}  ${t.label.toUpperCase()}`;ctx.font="700 26px Inter,Arial,sans-serif";
+    const tlW=ctx.measureText(tierLabel).width+40;const tlX=W/2-tlW/2;
+    ctx.fillStyle=t.color+"22";ctx.strokeStyle=t.color+"50";ctx.lineWidth=1;ctx.beginPath();ctx.roundRect(tlX,630,tlW,44,10);ctx.fill();ctx.stroke();
+    ctx.fillStyle=t.color;ctx.fillText(tierLabel,W/2,659);
+    // ── CATEGORY BARS ──
+    const bY=740,bH=7,bGap=11,bW=(W-180)/CATS.length-bGap,startX=90;
+    CATS.forEach((c,i)=>{
+      const v=cAvg(profile,c.id)/100,x=startX+i*(bW+bGap);
+      // Bar track
+      ctx.fillStyle="#1a1a30";ctx.beginPath();ctx.roundRect(x,bY,bW,bH,4);ctx.fill();
+      // Bar fill
+      if(v>0){
+        const barGrad=ctx.createLinearGradient(x,0,x+bW,0);barGrad.addColorStop(0,profile.color+"dd");barGrad.addColorStop(1,t.color+"99");ctx.fillStyle=barGrad;
+        ctx.beginPath();ctx.roundRect(x,bY,bW*v,bH,4);ctx.fill();
+      }
+      ctx.font="600 20px Inter,Arial";ctx.fillStyle="#4a4a78";ctx.textAlign="center";ctx.fillText(c.emoji,x+bW/2,bY+36);
+      ctx.font="500 15px Inter,Arial";ctx.fillStyle="#38385e";ctx.fillText(c.label,x+bW/2,bY+56);
+    });
+    // ── DIVIDER ──
+    ctx.strokeStyle=t.color+"18";ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(90,838);ctx.lineTo(W-90,838);ctx.stroke();
+    // ── STATS ROW ──
+    ctx.textAlign="center";ctx.font="600 20px 'JetBrains Mono',monospace";ctx.fillStyle="#5a5a90";
+    ctx.fillText(`${n} rating${n!==1?"s":""}   ·   #${profile.short_id||shortId(profile.id)}`,W/2,876);
+    // ── SIGNUP CTA ──
+    ctx.fillStyle="#1c1c32";ctx.beginPath();ctx.roundRect(90,910,W-180,120,18);ctx.fill();ctx.strokeStyle="#7b72e930";ctx.lineWidth=1;ctx.stroke();
+    ctx.font="600 22px Inter,Arial,sans-serif";ctx.fillStyle="#9090c0";ctx.fillText("Check my score & rate me on",W/2,960);
+    ctx.font="800 32px Inter,Arial,sans-serif";ctx.fillStyle="#f0f0ff";ctx.fillText("High",W/2-50,998);
+    ctx.font="300 32px Inter,Arial,sans-serif";ctx.fillStyle="#7b72e9";
+    const hiW=ctx.measureText("High");
+    // draw "Enough" after "High" — approximate
+    ctx.font="800 32px Inter,Arial,sans-serif";
+    const hiMW=ctx.measureText("High").width;
+    ctx.fillStyle="#f0f0ff";ctx.textAlign="left";ctx.fillText("High",W/2-hiMW/2,998);
+    ctx.font="300 32px Inter,Arial,sans-serif";ctx.fillStyle="#7b72e9";ctx.fillText("Enough",W/2-hiMW/2+hiMW+3,998);
+    ctx.textAlign="center";ctx.font="500 20px 'JetBrains Mono',monospace";ctx.fillStyle="#5a5a80";ctx.fillText("highenough.in",W/2,1028);
   },[profile]);
   function download(){const canvas=canvasRef.current;if(!canvas)return;const a=document.createElement("a");a.download=`${profile.name.replace(/\s+/g,"_")}_HighEnough.png`;a.href=canvas.toDataURL("image/png");a.click();setSaved(true);setTimeout(()=>setSaved(false),2000);}
+  function shareCard(){const canvas=canvasRef.current;if(!canvas)return;canvas.toBlob(b=>{try{navigator.share({files:[new File([b],"highenough_scorecard.png",{type:"image/png"})],title:`${profile.name}'s HighEnough Score Card`,text:`Check out ${profile.name}'s score on HighEnough! Rate people, earn your rep. 👉 highenough.in`});}catch{download();}});}
   return<Overlay onBg={onClose} T={T} wide>
-    <div style={{fontWeight:700,fontSize:17,color:T.txt,marginBottom:4}}>Score Card</div>
-    <div style={{fontSize:12,color:T.mu,marginBottom:14}}>Download and share your tier</div>
-    <canvas ref={canvasRef} style={{width:"100%",borderRadius:14,border:`1px solid ${T.b1}`,display:"block",marginBottom:14}}/>
+    <div style={{fontWeight:700,fontSize:17,color:T.txt,marginBottom:2}}>Score Card</div>
+    <div style={{fontSize:12,color:T.mu,marginBottom:12}}>Share your tier · includes sign-up link for friends</div>
+    <canvas ref={canvasRef} style={{width:"100%",borderRadius:16,border:`1px solid ${T.b1}`,display:"block",marginBottom:14}}/>
     <div style={{display:"flex",gap:8}}>
-      <button onClick={download} style={{flex:1,padding:"12px 0",background:`linear-gradient(135deg,${AC}e0,${AC}90)`,borderRadius:11,color:"#fff",fontWeight:700,fontSize:14}}>{saved?"Saved ✓":"⬇ Download"}</button>
-      <button onClick={()=>{const canvas=canvasRef.current;if(!canvas)return;canvas.toBlob(b=>{try{navigator.share({files:[new File([b],"highenough.png",{type:"image/png"})],title:"My HighEnough Score"});}catch{download();}});}} style={{padding:"12px 16px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:11,color:T.mu,fontWeight:600,fontSize:13}}>Share</button>
+      <button onClick={shareCard} style={{flex:1,padding:"13px 0",background:`linear-gradient(135deg,${AC}e0,${AC}80)`,borderRadius:11,color:"#fff",fontWeight:700,fontSize:14}}>Share 🔗</button>
+      <button onClick={download} style={{padding:"13px 18px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:11,color:T.mu,fontWeight:600,fontSize:13}}>{saved?"Saved ✓":"⬇ Save"}</button>
     </div>
   </Overlay>;
 }
@@ -1219,6 +1278,16 @@ function App(){
   async function handleAdminClearRatings(id){await sb.from("ratings").delete().eq("target_id",id);setProfiles(prev=>prev.map(p=>p.id===id?{...p,ratings:[]}:p));pop("Ratings cleared");}
   function handleExport(type){const data=type==="all"?{profiles,reports}:type==="profiles"?{profiles}:{reports};const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`highenough_${type}_${Date.now()}.json`;a.click();pop("Exported ✓");}
 
+  const [canInstall,setCanInstall]=useState(false);
+  useEffect(()=>{
+    const onReady=()=>setCanInstall(true);
+    const onInstalled=()=>setCanInstall(false);
+    window.addEventListener('he-install-ready',onReady);
+    window.addEventListener('he-installed',onInstalled);
+    return()=>{window.removeEventListener('he-install-ready',onReady);window.removeEventListener('he-installed',onInstalled);};
+  },[]);
+  async function handleInstall(){if(window.hePromptInstall)await window.hePromptInstall();setCanInstall(false);}
+
   useEffect(()=>{document.body.style.background=T.bg;document.body.style.color=T.txt;},[T.bg,T.txt]);
 
   // Loading
@@ -1234,7 +1303,9 @@ function App(){
   if(activeChat)return<ChatScreen conv={activeChat} myProfile={profile} T={T} onBack={()=>setActiveChat(null)} onSend={handleSend} onMarkRead={handleMarkRead}/>;
 
   const myP=profiles.find(p=>p.id===profile.id)||{...profile,ratings:[]};
-  const feedProfiles=profiles.filter(p=>p.id!==profile.id&&!blocked.includes(p.id));
+  const allFeedProfiles=profiles.filter(p=>p.id!==profile.id&&!blocked.includes(p.id));
+  const followedFeed=allFeedProfiles.filter(p=>following.includes(p.id));
+  const suggestedFeed=allFeedProfiles.filter(p=>!following.includes(p.id)).slice(0,8);
   const unreadN=notifs.filter(n=>!n.read).length;
   const unreadM=convs.reduce((s,c)=>s+(c.messages?.filter(m=>m.sid!==profile.id&&!m.read).length||0),0);
 
@@ -1254,6 +1325,7 @@ function App(){
           High<span style={{color:AC,fontWeight:300,letterSpacing:"0.05em"}}>Enough</span>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
+          {canInstall&&<button onClick={handleInstall} style={{padding:"7px 12px",background:`${AC}18`,border:`1px solid ${AC}30`,borderRadius:9,color:AC,fontWeight:700,fontSize:12,display:"flex",alignItems:"center",gap:5}}>📲 <span>Install</span></button>}
           <div style={{position:"relative",cursor:"pointer"}} onClick={()=>setShowNotifs(true)}>
             <div style={{width:36,height:36,borderRadius:10,background:T.faint,border:`1px solid ${T.b1}`,display:"flex",alignItems:"center",justifyContent:"center",color:T.mu}}><BellIcon/></div>
             {unreadN>0&&<div style={{position:"absolute",top:-3,right:-3,minWidth:15,height:15,borderRadius:99,background:"#d84040",border:`1.5px solid ${T.nav}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:8,color:"#fff",fontWeight:700,padding:"0 3px"}}>{unreadN>9?"9+":unreadN}</div>}
@@ -1263,12 +1335,24 @@ function App(){
 
       {/* CONTENT */}
       {tab==="feed"&&<div style={{padding:"14px 14px 0"}}>
-        {feedProfiles.length===0
-          ?<div style={{textAlign:"center",padding:"70px 20px",color:T.mu}}><div style={{fontSize:40,marginBottom:12,opacity:.3}}>◎</div><div style={{fontWeight:600,fontSize:16}}>Nobody here yet</div><div style={{fontSize:13,marginTop:8,opacity:.7}}>Share your profile so others can find you</div></div>
-          :<div style={{display:"flex",flexDirection:"column",gap:12}}>{feedProfiles.map((p,i)=><FeedCard key={p.id} p={p} myId={profile.id} following={following} T={T} onView={setViewT} onFollow={handleFollow} onUnfollow={handleUnfollow} onRate={handleRate} onMsg={handleMsg} idx={i}/>)}</div>}
+        {followedFeed.length===0
+          ?<div>
+            <div style={{textAlign:"center",padding:"32px 20px 20px",color:T.mu}}>
+              <div style={{fontSize:36,marginBottom:10,opacity:.4}}>◎</div>
+              <div style={{fontWeight:700,fontSize:16,color:T.txt,marginBottom:6}}>Your feed is empty</div>
+              <div style={{fontSize:13,opacity:.7,lineHeight:1.5}}>Follow people to see their updates here.</div>
+            </div>
+            {suggestedFeed.length>0&&<>
+              <div style={{padding:"4px 2px 10px",fontWeight:700,fontSize:14,color:T.txt,letterSpacing:"-.2px"}}>Suggested for you</div>
+              <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                {suggestedFeed.map((p,i)=><FeedCard key={p.id} p={p} myId={profile.id} following={following} T={T} onView={setViewT} onFollow={handleFollow} onUnfollow={handleUnfollow} onRate={handleRate} onMsg={handleMsg} idx={i}/>)}
+              </div>
+            </>}
+          </div>
+          :<div style={{display:"flex",flexDirection:"column",gap:12}}>{followedFeed.map((p,i)=><FeedCard key={p.id} p={p} myId={profile.id} following={following} T={T} onView={setViewT} onFollow={handleFollow} onUnfollow={handleUnfollow} onRate={handleRate} onMsg={handleMsg} idx={i}/>)}</div>}
       </div>}
 
-      {tab==="search"&&<SearchTab profiles={feedProfiles} myId={profile.id} following={following} T={T} onView={setViewT} onFollow={handleFollow} onUnfollow={handleUnfollow} onRate={handleRate}/>}
+      {tab==="search"&&<SearchTab profiles={allFeedProfiles} myId={profile.id} following={following} T={T} onView={setViewT} onFollow={handleFollow} onUnfollow={handleUnfollow} onRate={handleRate}/>}
 
       {tab==="board"&&<BoardTab profiles={profiles} myId={profile.id} T={T} onView={setViewT}/>}
 
@@ -1336,9 +1420,11 @@ if('serviceWorker' in navigator){
 
 // PWA Install Prompt
 let deferredPrompt=null;
+window.hePromptInstall=async()=>{if(!deferredPrompt)return false;await deferredPrompt.prompt();deferredPrompt=null;window.dispatchEvent(new Event('he-installed'));return true;};
 window.addEventListener('beforeinstallprompt',e=>{
   e.preventDefault();
   deferredPrompt=e;
+  window.dispatchEvent(new Event('he-install-ready'));
   // Show install banner after 3s
   setTimeout(()=>{
     if(!deferredPrompt)return;
@@ -1368,3 +1454,4 @@ window.addEventListener('beforeinstallprompt',e=>{
 </script>
 </body>
 </html>
+
