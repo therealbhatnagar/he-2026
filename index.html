@@ -37,8 +37,8 @@
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%2309090f'/><text y='.85em' font-size='52' x='8' font-family='system-ui,sans-serif' font-weight='900' fill='%23f0f0ff'>Hi</text><text y='.85em' font-size='52' x='52' font-family='system-ui,sans-serif' font-weight='300' fill='%237b72e9'>E</text></svg>"/>
 <!-- Apple touch icon (inline SVG as data URI) -->
 <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' rx='112' fill='%2309090f'/><text y='.82em' font-size='260' x='40' font-family='system-ui,sans-serif' font-weight='900' fill='%23f0f0ff'>Hi</text><text y='.82em' font-size='260' x='268' font-family='system-ui,sans-serif' font-weight='300' fill='%237b72e9'>E</text></svg>"/>
-<script src="https://unpkg.com/react@18/umd/react.development.js"></script>
-<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet"/>
@@ -1692,18 +1692,10 @@ function App(){
         let acType="personal";
         try{const stored=localStorage.getItem(`he_actype_${userId}`);if(stored)acType=stored;}catch{}
         const fullProfile={...data,account_type:data.account_type||acType};
-        setProfile(fullProfile);
-        setProfileFetched(true);
+        setProfile(fullProfile);setProfileFetched(true);
         loadAppData(fullProfile,dl);
-      } else {
-        setProfileFetched(true);
-        setAuthLoading(false);
-      }
-    }catch(e){
-      console.error("loadProfile error:",e);
-      setProfileFetched(true);
-      setAuthLoading(false);
-    }
+      }else{setProfileFetched(true);setAuthLoading(false);}
+    }catch(e){console.error("loadProfile error:",e);setProfileFetched(true);setAuthLoading(false);}
   }
 
   async function loadAppData(myProfile,dl=null){
@@ -1837,8 +1829,9 @@ function App(){
     if(!profile)return;
     const uid=profile.id;
     const userEmail=profile.email||authUser?.email||"";
-    // ── Clear ALL local state immediately ──
-    setProfile(null);setProfileFetched(false);
+    // ── Clear ALL local + auth state immediately so no black screen ──
+    setAuthUser(null);
+    setProfile(null);setProfileFetched(false);setAuthLoading(false);
     setProfiles(prev=>prev.filter(p=>p.id!==uid));
     setFollowing([]);setBlocked([]);setConvs([]);setNotifs([]);
     setViewT(null);setSettings(false);
@@ -2047,11 +2040,7 @@ function App(){
 
   // Safety fallback — force-end loading after 10s no matter what
   useEffect(()=>{
-    const t=setTimeout(()=>{
-      setAuthLoading(false);
-      setProfileFetched(true);
-      const s=document.getElementById('splash');if(s){s.style.opacity='0';setTimeout(()=>s.remove(),300);}
-    },10000);
+    const t=setTimeout(()=>{setAuthLoading(false);setProfileFetched(true);const s=document.getElementById('splash');if(s){s.style.opacity='0';setTimeout(()=>s.remove(),300);}},10000);
     return()=>clearTimeout(t);
   },[]);
 
@@ -2063,7 +2052,7 @@ function App(){
     return<AuthScreen T={DK} onAuthed={handleAuthed}/>;
   }
   // Only show ProfileSetup if we've confirmed the user has NO profile in DB
-  if(!profile&&!profileFetched)return null; // still loading profile from DB
+  if(!profile&&!profileFetched)return<div style={{minHeight:"100vh",background:"#09090f",display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{width:20,height:20,border:"2px solid #1c1c2c",borderTopColor:"#7b72e9",borderRadius:"50%",animation:"spin .55s linear infinite"}}/></div>;
   if(!profile&&profileFetched)return<ProfileSetup user={authUser} T={T} onDone={handleProfileCreated}/>;
 
   // Active chat = full screen
