@@ -519,6 +519,8 @@ function QRModal({profile,T,onClose}){
 
   function copyLink(){try{navigator.clipboard?.writeText(url);}catch{}setCpLink(true);setTimeout(()=>setCpLink(false),2000);}
   function shareLink(){if(navigator.share){navigator.share({title:`${profile.name} on HighEnough`,text:`Rate ${profile.name} on HighEnough 👉 ${url}`,url}).catch(()=>{});}else{copyLink();}}
+
+  function downloadQR(){
     const canvas=ref.current;if(!canvas)return;
     // Draw a branded card around the QR
     const out=document.createElement("canvas");out.width=400;out.height=480;
@@ -1684,17 +1686,21 @@ function App(){
 
   async function loadProfile(userId,dl=null){
     setAuthLoading(true);
-    const {data}=await sb.from("profiles").select("*").eq("id",userId).single();
-    if(data){
-      // Restore account_type from localStorage (stored during profile creation)
-      let acType="personal";
-      try{const stored=localStorage.getItem(`he_actype_${userId}`);if(stored)acType=stored;}catch{}
-      // If data already has account_type (column was added to DB), use that
-      const fullProfile={...data,account_type:data.account_type||acType};
-      setProfile(fullProfile);
-      setProfileFetched(true);
-      loadAppData(fullProfile,dl);
-    } else {
+    try{
+      const {data}=await sb.from("profiles").select("*").eq("id",userId).maybeSingle();
+      if(data){
+        let acType="personal";
+        try{const stored=localStorage.getItem(`he_actype_${userId}`);if(stored)acType=stored;}catch{}
+        const fullProfile={...data,account_type:data.account_type||acType};
+        setProfile(fullProfile);
+        setProfileFetched(true);
+        loadAppData(fullProfile,dl);
+      } else {
+        setProfileFetched(true);
+        setAuthLoading(false);
+      }
+    }catch(e){
+      console.error("loadProfile error:",e);
       setProfileFetched(true);
       setAuthLoading(false);
     }
@@ -1807,7 +1813,8 @@ function App(){
       }
       window.history.replaceState({},"",window.location.pathname);
     }
-    }catch(e){console.error("loadAppData error:",e);setAuthLoading(false);}
+    }catch(e){console.error("loadAppData error:",e);}
+    finally{setAuthLoading(false);}
 
     // Poll every 30s for new profiles
     const poll=setInterval(async()=>{
@@ -2038,10 +2045,11 @@ function App(){
     if(!authLoading){const s=document.getElementById('splash');if(s){s.style.opacity='0';setTimeout(()=>s.remove(),300);}}
   },[authLoading]);
 
-  // Safety fallback — force app to load after 10s no matter what
+  // Safety fallback — force-end loading after 10s no matter what
   useEffect(()=>{
     const t=setTimeout(()=>{
       setAuthLoading(false);
+      setProfileFetched(true);
       const s=document.getElementById('splash');if(s){s.style.opacity='0';setTimeout(()=>s.remove(),300);}
     },10000);
     return()=>clearTimeout(t);
