@@ -229,7 +229,7 @@ function AuthScreen({T,onAuthed}){
     try{
       const {error}=await sb.auth.signInWithOAuth({
         provider:"google",
-        options:{redirectTo:window.location.href}
+        options:{redirectTo:"https://highenough.in"}
       });
       if(error){
         // "provider is not enabled" = Google OAuth not configured in Supabase dashboard
@@ -374,11 +374,6 @@ function ProfileSetup({user,T,onDone}){
     if(!cleanHd) cleanHd=nm.trim().split(" ")[0].toLowerCase().replace(/[^a-z0-9]/g,"");
     const finalHandle="@"+cleanHd;
 
-    // ⚠️  account_type is stored in localStorage because the Supabase
-    // 'profiles' table may not have this column yet.
-    // To add it: run in Supabase SQL editor:
-    //   ALTER TABLE profiles ADD COLUMN IF NOT EXISTS account_type text DEFAULT 'personal';
-    // Once added, you can include account_type in dbProfile below.
     try{
       localStorage.setItem(`he_actype_${user.id}`,acType);
     }catch{}
@@ -396,6 +391,7 @@ function ProfileSetup({user,T,onDone}){
       links:{},
       email:user.email||"",
       short_id:sid,
+      account_type:acType,
       followers_count:0,
       following_count:0,
       created_at:new Date().toISOString()
@@ -1735,7 +1731,7 @@ function App(){
   async function handleSaveProfile(u){
     const updated={...profile,...u};
     // Strip _pref fields (those are local prefs not DB fields)
-    const dbFields={id:updated.id,name:updated.name,handle:updated.handle,bio:updated.bio,color:updated.color,age:updated.age,photo:updated.photo,interests:updated.interests,links:updated.links,email:updated.email,short_id:updated.short_id,followers_count:updated.followers_count,following_count:updated.following_count,created_at:updated.created_at||new Date().toISOString()};
+    const dbFields={id:updated.id,name:updated.name,handle:updated.handle,bio:updated.bio,color:updated.color,age:updated.age,photo:updated.photo,interests:updated.interests,links:updated.links,email:updated.email,short_id:updated.short_id,account_type:updated.account_type||"personal",followers_count:updated.followers_count,following_count:updated.following_count,created_at:updated.created_at||new Date().toISOString()};
     const {error}=await sb.from("profiles").upsert(dbFields);
     if(!error){setProfile(updated);setProfiles(prev=>prev.map(p=>p.id===updated.id?{...p,...updated}:p));pop("Profile saved");}
     else{console.error("Save error:",error);pop("Could not save. Try again.");}
@@ -2050,3 +2046,4 @@ window.addEventListener('beforeinstallprompt',e=>{
 </script>
 </body>
 </html>
+
