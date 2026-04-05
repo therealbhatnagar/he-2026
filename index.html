@@ -251,7 +251,13 @@ function Overlay({onBg,children,T,wide,bottom}){
 
 function SRow({label,desc,val,onChange,T}){return<div style={{display:"flex",alignItems:"center",gap:12,padding:"3px 0"}}><div style={{flex:1}}><div style={{fontSize:14,color:T.txt,fontWeight:500}}>{label}</div>{desc&&<div style={{fontSize:12,color:T.mu,marginTop:1}}>{desc}</div>}</div><Pill on={val} onChange={onChange} color={AC}/></div>;}
 
-function loadScript(src,cb){if(src.includes("jsQR")&&window.jsQR)return cb();if(src.includes("qrious")&&window.QRious)return cb();const s=document.createElement("script");s.src=src;s.onload=cb;document.head.appendChild(s);}
+function loadScript(src,cb){
+  if(src.includes("jsQR")&&window.jsQR)return cb();
+  if(src.includes("qrious")&&window.QRious)return cb();
+  const s=document.createElement("script");s.src=src;s.onload=cb;
+  s.onerror=()=>console.error("Failed to load:",src);
+  document.head.appendChild(s);
+}
 
 /* ── AUTH SCREEN ── */
 function AuthScreen({T,onAuthed,authError,onClearAuthError}){
@@ -1071,6 +1077,49 @@ function SearchTab({profiles,myId,following,T,onView,onFollow,onUnfollow,onRate}
   const [q,setQ]=useState("");
   const [filter,setFilter]=useState("all");
   const [focused,setFocused]=useState(false);
+  const [scanning,setScanning]=useState(false);
+  const videoRef=useRef(null);
+  const streamRef=useRef(null);
+
+  async function startScan(){
+    setScanning(true);
+    try{
+      const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}});
+      streamRef.current=stream;
+      setTimeout(()=>{if(videoRef.current){videoRef.current.srcObject=stream;videoRef.current.play();}},100);
+      loadScript("https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js",()=>{
+        const canvas=document.createElement("canvas");
+        const ctx=canvas.getContext("2d");
+        let active=true;
+        function tick(){
+          if(!active)return;
+          const v=videoRef.current;
+          if(v&&v.readyState===v.HAVE_ENOUGH_DATA){
+            canvas.width=v.videoWidth;canvas.height=v.videoHeight;
+            ctx.drawImage(v,0,0);
+            const img=ctx.getImageData(0,0,canvas.width,canvas.height);
+            const code=window.jsQR&&window.jsQR(img.data,img.width,img.height);
+            if(code?.data){
+              active=false;stopScan();
+              const url=code.data;
+              const m=url.match(/\?([A-Z0-9]{5,8})/i)||url.match(/\/u\/([A-Z0-9]{5,8})/i)||url.match(/[?&]u=([A-Z0-9]{5,8})/i);
+              if(m)window.location.href=url;
+              else alert("Not a HighEnough QR code");
+              return;
+            }
+          }
+          requestAnimationFrame(tick);
+        }
+        requestAnimationFrame(tick);
+      });
+    }catch(e){setScanning(false);alert("Camera unavailable");}
+  }
+  function stopScan(){
+    streamRef.current?.getTracks().forEach(t=>t.stop());
+    streamRef.current=null;
+    setScanning(false);
+  }
+
   const allSorted=[...profiles].sort((a,b)=>a.name.localeCompare(b.name));
   const filtered=filter==="all"?allSorted:allSorted.filter(p=>(p.account_type||"personal")===filter);
   const results=q.trim().length>0?filtered.filter(p=>p.id!==myId&&(
@@ -1080,12 +1129,22 @@ function SearchTab({profiles,myId,following,T,onView,onFollow,onUnfollow,onRate}
   )):[];
   const suggested=filtered.filter(p=>p.id!==myId&&!following.includes(p.id)).sort((a,b)=>a.name.localeCompare(b.name)).slice(0,20);
 
+  if(scanning) return<div style={{position:"fixed",inset:0,zIndex:500,background:"#000",display:"flex",flexDirection:"column"}}>
+    <div style={{padding:"14px 16px",display:"flex",alignItems:"center",gap:12,background:"rgba(0,0,0,.7)"}}>
+      <button onClick={stopScan} style={{background:"none",color:"#fff",fontSize:14,fontWeight:600,padding:"8px 16px",border:"1px solid rgba(255,255,255,.3)",borderRadius:9}}>✕ Cancel</button>
+      <div style={{flex:1,textAlign:"center",color:"#fff",fontWeight:600,fontSize:14}}>Scan QR Code</div>
+    </div>
+    <video ref={videoRef} style={{flex:1,objectFit:"cover"}} playsInline muted/>
+    <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",width:220,height:220,border:"2px solid #7b72e9",borderRadius:16,boxShadow:"0 0 0 9999px rgba(0,0,0,.5)"}}/>
+  </div>;
+
   return<div>
     <div style={{padding:"12px 14px 8px",position:"sticky",top:56,background:`${T.bg}f0`,zIndex:10,backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)"}}>
       <div style={{display:"flex",alignItems:"center",background:T.faint,borderRadius:14,padding:"12px 16px",gap:10,border:`1.5px solid ${focused?AC+"60":T.b1}`,transition:"border-color .2s",marginBottom:10,boxShadow:focused?`0 0 0 3px ${AC}14`:"none"}}>
         <SearchIcon active={false}/>
         <input value={q} onChange={e=>setQ(e.target.value)} onFocus={()=>setFocused(true)} onBlur={()=>setFocused(false)} placeholder="Search name, @handle or #ID…" style={{flex:1,background:"none",border:"none",outline:"none",color:T.txt,fontSize:15,fontFamily:"'Inter',sans-serif"}}/>
-        {q&&<button onClick={()=>setQ("")} style={{background:"none",color:T.mu,display:"flex",alignItems:"center"}}><XIcon/></button>}
+        {q?<button onClick={()=>setQ("")} style={{background:"none",color:T.mu,display:"flex",alignItems:"center"}}><XIcon/></button>
+          :<button onClick={startScan} title="Scan QR" style={{background:"none",color:T.mu,display:"flex",alignItems:"center",padding:"2px"}}><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="3" height="3"/><rect x="19" y="14" width="2" height="2"/><rect x="14" y="19" width="2" height="2"/><rect x="18" y="18" width="3" height="3" rx=".5"/></svg></button>}
       </div>
       <div style={{display:"flex",gap:6}}>
         {[["all","🌐 All"],["personal","👤 People"],["business","🏢 Business"]].map(([id,label])=>
@@ -2264,7 +2323,12 @@ function App(){
   // handleAuthed — now a no-op. All auth transitions go through onAuthStateChange('SIGNED_IN').
   // This guarantees loadProfile only runs after the session is fully committed in Supabase's
   // internal state, so DB queries always carry the auth token (prevents anonymous RLS blocks).
-  async function handleAuthed(user){}
+  async function handleAuthed(user){
+    if(!user?.id)return;
+    profileLoadingRef.current=true; // prevent SIGNED_IN event double-load
+    setAuthUser(user);
+    loadProfile(user.id,null);
+  }
   async function handleProfileCreated(p){
     setProfile(p);
     saveSavedAccount(p); // save for welcome-back screen
@@ -2353,14 +2417,33 @@ function App(){
 
   async function handleSubmit(tid,sc2){
     const isEdit=!!rateT?.existing;
-    await sb.from("ratings").upsert({rater_id:sc2.raterId,target_id:tid,rater_name:profile.name,vibe:sc2.vibe,humor:sc2.humor,kindness:sc2.kindness,rizz:sc2.rizz,loyalty:sc2.loyalty,drip:sc2.drip,updated_at:new Date().toISOString()},{onConflict:"rater_id,target_id"});
-    const newR={raterId:sc2.raterId,raterName:profile.name,vibe:sc2.vibe,humor:sc2.humor,kindness:sc2.kindness,rizz:sc2.rizz,loyalty:sc2.loyalty,drip:sc2.drip,ts:sc2.ts};
-    setProfiles(prev=>prev.map(p=>{if(p.id!==tid)return p;const ex=p.ratings?.find(r=>r.raterId===sc2.raterId);return{...p,ratings:ex?p.ratings.map(r=>r.raterId===sc2.raterId?newR:r):[...(p.ratings||[]),newR]};}));
-    // Calculate score given for the notification
-    const cats=getCats(rateT?.profile||{});
-    const scoreGiven=Math.round(cats.reduce((s,c)=>s+(sc2[c.id]||0),0)/cats.length);
-    await sb.from("notifications").insert({target_id:tid,actor_id:profile.id,actor_name:profile.name,type:isEdit?"edit":"rating",text:isEdit?"updated their rating of you":"rated you",score:scoreGiven,read:false,created_at:new Date().toISOString()});
-    setRateT(null);pop(isEdit?"Rating updated ✓":"Rating submitted ✓");
+    try{
+      const {error}=await sb.from("ratings").upsert(
+        {rater_id:sc2.raterId,target_id:tid,rater_name:profile.name,vibe:sc2.vibe,humor:sc2.humor,kindness:sc2.kindness,rizz:sc2.rizz,loyalty:sc2.loyalty,drip:sc2.drip,updated_at:new Date().toISOString()},
+        {onConflict:"rater_id,target_id"}
+      );
+      if(error){console.error("Rating error:",error);pop("Failed to save. Try again.");return;}
+      const ts=Date.now();
+      const newR={raterId:sc2.raterId,raterName:profile.name,vibe:sc2.vibe,humor:sc2.humor,kindness:sc2.kindness,rizz:sc2.rizz,loyalty:sc2.loyalty,drip:sc2.drip,ts};
+      setProfiles(prev=>prev.map(p=>{
+        if(p.id!==tid)return p;
+        const ex=p.ratings?.find(r=>r.raterId===sc2.raterId);
+        return{...p,ratings:ex?p.ratings.map(r=>r.raterId===sc2.raterId?newR:r):[...(p.ratings||[]),newR]};
+      }));
+      setViewT(prev=>{
+        if(!prev||prev.id!==tid)return prev;
+        const ex=prev.ratings?.find(r=>r.raterId===sc2.raterId);
+        return{...prev,ratings:ex?prev.ratings.map(r=>r.raterId===sc2.raterId?newR:r):[...(prev.ratings||[]),newR]};
+      });
+      const cats=getCats(rateT?.profile||{});
+      const scoreGiven=Math.round(cats.reduce((s,c)=>s+(sc2[c.id]||0),0)/cats.length);
+      await sb.from("notifications").insert({target_id:tid,actor_id:profile.id,actor_name:profile.name,type:isEdit?"edit":"rating",text:isEdit?"updated their rating of you":"rated you",score:scoreGiven,read:false,created_at:new Date().toISOString()});
+      setRateT(null);
+      pop(isEdit?"Rating updated ✓":"Rating submitted ✓");
+    }catch(e){
+      console.error("Submit error:",e);
+      pop("Something went wrong. Try again.");
+    }
   }
 
   async function handleFollow(uid){
