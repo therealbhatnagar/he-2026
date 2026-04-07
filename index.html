@@ -1969,45 +1969,113 @@ function ScoreCardModal({profile,T,onClose}){
     const W=900,H=isBiz?1080:1240;
     canvas.width=W;canvas.height=H;
 
+    // ── Shared helper: draw clean white card shell ──
+    function drawShell(label){
+      // White background
+      ctx.fillStyle="#f5f5fa";ctx.fillRect(0,0,W,H);
+      // Top accent bar (tier gradient)
+      const topBar=ctx.createLinearGradient(0,0,W,0);topBar.addColorStop(0,t.color);topBar.addColorStop(1,t.grad[1]);ctx.fillStyle=topBar;ctx.fillRect(0,0,W,10);
+      // White card with soft shadow
+      ctx.fillStyle="#ffffff";ctx.shadowColor="rgba(0,0,0,.09)";ctx.shadowBlur=32;ctx.shadowOffsetY=6;ctx.beginPath();ctx.roundRect(36,36,W-72,H-72,22);ctx.fill();ctx.shadowBlur=0;ctx.shadowOffsetY=0;
+      // Card border
+      ctx.strokeStyle=t.color+"28";ctx.lineWidth=1.5;ctx.beginPath();ctx.roundRect(36,36,W-72,H-72,22);ctx.stroke();
+      // Logo — top-left
+      ctx.textAlign="left";ctx.font="800 34px Inter,Arial,sans-serif";ctx.fillStyle="#111126";
+      const hiW=ctx.measureText("High").width;ctx.fillText("High",76,100);
+      ctx.font="300 34px Inter,Arial,sans-serif";ctx.fillStyle="#7b72e9";ctx.fillText("Enough",76+hiW+2,100);
+      // Subtitle badge — top-right
+      ctx.fillStyle=t.color+"14";ctx.strokeStyle=t.color+"40";ctx.lineWidth=1;ctx.beginPath();ctx.roundRect(W-210,72,134,32,7);ctx.fill();ctx.stroke();
+      ctx.textAlign="center";ctx.font="600 12px Inter,Arial,sans-serif";ctx.fillStyle=t.color;ctx.fillText(label,W-143,93);
+      // Divider
+      ctx.strokeStyle="#e6e6f0";ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(76,118);ctx.lineTo(W-76,118);ctx.stroke();
+    }
+
+    // ── Shared: avatar circle ──
+    function drawAvatar(aX,aY,aR){
+      ctx.beginPath();ctx.arc(aX,aY,aR,0,Math.PI*2);ctx.fillStyle=profile.color+"18";ctx.fill();
+      ctx.strokeStyle=profile.color+"70";ctx.lineWidth=3;ctx.stroke();
+      ctx.font=`bold ${aR*.82}px Inter,Arial`;ctx.fillStyle=profile.color;ctx.textAlign="center";ctx.fillText(ini(profile.name),aX,aY+aR*.3);
+    }
+
+    // ── Shared: name + handle ──
+    function drawName(y1,y2){
+      ctx.textAlign="center";ctx.font="bold 46px Inter,Arial,sans-serif";ctx.fillStyle="#111126";ctx.fillText(profile.name,W/2,y1);
+      ctx.font="500 20px 'JetBrains Mono',monospace";ctx.fillStyle="#8888a8";ctx.fillText(profile.handle||"",W/2,y2);
+    }
+
+    // ── Shared: big score number ──
+    function drawScore(y){
+      ctx.textAlign="center";ctx.font="900 120px 'JetBrains Mono',monospace";
+      const sg=ctx.createLinearGradient(W/2-140,y-100,W/2+140,y);sg.addColorStop(0,t.grad[0]);sg.addColorStop(1,t.grad[1]);
+      ctx.fillStyle=sg;ctx.fillText(sc!=null?fmtScore(sc):"—",W/2,y);
+    }
+
+    // ── Shared: tier badge ──
+    function drawTier(y){
+      const tierLabel=`${t.emoji}  ${t.label.toUpperCase()}`;
+      ctx.textAlign="center";ctx.font="700 22px Inter,Arial,sans-serif";
+      const tlW=ctx.measureText(tierLabel).width+40,tlX=W/2-tlW/2;
+      ctx.fillStyle=t.color+"16";ctx.strokeStyle=t.color+"45";ctx.lineWidth=1;
+      ctx.beginPath();ctx.roundRect(tlX,y,tlW,40,9);ctx.fill();ctx.stroke();
+      ctx.fillStyle=t.color;ctx.fillText(tierLabel,W/2,y+27);
+    }
+
+    // ── Shared: category bars ──
+    function drawBars(bY){
+      const bH=8,bGap=12,bW=(W-160-(cats.length-1)*bGap)/cats.length,startX=80;
+      cats.forEach((c,i)=>{
+        const v=cAvg(profile,c.id)/100,x=startX+i*(bW+bGap);
+        ctx.fillStyle="#ebebf4";ctx.beginPath();ctx.roundRect(x,bY,bW,bH,4);ctx.fill();
+        if(v>0){
+          const bg2=ctx.createLinearGradient(x,0,x+bW,0);bg2.addColorStop(0,profile.color+"cc");bg2.addColorStop(1,t.color+"99");
+          ctx.fillStyle=bg2;ctx.beginPath();ctx.roundRect(x,bY,bW*v,bH,4);ctx.fill();
+        }
+        ctx.font="600 18px Inter,Arial";ctx.fillStyle="#555570";ctx.textAlign="center";ctx.fillText(c.emoji,x+bW/2,bY+34);
+        ctx.font="500 12px Inter,Arial";ctx.fillStyle="#9090b0";ctx.fillText(c.label,x+bW/2,bY+52);
+      });
+    }
+
+    // ── Shared: UID row ──
+    function drawUID(y1,y2){
+      ctx.textAlign="center";ctx.font="500 12px 'JetBrains Mono',monospace";ctx.fillStyle="#aaaacc";ctx.fillText("UNIQUE ID",W/2,y1);
+      ctx.font="800 38px 'JetBrains Mono',monospace";ctx.fillStyle=t.color;ctx.fillText(`#${profile.short_id||shortId(profile.id)}`,W/2,y2);
+    }
+
+    // ── Shared: footer box ──
+    function drawFooter(fy,sub){
+      ctx.fillStyle="#f0f0f8";ctx.strokeStyle="#e2e2ee";ctx.lineWidth=1;ctx.beginPath();ctx.roundRect(76,fy,W-152,120,14);ctx.fill();ctx.stroke();
+      ctx.textAlign="center";ctx.font="800 28px Inter,Arial,sans-serif";ctx.fillStyle="#111126";
+      const hiF=ctx.measureText("High").width;const lsx=W/2-(hiF+ctx.measureText("Enough").width+4)/2;
+      ctx.textAlign="left";ctx.fillText("High",lsx,fy+50);
+      ctx.font="300 28px Inter,Arial,sans-serif";ctx.fillStyle="#7b72e9";ctx.fillText("Enough",lsx+hiF+4,fy+50);
+      ctx.textAlign="center";ctx.font="500 13px 'JetBrains Mono',monospace";ctx.fillStyle="#9090b0";ctx.fillText(sub,W/2,fy+78);
+      ctx.font="500 11px 'JetBrains Mono',monospace";ctx.fillStyle=t.color+"aa";ctx.fillText(profileUrl,W/2,fy+102);
+    }
+
     if(isBiz){
-      ctx.fillStyle="#f8f8fc";ctx.fillRect(0,0,W,H);
-      const topBar=ctx.createLinearGradient(0,0,W,0);topBar.addColorStop(0,t.color);topBar.addColorStop(1,t.grad[1]);ctx.fillStyle=topBar;ctx.fillRect(0,0,W,12);
-      ctx.fillStyle="#ffffff";ctx.shadowColor="rgba(0,0,0,.08)";ctx.shadowBlur=30;ctx.shadowOffsetY=4;ctx.beginPath();ctx.roundRect(40,40,W-80,H-80,24);ctx.fill();ctx.shadowBlur=0;ctx.shadowOffsetY=0;
-      ctx.strokeStyle=t.color+"30";ctx.lineWidth=1.5;ctx.beginPath();ctx.roundRect(40,40,W-80,H-80,24);ctx.stroke();
-      ctx.textAlign="left";ctx.font="800 36px Inter,Arial,sans-serif";ctx.fillStyle="#18182c";
-      const hiW=ctx.measureText("High").width;ctx.fillText("High",80,106);
-      ctx.font="300 36px Inter,Arial,sans-serif";ctx.fillStyle="#7b72e9";ctx.fillText("Enough",80+hiW+2,106);
-      ctx.font="500 14px Inter,Arial,sans-serif";ctx.fillStyle="#aaaacc";ctx.fillText("Business Review Card",80,130);
-      ctx.fillStyle=t.color+"18";ctx.strokeStyle=t.color+"50";ctx.lineWidth=1;ctx.beginPath();ctx.roundRect(W-220,76,140,36,8);ctx.fill();ctx.stroke();
-      ctx.textAlign="center";ctx.font="700 14px Inter,Arial,sans-serif";ctx.fillStyle=t.color;ctx.fillText(`🏢 HighEnough for Business`,W-150,99);
-      ctx.strokeStyle="#e8e8f0";ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(80,152);ctx.lineTo(W-80,152);ctx.stroke();
-      const aX=W/2,aY=270,aR=80;
-      ctx.beginPath();ctx.arc(aX,aY,aR,0,Math.PI*2);ctx.fillStyle=profile.color+"15";ctx.fill();ctx.strokeStyle=profile.color+"60";ctx.lineWidth=3;ctx.stroke();
-      ctx.font=`bold ${aR*.8}px Inter,Arial`;ctx.fillStyle=profile.color;ctx.textAlign="center";ctx.fillText(ini(profile.name),aX,aY+aR*.28);
-      ctx.font="bold 48px Inter,Arial,sans-serif";ctx.fillStyle="#18182c";ctx.fillText(profile.name,W/2,400);
-      ctx.font="500 20px 'JetBrains Mono',monospace";ctx.fillStyle="#9090b0";ctx.fillText(profile.handle,W/2,432);
-      const scoreGrad=ctx.createLinearGradient(W/2-120,450,W/2+120,450);scoreGrad.addColorStop(0,t.grad[0]);scoreGrad.addColorStop(1,t.grad[1]);ctx.fillStyle=scoreGrad;
-      ctx.font="900 110px 'JetBrains Mono',monospace";ctx.fillText(sc!=null?fmtScore(sc):"—",W/2,550);
-      ctx.font="600 22px Inter,Arial,sans-serif";ctx.fillStyle="#9090b0";ctx.fillText("Overall Score",W/2,582);
-      const bGap=14,bW=(W-160-(cats.length-1)*bGap)/cats.length,bY=630,bH=8,startX=80;
-      cats.forEach((c,i)=>{const v=cAvg(profile,c.id)/100,x=startX+i*(bW+bGap);ctx.fillStyle="#eeeef5";ctx.beginPath();ctx.roundRect(x,bY,bW,bH,4);ctx.fill();if(v>0){ctx.fillStyle=t.color+"cc";ctx.beginPath();ctx.roundRect(x,bY,bW*v,bH,4);ctx.fill();}ctx.font="600 17px Inter,Arial";ctx.fillStyle="#8888aa";ctx.textAlign="center";ctx.fillText(c.emoji,x+bW/2,bY+34);ctx.font="500 12px Inter,Arial";ctx.fillStyle="#aaaacc";ctx.fillText(c.label,x+bW/2,bY+52);});
-      ctx.textAlign="center";ctx.font="500 13px 'JetBrains Mono',monospace";ctx.fillStyle="#9090b0";ctx.fillText("UNIQUE ID",W/2,738);
-      ctx.font="800 32px 'JetBrains Mono',monospace";ctx.fillStyle=t.color;ctx.shadowColor=t.color;ctx.shadowBlur=14;ctx.fillText(`#${profile.short_id||shortId(profile.id)}`,W/2,780);ctx.shadowBlur=0;
-      ctx.fillStyle="#f0f0f8";ctx.strokeStyle="#ddddf0";ctx.lineWidth=1;ctx.beginPath();ctx.roundRect(80,810,W-160,130,14);ctx.fill();ctx.stroke();
-      ctx.font="800 30px Inter,Arial,sans-serif";ctx.fillStyle="#18182c";const hiMW2=ctx.measureText("High").width;ctx.font="300 30px Inter,Arial,sans-serif";ctx.fillStyle="#7b72e9";const enMW2=ctx.measureText("Enough").width;const logoStartX2=W/2-(hiMW2+enMW2+4)/2;ctx.textAlign="left";ctx.font="800 30px Inter,Arial,sans-serif";ctx.fillStyle="#18182c";ctx.fillText("High",logoStartX2,860);ctx.font="300 30px Inter,Arial,sans-serif";ctx.fillStyle="#7b72e9";ctx.fillText("Enough",logoStartX2+hiMW2+4,860);ctx.textAlign="center";ctx.font="500 14px 'JetBrains Mono',monospace";ctx.fillStyle="#9090b0";ctx.fillText("HighEnough.in  ·  for Business",W/2,888);ctx.font="500 12px 'JetBrains Mono',monospace";ctx.fillStyle=t.color+"99";ctx.fillText(profileUrl,W/2,912);
+      drawShell("🏢 Business Review");
+      drawAvatar(W/2,252,78);
+      drawName(378,410);
+      // score
+      ctx.textAlign="center";ctx.font="900 108px 'JetBrains Mono',monospace";
+      const sg=ctx.createLinearGradient(W/2-120,430,W/2+120,540);sg.addColorStop(0,t.grad[0]);sg.addColorStop(1,t.grad[1]);ctx.fillStyle=sg;ctx.fillText(sc!=null?fmtScore(sc):"—",W/2,540);
+      ctx.font="600 18px Inter,Arial,sans-serif";ctx.fillStyle="#9090b0";ctx.fillText("Overall Score",W/2,568);
+      drawTier(586);
+      drawBars(644);
+      drawUID(730,766);
+      drawFooter(796,"HighEnough.in  ·  for Business");
     } else {
-      const bg=ctx.createLinearGradient(0,0,W,H);bg.addColorStop(0,"#0b0a1a");bg.addColorStop(.5,"#0e0d1f");bg.addColorStop(1,"#09090f");ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
-      const glow=ctx.createRadialGradient(W/2,H*0.4,0,W/2,H*0.4,420);glow.addColorStop(0,t.color+"22");glow.addColorStop(1,"transparent");ctx.fillStyle=glow;ctx.fillRect(0,0,W,H);
-      ctx.strokeStyle=t.color+"50";ctx.lineWidth=1.5;const m=48;ctx.beginPath();ctx.roundRect(m,m,W-m*2,H-m*2,36);ctx.stroke();ctx.fillStyle=t.color+"08";ctx.beginPath();ctx.roundRect(m,m,W-m*2,H-m*2,36);ctx.fill();
-      ctx.textAlign="left";ctx.font="800 38px Inter,Arial,sans-serif";ctx.fillStyle="#f0f0ff";const logoHiW=ctx.measureText("High").width;ctx.fillText("High",90,130);ctx.font="300 38px Inter,Arial,sans-serif";ctx.fillStyle="#7b72e9";ctx.fillText("Enough",90+logoHiW+2,130);ctx.font="500 18px Inter,Arial,sans-serif";ctx.fillStyle="#3a3a68";ctx.fillText("Rate · Rise · Repeat",90,160);ctx.strokeStyle=t.color+"25";ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(90,182);ctx.lineTo(W-90,182);ctx.stroke();
-      const aX=W/2,aY=290,aR=86;const aGlow=ctx.createRadialGradient(aX,aY,aR-10,aX,aY,aR+30);aGlow.addColorStop(0,t.color+"50");aGlow.addColorStop(1,"transparent");ctx.fillStyle=aGlow;ctx.beginPath();ctx.arc(aX,aY,aR+30,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.arc(aX,aY,aR,0,Math.PI*2);ctx.fillStyle=profile.color+"22";ctx.fill();ctx.strokeStyle=profile.color+"80";ctx.lineWidth=3;ctx.stroke();ctx.font=`bold ${aR*.85}px Inter,Arial`;ctx.fillStyle=profile.color;ctx.textAlign="center";ctx.fillText(ini(profile.name),aX,aY+aR*.3);
-      ctx.font="bold 50px Inter,Arial,sans-serif";ctx.fillStyle="#eeeeff";ctx.fillText(profile.name,W/2,440);ctx.font="500 22px 'JetBrains Mono',monospace";ctx.fillStyle="#4a4a78";ctx.fillText(profile.handle,W/2,472);
-      ctx.font="900 130px 'JetBrains Mono',monospace";const gradient=ctx.createLinearGradient(W/2-150,500,W/2+150,500);gradient.addColorStop(0,t.grad[0]);gradient.addColorStop(1,t.grad[1]);ctx.fillStyle=gradient;ctx.fillText(sc!=null?fmtScore(sc):"—",W/2,590);
-      const tierLabel=`${t.emoji}  ${t.label.toUpperCase()}`;ctx.font="700 26px Inter,Arial,sans-serif";const tlW=ctx.measureText(tierLabel).width+40;const tlX=W/2-tlW/2;ctx.fillStyle=t.color+"22";ctx.strokeStyle=t.color+"50";ctx.lineWidth=1;ctx.beginPath();ctx.roundRect(tlX,608,tlW,44,10);ctx.fill();ctx.stroke();ctx.fillStyle=t.color;ctx.fillText(tierLabel,W/2,637);
-      const bY=720,bH=7,bGap=11,bW2=(W-180)/cats.length-bGap,startX2=90;cats.forEach((c,i)=>{const v=cAvg(profile,c.id)/100,x=startX2+i*(bW2+bGap);ctx.fillStyle="#1a1a30";ctx.beginPath();ctx.roundRect(x,bY,bW2,bH,4);ctx.fill();if(v>0){const bg2=ctx.createLinearGradient(x,0,x+bW2,0);bg2.addColorStop(0,profile.color+"dd");bg2.addColorStop(1,t.color+"99");ctx.fillStyle=bg2;ctx.beginPath();ctx.roundRect(x,bY,bW2*v,bH,4);ctx.fill();}ctx.font="600 20px Inter,Arial";ctx.fillStyle="#4a4a78";ctx.textAlign="center";ctx.fillText(c.emoji,x+bW2/2,bY+36);ctx.font="500 14px Inter,Arial";ctx.fillStyle="#38385e";ctx.fillText(c.label,x+bW2/2,bY+56);});
-      ctx.strokeStyle=t.color+"20";ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(90,820);ctx.lineTo(W-90,820);ctx.stroke();
-      ctx.textAlign="center";ctx.font="600 16px 'JetBrains Mono',monospace";ctx.fillStyle="#3a3a5a";ctx.fillText("UNIQUE ID",W/2,862);ctx.font="800 52px 'JetBrains Mono',monospace";ctx.fillStyle=t.color;ctx.shadowColor=t.color;ctx.shadowBlur=24;ctx.fillText(`#${profile.short_id||shortId(profile.id)}`,W/2,930);ctx.shadowBlur=0;
-      ctx.fillStyle="#1c1c32";ctx.beginPath();ctx.roundRect(90,968,W-180,160,18);ctx.fill();ctx.strokeStyle=t.color+"28";ctx.lineWidth=1;ctx.stroke();ctx.font="800 34px Inter,Arial,sans-serif";ctx.fillStyle="#f0f0ff";const ctaHiW=ctx.measureText("High").width;ctx.font="300 34px Inter,Arial,sans-serif";ctx.fillStyle="#7b72e9";const ctaEnW=ctx.measureText("Enough").width;const ctaStartX=W/2-(ctaHiW+ctaEnW+4)/2;ctx.textAlign="left";ctx.font="800 34px Inter,Arial,sans-serif";ctx.fillStyle="#f0f0ff";ctx.fillText("High",ctaStartX,1022);ctx.font="300 34px Inter,Arial,sans-serif";ctx.fillStyle="#7b72e9";ctx.fillText("Enough",ctaStartX+ctaHiW+4,1022);ctx.textAlign="center";ctx.font="500 16px 'JetBrains Mono',monospace";ctx.fillStyle="#5a5a80";ctx.fillText("highenough.in",W/2,1056);ctx.font="500 13px 'JetBrains Mono',monospace";ctx.fillStyle=t.color+"80";ctx.fillText(profileUrl,W/2,1086);
+      drawShell("⭐ Personal Score Card");
+      drawAvatar(W/2,262,82);
+      drawName(396,428);
+      drawScore(560);
+      ctx.font="600 18px Inter,Arial,sans-serif";ctx.fillStyle="#9090b0";ctx.textAlign="center";ctx.fillText("Overall Score",W/2,590);
+      drawTier(610);
+      drawBars(672);
+      // divider
+      ctx.strokeStyle="#e6e6f0";ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(80,750);ctx.lineTo(W-80,750);ctx.stroke();
+      drawUID(784,822);
+      drawFooter(862,"highenough.in  ·  Rate · Rise · Repeat");
     }
   },[profile]);
 
