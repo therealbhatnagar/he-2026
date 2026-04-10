@@ -31,8 +31,11 @@
 <meta name="twitter:title" content="HighEnough"/>
 <meta name="twitter:description" content="Rate friends. Climb tiers. Own your rep."/>
 <meta name="twitter:image" content="https://highenough.in/icon.png"/>
-<!-- Inline SVG favicon (browsers that support SVG favicons) -->
+<link rel="manifest" href="data:application/json;charset=utf-8,%7B%22name%22%3A%22HighEnough%22%2C%22short_name%22%3A%22HighEnough%22%2C%22description%22%3A%22Rate%2C%20Rise%2C%20Repeat%22%2C%22start_url%22%3A%22%2F%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%2309090f%22%2C%22theme_color%22%3A%22%2309090f%22%2C%22orientation%22%3A%22portrait%22%2C%22icons%22%3A%5B%7B%22src%22%3A%22data%3Aimage%2Fsvg%2Bxml%2C%253Csvg%2520xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%2520viewBox%3D'0%25200%2520100%2520100'%253E%253Crect%2520width%3D'100'%2520height%3D'100'%2520rx%3D'22'%2520fill%3D'%252309090f'%2F%253E%253Ctext%2520y%3D'.9em'%2520font-size%3D'70'%2520x%3D'10'%253E%25E2%2598%2581%253C%2Ftext%253E%253C%2Fsvg%253E%22%2C%22sizes%22%3A%22any%22%2C%22type%22%3A%22image%2Fsvg%2Bxml%22%7D%5D%7D"/>
+<!-- Inline SVG favicon -->
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%2309090f'/><text y='.85em' font-size='52' x='8' font-family='system-ui,sans-serif' font-weight='900' fill='%23f0f0ff'>Hi</text><text y='.85em' font-size='52' x='52' font-family='system-ui,sans-serif' font-weight='300' fill='%237b72e9'>E</text></svg>"/>
+<!-- Apple touch icon (inline SVG as data URI) -->
+<link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' rx='112' fill='%2309090f'/><text y='.82em' font-size='260' x='40' font-family='system-ui,sans-serif' font-weight='900' fill='%23f0f0ff'>Hi</text><text y='.82em' font-size='260' x='268' font-family='system-ui,sans-serif' font-weight='300' fill='%237b72e9'>E</text></svg>"/>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -85,29 +88,11 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON, {
     persistSession: true,
     autoRefreshToken: true,
     detectSessionInUrl: true,
-    storageKey: "highenough_auth",
-    storage: window.localStorage,
+    // DO NOT set storageKey — use Supabase default so sessions are always found on reload
   }
 });
 
-/* ── FAST SESSION PRE-CHECK ──────────────────────────────────────────────────
-   Read the session token from localStorage BEFORE React even mounts.
-   If a token exists, we know the user is (probably) logged in.
-   This lets us keep the splash screen up confidently while Supabase confirms,
-   instead of flashing the login screen for 2-3 seconds.
-   Key must match storageKey set in the Supabase client above.
-────────────────────────────────────────────────────────────────────────────*/
-const HE_HAS_SESSION=(()=>{
-  try{
-    const raw=localStorage.getItem("highenough_auth");
-    if(!raw)return false;
-    const parsed=JSON.parse(raw);
-    // Token exists and is not obviously expired
-    const expiresAt=parsed?.expires_at||parsed?.expiresAt||0;
-    if(expiresAt&&expiresAt*1000<Date.now())return false; // expired
-    return!!parsed?.access_token||!!parsed?.currentSession?.access_token;
-  }catch{return false;}
-})();
+/* ── SAVED ACCOUNT HELPERS (for "Welcome back" screen) ── */
 const SAVED_ACCT_KEY="he_saved_account";
 function saveSavedAccount(profile){
   try{
@@ -126,6 +111,9 @@ function saveSavedAccount(profile){
 }
 function getSavedAccount(){
   try{const v=localStorage.getItem(SAVED_ACCT_KEY);return v?JSON.parse(v):null;}catch{return null;}
+}
+function clearSavedAccount(){
+  try{localStorage.removeItem(SAVED_ACCT_KEY);}catch{}
 }
 
 
@@ -174,66 +162,61 @@ const avg=a=>a.length?a.reduce((s,v)=>s+v,0)/a.length:0;
 const ini=n=>(n||"?").split(" ").map(w=>w[0]).join("").toUpperCase().slice(0,2);
 const ago=ts=>{const d=Date.now()-ts,m=Math.floor(d/60000),h=Math.floor(d/3600000),dy=Math.floor(d/86400000);return dy>0?`${dy}d`:h>0?`${h}h`:m>0?`${m}m`:"now";};
 const shortId=id=>id?id.toString().replace(/-/g,"").toUpperCase().slice(0,6):"------";
-const pScore=p=>{
-  const r=p.ratings||[];
-  if(!r.length)return null;
-  const cats=getCats(p);
-  const avgRating=r.reduce((s,r2)=>s+avg(cats.map(c=>r2[c.id]||0)),0)/r.length;
-  return Math.round(avgRating*r.length*10);
-};
+const pScore=p=>{const r=p.ratings||[];if(!r.length)return null;const cats=getCats(p);return Math.round(r.reduce((s,r2)=>s+avg(cats.map(c=>r2[c.id]||0)),0));};
 const cAvg=(p,c)=>{const r=p.ratings||[];return r.length?Math.round(avg(r.map(r2=>r2[c]||0))):0;};
 const fmtScore=s=>{if(s==null)return"—";if(s>=10000)return`${(s/1000).toFixed(1)}K`;if(s>=1000)return`${(s/1000).toFixed(2)}K`;return String(s);};
 const fmtCount=n=>{if(!n)return"0";if(n>=1000000)return`${(n/1000000).toFixed(1)}M`;if(n>=1000)return`${(n/1000).toFixed(1)}K`;return String(n);};
 const TIERS=[
-  {label:"Ghost",      emoji:"👤",min:0,    max:0,     color:"#4c5266",grad:["#3e4257","#4c5266"],glow:"#4c526618"},
-  {label:"Spark",      emoji:"⚡",min:1,    max:79,    color:"#7a8098",grad:["#636780","#7a8098"],glow:"#7a809820"},
-  {label:"Ember",      emoji:"🔥",min:80,   max:249,   color:"#a07840",grad:["#8a6230","#c49050"],glow:"#a0784028"},
-  {label:"Blaze",      emoji:"💥",min:250,  max:599,   color:"#b84e48",grad:["#9a3840","#cc6860"],glow:"#b84e4828"},
-  {label:"Nova",       emoji:"🌌",min:600,  max:1299,  color:"#7c56c0",grad:["#6340a8","#9470d8"],glow:"#7c56c030"},
-  {label:"Stellar",    emoji:"🌠",min:1300, max:2799,  color:"#3878b0",grad:["#2860a0","#4a90c8"],glow:"#3878b030"},
-  {label:"Eclipse",    emoji:"🌑",min:2800, max:5499,  color:"#1a1a3a",grad:["#0d0d28","#2a2a52"],glow:"#1a1a3a30"},
-  {label:"Aura",       emoji:"✴️",min:5500, max:9999,  color:"#20a080",grad:["#108060","#30c0a0"],glow:"#20a08030"},
-  {label:"Myth",       emoji:"🐉",min:10000,max:19999, color:"#c04080",grad:["#a02060","#e060a0"],glow:"#c0408040"},
-  {label:"HighEnough", emoji:"👑",min:20000,max:Infinity,color:"#c09038",grad:["#a87828","#d8ac50"],glow:"#c0903840"},
+  {label:"Ghost",      emoji:"👤",min:0,   max:0,    color:"#4c5266",grad:["#3e4257","#4c5266"],glow:"#4c526618"},
+  {label:"Spark",      emoji:"⚡",min:1,   max:79,   color:"#7a8098",grad:["#636780","#7a8098"],glow:"#7a809820"},
+  {label:"Ember",      emoji:"🔥",min:80,  max:249,  color:"#a07840",grad:["#8a6230","#c49050"],glow:"#a0784028"},
+  {label:"Blaze",      emoji:"💥",min:250, max:599,  color:"#b84e48",grad:["#9a3840","#cc6860"],glow:"#b84e4828"},
+  {label:"Nova",       emoji:"🌌",min:600, max:1299, color:"#7c56c0",grad:["#6340a8","#9470d8"],glow:"#7c56c030"},
+  {label:"Stellar",    emoji:"🌠",min:1300,max:2799, color:"#3878b0",grad:["#2860a0","#4a90c8"],glow:"#3878b030"},
+  {label:"HighEnough", emoji:"👑",min:2800,max:Infinity,color:"#c09038",grad:["#a87828","#d8ac50"],glow:"#c0903840"},
 ];
-
-/* ── LEVEL SYSTEM (L1–L9 within each tier, non-linear) ──
-   Level thresholds use exponential curve so higher levels are significantly harder.
-   L1 = first 2% of range, L9 = last 25% of range.
-*/
-const LEVEL_BREAKPOINTS=[0,.02,.05,.10,.18,.30,.46,.65,.80,1.00]; // 9 segments
-function tierLevel(sc,isBiz=false){
-  if(!sc||sc<=0)return{level:0,pct:0};
-  const t=tierOf(sc,isBiz);
-  if(t.max===Infinity){
-    // Top tier: level based on how far past min
-    const over=sc-t.min;
-    const chunk=2000; // every 2000 pts = 1 level in top tier
-    const level=Math.min(9,Math.floor(over/chunk)+1);
-    return{level,pct:(over%(chunk))/chunk};
-  }
-  const range=t.max-t.min+1;
-  const pos=(sc-t.min)/range;
-  let level=1;
-  for(let i=1;i<LEVEL_BREAKPOINTS.length-1;i++){
-    if(pos>=LEVEL_BREAKPOINTS[i])level=i+1;
-  }
-  level=Math.min(9,level);
-  const lo=LEVEL_BREAKPOINTS[level-1],hi=LEVEL_BREAKPOINTS[level];
-  const pct=hi>lo?(pos-lo)/(hi-lo):0;
-  return{level,pct:Math.min(1,Math.max(0,pct))};
-}
-function tierLevelLabel(sc,isBiz=false){
-  if(!sc||sc<=0)return null;
-  const t=tierOf(sc,isBiz);
-  if(t.label==="Ghost")return null;
-  const {level}=tierLevel(sc,isBiz);
-  return`${t.label} L${level}`;
-}
 const tierOf=(sc,isBiz=false)=>{const tiers=isBiz?BIZ_TIERS:TIERS;if(sc==null||sc===0)return tiers[0];for(let i=tiers.length-1;i>=0;i--){if(sc>=tiers[i].min)return tiers[i];}return tiers[0];};
 const tierPct=(sc,isBiz=false)=>{if(!sc)return 0;const t=tierOf(sc,isBiz);if(t.max===Infinity)return 1;return Math.min((sc-t.min)/(t.max-t.min+1),1);};
 const tierOfP=p=>{const sc=pScore(p);return tierOf(sc??0,p?.account_type==="business");};
 const tierPctP=p=>{const sc=pScore(p);return tierPct(sc??0,p?.account_type==="business");};
+
+/* ── LEVEL SYSTEM — 9 non-linear levels per tier (increasing difficulty) ── */
+// Breakpoints as fraction of tier range: level i starts at LEVEL_BP[i-1]
+const LEVEL_BP=[0,0.04,0.10,0.19,0.31,0.46,0.63,0.78,0.91];
+function levelOf(sc,isBiz=false){
+  if(sc==null||sc===0)return 1;
+  const t=tierOf(sc,isBiz);
+  if(t.max===Infinity){
+    // HighEnough tier: extra pts above min, exponential steps
+    const extra=sc-t.min;
+    const steps=[0,40,100,200,360,580,880,1280,1800];
+    for(let i=8;i>=0;i--){if(extra>=steps[i])return i+1;}
+    return 1;
+  }
+  const range=t.max-t.min;
+  if(range<=0)return 1;
+  const progress=(sc-t.min)/range;
+  for(let i=8;i>=0;i--){if(progress>=LEVEL_BP[i])return i+1;}
+  return 1;
+}
+function tierLevelLabel(sc,isBiz=false){
+  if(sc==null||sc===0)return tierOf(0,isBiz).label;
+  return`${tierOf(sc,isBiz).label} L${levelOf(sc,isBiz)}`;
+}
+// Level progress within current level (0–1) for progress bar
+function levelPct(sc,isBiz=false){
+  if(sc==null||sc===0)return 0;
+  const t=tierOf(sc,isBiz);
+  const lv=levelOf(sc,isBiz);
+  if(t.max===Infinity){
+    const steps=[0,40,100,200,360,580,880,1280,1800];
+    const lo=steps[lv-1],hi=lv<9?steps[lv]:steps[8]+1000;
+    return Math.min((sc-t.min-lo)/(hi-lo),1);
+  }
+  const range=t.max-t.min;
+  const lo=LEVEL_BP[lv-1]*range,hi=lv<9?LEVEL_BP[lv]*range:range;
+  return Math.min(((sc-t.min)-lo)/(hi-lo),1);
+}
 
 /* ── THEMES ── */
 const DK={bg:"#060610",surf:"#0d0d1a",card:"#10101e",b1:"#1e1e30",b2:"#28283e",txt:"#e8eaf8",mu:"#5a5a80",faint:"#0c0c1c",inp:"#0a0a18",nav:"#060610",ov:"rgba(0,0,8,.96)"};
@@ -264,15 +247,15 @@ function BellIcon(){return IC(<><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3
 /* ── ATOMS ── */
 function Spinner(){return<div style={{width:18,height:18,border:"2px solid #2a2a40",borderTopColor:AC,borderRadius:"50%",animation:"spin .55s linear infinite",display:"inline-block"}}/>;}
 
-function TierBadge({sc,size="md",isBiz=false,showLevel=true}){
+function TierBadge({sc,size="md",isBiz=false}){
   const t=tierOf(sc??0,isBiz),isFama=t.label==="HighEnough";
-  const {level}=tierLevel(sc??0,isBiz);
-  const levelSuffix=(showLevel&&sc&&sc>0&&t.label!=="Ghost")?` L${level}`:"";
+  const lv=sc!=null&&sc>0?levelOf(sc,isBiz):null;
   const sz={sm:{px:"3px 9px",fs:10,ef:11},md:{px:"4px 12px",fs:12,ef:13}}[size]||{px:"3px 9px",fs:10,ef:11};
   const shimmer=isFama?{background:`linear-gradient(90deg,${t.grad[0]},${t.grad[1]},${t.grad[0]})`,backgroundSize:"200% auto",animation:"sh 2.6s linear infinite",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",backgroundClip:"text"}:{color:t.color};
+  const label=lv?`${t.label} L${lv}`:t.label;
   return<span style={{display:"inline-flex",alignItems:"center",gap:4,background:isFama?`linear-gradient(135deg,${t.grad[0]}28,${t.grad[1]}18)`:`${t.color}14`,border:`1px solid ${t.color}${isFama?"50":"28"}`,borderRadius:6,padding:sz.px,whiteSpace:"nowrap",boxShadow:isFama?`0 0 12px ${t.glow}`:"none"}}>
     <span style={{fontSize:sz.ef,lineHeight:1,animation:isFama?"fl 3s ease infinite":"none"}}>{t.emoji}</span>
-    <span style={{fontSize:sz.fs,fontFamily:"'JetBrains Mono',monospace",fontWeight:700,...shimmer}}>{t.label}{levelSuffix}</span>
+    <span style={{fontSize:sz.fs,fontFamily:"'JetBrains Mono',monospace",fontWeight:700,...shimmer}}>{label}</span>
   </span>;
 }
 
@@ -383,48 +366,18 @@ function AuthScreen({T,onAuthed,authError,onClearAuthError}){
     setLoading(true);setMsg({text:"",error:false});
     try{
       if(view==="signup"){
-        const emailToUse=rawInput.includes("@")&&rawInput.includes(".")?rawInput:rawInput;
-
-        // ── Check if this email belongs to a previously deleted account ──
-        // If so, we must remove them from deleted_accounts first so they can
-        // start fresh. The old Supabase auth record for that email will be
-        // reused by Supabase automatically.
-        const {data:deletedRow}=await sb.from("deleted_accounts")
-          .select("auth_id").eq("email",emailToUse).maybeSingle();
-        if(deletedRow){
-          // Remove the deletion record so this email is allowed again
-          await sb.from("deleted_accounts").delete().eq("email",emailToUse);
-        }
-
         const {data,error}=await sb.auth.signUp({
-          email:emailToUse,
+          email:rawInput,
           password:pass,
           options:{data:{full_name:name.trim()},emailRedirectTo:"https://highenough.in"}
         });
-        if(error){
-          // "User already registered" means Supabase auth still has this email.
-          // This happens when account was deleted from our app but Supabase auth
-          // record was not removed (we can't delete auth users from client-side).
-          // Solution: tell user to use login instead, or use a different email.
-          if(error.message?.toLowerCase().includes("already registered")||
-             error.message?.toLowerCase().includes("already exists")){
-            return setMsg({text:"This email already has an account. Try logging in instead, or reset your password.",error:true});
-          }
-          return setMsg({text:error.message,error:true});
-        }
+        if(error)return setMsg({text:error.message,error:true});
+        // SIGNED_IN fires automatically after signUp completes (whether or not email confirmation is needed).
+        // If session exists immediately, SIGNED_IN drives the transition. If not (email confirm required), show message.
         if(!data.session)setMsg({text:"✅ Account created! Check your email to confirm, then login.",error:false});
       } else {
-        // ── LOGIN ──
         const {email:emailToUse,err}=await resolveEmail(rawInput);
         if(err)return setMsg({text:err,error:true});
-
-        // ── Check if this account was deleted before attempting login ──
-        const {data:deletedByEmail}=await sb.from("deleted_accounts")
-          .select("auth_id").eq("email",emailToUse).maybeSingle();
-        if(deletedByEmail){
-          return setMsg({text:"This account has been deleted. Sign up to create a new one.",error:true});
-        }
-
         const {data,error}=await sb.auth.signInWithPassword({email:emailToUse,password:pass});
         if(error){
           const msg=error.message.toLowerCase().includes("invalid")||error.message.toLowerCase().includes("credentials")
@@ -432,7 +385,12 @@ function AuthScreen({T,onAuthed,authError,onClearAuthError}){
             :error.message;
           return setMsg({text:msg,error:true});
         }
-        // SIGNED_IN event drives the transition — do not call onAuthed here
+        // ── KEY FIX: do NOT call onAuthed here ───────────────────────────────────
+        // SIGNED_IN fires AFTER Supabase commits the session to its internal state.
+        // Calling onAuthed immediately makes loadProfile run before the auth token
+        // is applied to DB requests → anonymous request → RLS blocks it → data=null
+        // → user wrongly sent to ProfileSetup even if profile exists in DB.
+        // ─────────────────────────────────────────────────────────────────────────
       }
     }catch(e){
       setMsg({text:e.message||"Something went wrong. Please try again.",error:true});
@@ -936,13 +894,28 @@ function ProfileModal({profile,myId,following,profiles,T,onClose,onRate,onFollow
       setPeopleList({title:`${profile.name} follows`,people:list});
     });
   }
-  function showRaters(){
-    const raters=(profile.ratings||[]).map(r=>{
-      const rp=profiles.find(p=>p.id===r.raterId)||{id:r.raterId,name:r.raterName||"Unknown",handle:"",color:AC};
+  async function showRaters(){
+    // Build list from ratings; for each rater try to find full profile from loaded state,
+    // then fall back to a direct DB fetch so the profile opens correctly on click.
+    const raterIds=[...new Set((profile.ratings||[]).map(r=>r.raterId))];
+    const raters=await Promise.all(raterIds.map(async rid=>{
+      const r=(profile.ratings||[]).find(x=>x.raterId===rid);
       const given=Math.round(avg(cats.map(c=>r[c.id]||0)));
+      let rp=profiles.find(p=>p.id===rid);
+      if(!rp){
+        // Not in local state — fetch from DB so clicking opens full profile
+        try{
+          const {data}=await sb.from("profiles").select("*").eq("id",rid).maybeSingle();
+          if(data){
+            const {data:rr}=await sb.from("ratings").select("*").eq("target_id",rid);
+            rp={...data,ratings:(rr||[]).map(x=>({raterId:x.rater_id,raterName:x.rater_name||"",vibe:x.vibe,humor:x.humor,kindness:x.kindness,rizz:x.rizz,loyalty:x.loyalty,drip:x.drip,ts:new Date(x.updated_at).getTime()}))};
+          }
+        }catch{}
+      }
+      if(!rp)rp={id:rid,name:r?.raterName||"Unknown",handle:"",color:AC};
       return{...rp,ratingGiven:given};
-    });
-    setPeopleList({title:`Rated by`,people:raters});
+    }));
+    setPeopleList({title:"Rated by",people:raters.filter(Boolean)});
   }
 
   if(peopleList) return<PeopleListModal title={peopleList.title} people={peopleList.people} T={T} onClose={()=>setPeopleList(null)} onView={p=>{setPeopleList(null);if(onViewOther)onViewOther(p);else onClose();}} />;
@@ -993,11 +966,18 @@ function ProfileModal({profile,myId,following,profiles,T,onClose,onRate,onFollow
           </button>
         </div>
 
-        {/* Tier progress */}
+        {/* Tier + Level progress */}
         <div style={{background:T.card,border:`1px solid ${T.b1}`,borderRadius:14,padding:"12px 14px",marginBottom:14}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
             <TierBadge sc={sc} size="sm" isBiz={isBiz}/>
-            {next?<span style={{fontSize:11,color:T.mu,fontFamily:"'JetBrains Mono',monospace"}}>{next.emoji} {next.label} at {next.min.toLocaleString()}</span>:<span style={{fontSize:11,color:t.color,fontWeight:600}}>Top tier 🔝</span>}
+            {sc!=null&&sc>0&&<span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:T.mu}}>L{levelOf(sc,isBiz)}/9 in tier</span>}
+          </div>
+          {sc!=null&&sc>0&&<div style={{display:"flex",gap:3,marginBottom:6}}>
+            {Array.from({length:9},(_,i)=>{const lv=levelOf(sc,isBiz);return<div key={i} style={{flex:1,height:3,borderRadius:99,background:i<lv?t.color:`${t.color}20`,transition:"background .4s"}}/>;}).filter(Boolean)}
+          </div>}
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:T.mu,marginBottom:7}}>
+            <span>{t.label}</span>
+            {next?<span>{next.emoji} {next.label} at {next.min.toLocaleString()}</span>:<span style={{color:t.color,fontWeight:600}}>Top tier 🔝</span>}
           </div>
           <div style={{height:5,background:T.b1,borderRadius:99,overflow:"hidden"}}><div style={{width:`${pct*100}%`,height:"100%",background:t.color,borderRadius:99,transition:"width .9s"}}/></div>
         </div>
@@ -1065,14 +1045,44 @@ function MsgStatus({m,myId}){
   return<span style={{fontSize:11,color:"#4e5270",marginLeft:4}}>✓</span>;
 }
 
-function ChatScreen({conv,myProfile,T,onBack,onSend,onMarkRead,onClearChat,onBlockUser,onReportUser,onViewProfile}){
+/* Shared profile card rendered inside a chat bubble */
+function SharedProfileCard({payload,profiles,T,onViewProfile,onRate,myId}){
+  // payload: {type:"profile",profileId,name,handle,color,sc,tierLabel}
+  const live=profiles.find(p=>p.id===payload.profileId);
+  const sc=live?pScore(live):payload.sc;
+  const isBiz=(live?.account_type||"personal")==="business";
+  const t=tierOf(sc??0,isBiz);
+  const lv=sc!=null&&sc>0?levelOf(sc,isBiz):null;
+  const col=live?.color||payload.color||AC;
+  const myR=live?.ratings?.find(r=>r.raterId===myId);
+  return<div style={{background:T.card,border:`1px solid ${T.b1}`,borderRadius:14,overflow:"hidden",minWidth:220,maxWidth:280,cursor:"pointer"}} onClick={()=>live&&onViewProfile&&onViewProfile(live)}>
+    <div style={{background:`linear-gradient(135deg,${t.grad[0]}60,${t.grad[1]}40)`,padding:"12px 14px",display:"flex",alignItems:"center",gap:10}}>
+      <div style={{width:44,height:44,borderRadius:"50%",background:`${col}22`,border:`2px solid ${col}50`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:14,color:col,overflow:"hidden",flexShrink:0}}>
+        {live?.photo?<img src={live.photo} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:ini(payload.name||"?")}
+      </div>
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{fontWeight:700,fontSize:14,color:T.txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{payload.name}</div>
+        <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:T.mu,marginTop:1}}>{payload.handle}</div>
+        <div style={{marginTop:4}}><TierBadge sc={sc} size="sm" isBiz={isBiz}/></div>
+      </div>
+    </div>
+    {live&&!isBiz&&myId!==live.id&&<div style={{padding:"8px 14px",borderTop:`1px solid ${T.b1}`}}>
+      <button onClick={e=>{e.stopPropagation();onRate&&onRate(live,myR);}} style={{width:"100%",padding:"7px 0",background:`${col}18`,border:`1px solid ${col}30`,borderRadius:8,color:col,fontWeight:600,fontSize:12}}>
+        {myR?"✏️ Edit Rating":"⭐ Rate"}
+      </button>
+    </div>}
+    {!live&&<div style={{padding:"8px 14px",borderTop:`1px solid ${T.b1}`,fontSize:11,color:T.mu,textAlign:"center"}}>Tap to view profile</div>}
+  </div>;
+}
+
+function ChatScreen({conv,myProfile,profiles,T,onBack,onSend,onMarkRead,onClearChat,onBlockUser,onReportUser,onViewProfile,onRate}){
   const [txt,setTxt]=useState("");
   const [showMenu,setShowMenu]=useState(false);
+  const [showSharePicker,setShowSharePicker]=useState(false);
   const [notifMuted,setNotifMuted]=useState(false);
   const endRef=useRef(null);
   const msgs=conv.messages||[];
 
-  // Fix #3: When user comes back from external link, scroll to bottom and re-render
   useEffect(()=>{
     function onVisible(){if(document.visibilityState==="visible"&&endRef.current)endRef.current.scrollIntoView();}
     document.addEventListener("visibilitychange",onVisible);
@@ -1086,11 +1096,25 @@ function ChatScreen({conv,myProfile,T,onBack,onSend,onMarkRead,onClearChat,onBlo
 
   function send(){if(!txt.trim())return;onSend(conv.id,txt.trim());setTxt("");}
 
+  function shareProfile(p){
+    const sc=pScore(p);
+    const payload={type:"profile",profileId:p.id,name:p.name,handle:p.handle||"",color:p.color||AC,sc,tierLabel:tierLevelLabel(sc,p.account_type==="business")};
+    onSend(conv.id,"__PROFILE__"+JSON.stringify(payload));
+    setShowSharePicker(false);
+  }
+
+  // Parse a message — returns {isProfile, payload} or {isProfile:false}
+  function parseMsg(txt){
+    if(txt?.startsWith("__PROFILE__")){
+      try{return{isProfile:true,payload:JSON.parse(txt.slice(11))};}catch{}
+    }
+    return{isProfile:false};
+  }
+
   return<div style={{position:"fixed",inset:0,zIndex:400,background:T.bg,display:"flex",flexDirection:"column"}}>
     {/* Header */}
     <div style={{background:T.nav,borderBottom:`1px solid ${T.b1}`,padding:"12px 16px",paddingTop:"max(12px,env(safe-area-inset-top))",display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
       <button onClick={onBack} style={{background:"none",color:T.txt,padding:"4px",display:"flex",alignItems:"center"}}><BackIcon/></button>
-      {/* Clickable avatar + name → view profile */}
       <div style={{display:"flex",alignItems:"center",gap:10,flex:1,cursor:"pointer",minWidth:0}} onClick={()=>onViewProfile&&onViewProfile(conv.other)}>
         <Ava p={conv.other} size={38} T={T}/>
         <div style={{flex:1}}>
@@ -1103,7 +1127,7 @@ function ChatScreen({conv,myProfile,T,onBack,onSend,onMarkRead,onClearChat,onBlo
         {showMenu&&<div onClick={()=>setShowMenu(false)} style={{position:"fixed",inset:0,zIndex:10}}/>}
         {showMenu&&<div style={{position:"absolute",top:40,right:0,background:T.card,border:`1px solid ${T.b2}`,borderRadius:13,overflow:"hidden",zIndex:20,minWidth:180,boxShadow:"0 8px 32px rgba(0,0,0,.5)"}}>
           {[
-            {icon:"🔔",label:notifMuted?"Unmute Notifications":"Mute Notifications",fn:()=>{setNotifMuted(v=>!v);setShowMenu(false);}},
+            {icon:"🔔",label:notifMuted?"Unmute":"Mute Notifications",fn:()=>{setNotifMuted(v=>!v);setShowMenu(false);}},
             {icon:"🗑️",label:"Clear Chat",fn:()=>{if(window.confirm("Clear all messages?"))onClearChat(conv.id);setShowMenu(false);}},
             {icon:"🚫",label:"Block User",fn:()=>{onBlockUser(conv.other?.id);onBack();},red:true},
             {icon:"🚩",label:"Report User",fn:()=>{onReportUser(conv.other);setShowMenu(false);},red:true},
@@ -1111,27 +1135,55 @@ function ChatScreen({conv,myProfile,T,onBack,onSend,onMarkRead,onClearChat,onBlo
         </div>}
       </div>
     </div>
+
     {/* Messages */}
     <div style={{flex:1,overflowY:"auto",padding:"16px 14px",display:"flex",flexDirection:"column",gap:6}}>
       {msgs.length===0&&<div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",color:T.mu,fontSize:14,flexDirection:"column",gap:8,marginTop:60}}><Ava p={conv.other} size={56} T={T}/><span>Say hello to {conv.other?.name}!</span></div>}
       {msgs.map((m,i)=>{
         const mine=m.sid===myProfile.id;
         const showAva=!mine&&(i===0||msgs[i-1]?.sid!==m.sid);
+        const {isProfile,payload}=parseMsg(m.txt);
         return<div key={m.dbId||i} style={{display:"flex",flexDirection:mine?"row-reverse":"row",gap:8,alignItems:"flex-end"}}>
           {!mine&&<div style={{width:28,flexShrink:0}}>{showAva&&<Ava p={conv.other} size={26} T={T}/>}</div>}
           <div style={{maxWidth:"74%"}}>
-            <div style={{background:mine?`linear-gradient(135deg,${myProfile.color}dd,${myProfile.color}99)`:T.card,border:mine?"none":`1px solid ${T.b1}`,borderRadius:mine?"18px 18px 4px 18px":"18px 18px 18px 4px",padding:"10px 14px",color:mine?"#fff":T.txt,fontSize:14,lineHeight:1.5,wordBreak:"break-word"}}><MsgText txt={m.txt} mine={mine}/></div>
+            {isProfile
+              ?<SharedProfileCard payload={payload} profiles={profiles} T={T} onViewProfile={onViewProfile} onRate={onRate} myId={myProfile.id}/>
+              :<div style={{background:mine?`linear-gradient(135deg,${myProfile.color}dd,${myProfile.color}99)`:T.card,border:mine?"none":`1px solid ${T.b1}`,borderRadius:mine?"18px 18px 4px 18px":"18px 18px 18px 4px",padding:"10px 14px",color:mine?"#fff":T.txt,fontSize:14,lineHeight:1.5,wordBreak:"break-word"}}><MsgText txt={m.txt} mine={mine}/></div>
+            }
             <div style={{display:"flex",alignItems:"center",justifyContent:mine?"flex-end":"flex-start",gap:2,marginTop:3}}>
               <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:9,color:T.mu}}>{ago(m.ts)}</span>
-              {mine&&<MsgStatus m={m} myId={myProfile.id}/>}
+              {mine&&!isProfile&&<MsgStatus m={m} myId={myProfile.id}/>}
             </div>
           </div>
         </div>;
       })}
       <div ref={endRef}/>
     </div>
+
+    {/* Profile share picker */}
+    {showSharePicker&&<div style={{position:"absolute",bottom:70,left:0,right:0,background:T.surf,borderTop:`1px solid ${T.b1}`,padding:"14px 14px 8px",zIndex:10,maxHeight:260,overflowY:"auto"}}>
+      <div style={{fontWeight:700,fontSize:13,color:T.txt,marginBottom:10,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        Share a profile
+        <button onClick={()=>setShowSharePicker(false)} style={{background:"none",color:T.mu,fontSize:18,lineHeight:1}}>✕</button>
+      </div>
+      {profiles.filter(p=>p.id!==myProfile.id).slice(0,20).map(p=>{
+        const sc=pScore(p);const t=tierOf(sc??0,p.account_type==="business");
+        return<div key={p.id} onClick={()=>shareProfile(p)} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:`1px solid ${T.b1}`,cursor:"pointer"}}>
+          <Ava p={p} size={36} T={T}/>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontWeight:600,fontSize:13,color:T.txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</div>
+            <TierBadge sc={sc} size="sm" isBiz={p.account_type==="business"}/>
+          </div>
+        </div>;
+      })}
+    </div>}
+
     {/* Input */}
-    <div style={{padding:"10px 14px",paddingBottom:"max(14px,env(safe-area-inset-bottom))",borderTop:`1px solid ${T.b1}`,background:T.nav,display:"flex",gap:10,alignItems:"center",flexShrink:0}}>
+    <div style={{padding:"10px 14px",paddingBottom:"max(14px,env(safe-area-inset-bottom))",borderTop:`1px solid ${T.b1}`,background:T.nav,display:"flex",gap:8,alignItems:"center",flexShrink:0}}>
+      {/* Share profile button */}
+      <button onClick={()=>setShowSharePicker(v=>!v)} title="Share a profile" style={{width:38,height:38,borderRadius:"50%",background:showSharePicker?`${AC}18`:T.faint,border:`1px solid ${showSharePicker?AC:T.b1}`,display:"flex",alignItems:"center",justifyContent:"center",color:showSharePicker?AC:T.mu,flexShrink:0,transition:"all .15s"}}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/><line x1="19" y1="11" x2="19" y2="17"/><line x1="16" y1="14" x2="22" y2="14"/></svg>
+      </button>
       <input value={txt} onChange={e=>setTxt(e.target.value)} onKeyDown={e=>e.key==="Enter"&&send()} placeholder="Message…" style={{flex:1,padding:"12px 16px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:24,color:T.txt,fontSize:14,outline:"none"}}/>
       <button onClick={send} style={{width:42,height:42,borderRadius:"50%",background:txt.trim()?`linear-gradient(135deg,${myProfile.color}dd,${myProfile.color}99)`:T.faint,display:"flex",alignItems:"center",justifyContent:"center",color:txt.trim()?"#fff":T.mu,flexShrink:0,transition:"background .15s"}}><SendIcon/></button>
     </div>
@@ -1152,8 +1204,8 @@ function CreateGroupModal({profiles,myProfile,following,T,onClose,onCreate}){
   const [searchResult,setSearchResult]=useState(null); // {found:profile|null,searched:bool}
   const [searching,setSearching]=useState(false);
 
-  // Followed profiles (excluding self), shown as default suggestions
-  const followedProfiles=profiles.filter(p=>p.id!==myProfile.id&&(following||[]).includes(p.id));
+  // Only personal accounts can be in groups; businesses excluded entirely
+  const followedProfiles=profiles.filter(p=>p.id!==myProfile.id&&(following||[]).includes(p.id)&&(p.account_type||"personal")==="personal");
 
   // When search bar has input: search among all profiles by @handle or UID
   const isSearchMode=q.trim().length>0;
@@ -1175,6 +1227,7 @@ function CreateGroupModal({profiles,myProfile,following,T,onClose,onCreate}){
       .select("*")
       .or(`handle.ilike.${clean},id.eq.${clean}`)
       .neq("id",myProfile.id)
+      .eq("account_type","personal")
       .limit(1);
     setSearching(false);
     setSearchResult({found:(data&&data[0])||null,searched:true});
@@ -1446,14 +1499,16 @@ function InboxTab({convs,profiles,myProfile,following,T,onOpen,onDeleteConv,onVi
   const [showCreateGroup,setShowCreateGroup]=useState(false);
   const myGroups=(groups||[]).filter(g=>g.members?.includes(myProfile.id));
 
+  const isPersonal=(myProfile.account_type||"personal")==="personal";
+
   return<div>
-    {/* Header row with New Group button */}
+    {/* Header row — New Group only for personal accounts */}
     <div style={{padding:"14px 16px 10px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
       <div style={{fontWeight:700,fontSize:18,color:T.txt}}>{myProfile.name}</div>
-      <button onClick={()=>setShowCreateGroup(true)} style={{display:"flex",alignItems:"center",gap:6,padding:"7px 12px",background:`${AC}18`,border:`1px solid ${AC}30`,borderRadius:10,color:AC,fontWeight:600,fontSize:12}}>
+      {isPersonal&&<button onClick={()=>setShowCreateGroup(true)} style={{display:"flex",alignItems:"center",gap:6,padding:"7px 12px",background:`${AC}18`,border:`1px solid ${AC}30`,borderRadius:10,color:AC,fontWeight:600,fontSize:12}}>
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         New Group
-      </button>
+      </button>}
     </div>
     <div style={{height:1,background:T.b1}}/>
 
@@ -1737,30 +1792,32 @@ function BoardTab({profiles,myId,T,onView}){
   </div>;
 }
 
-/* ── FEED CARD ── */
+/* ── FEED CARD — compact, click to open full profile ── */
 function FeedCard({p,myId,following,T,onView,onFollow,onUnfollow,onRate,onMsg,idx}){
   const myR=p.ratings?.find(r=>r.raterId===myId);
   const isBiz=p.account_type==="business";
   const sc=pScore(p);const t=tierOf(sc??0,isBiz);
   const isFollowing=following.includes(p.id);
-  const {level}=tierLevel(sc??0,isBiz);
-  const levelStr=sc&&sc>0&&t.label!=="Ghost"?` L${level}`:"";
 
-  return<div onClick={()=>onView(p)} style={{background:`linear-gradient(135deg,${T.card},${T.surf})`,border:`1px solid ${T.b1}`,borderRadius:16,padding:"12px 14px",marginBottom:2,animation:"ci .3s ease both",animationDelay:`${idx*30}ms`,cursor:"pointer",display:"flex",alignItems:"center",gap:12}}>
+  return<div onClick={()=>onView(p)} style={{background:T.card,border:`1px solid ${T.b1}`,borderRadius:14,padding:"11px 14px",marginBottom:0,animation:"ci .3s ease both",animationDelay:`${idx*30}ms`,cursor:"pointer",display:"flex",alignItems:"center",gap:12}}>
+    {/* Avatar */}
     <div style={{position:"relative",flexShrink:0}}>
       <Ava p={p} size={46} T={T}/>
       {isBiz&&<div style={{position:"absolute",bottom:-2,right:-2,width:16,height:16,borderRadius:"50%",background:"#7b72e9",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,border:`2px solid ${T.card}`}}>🏢</div>}
     </div>
+    {/* Name + tier */}
     <div style={{flex:1,minWidth:0}}>
       <div style={{fontWeight:700,fontSize:14,color:T.txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</div>
-      <div style={{display:"flex",alignItems:"center",gap:6,marginTop:2,flexWrap:"wrap"}}>
-        <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:9,color:T.mu}}>{p.handle}</span>
-        {sc!=null&&<span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:t.color,fontWeight:700}}>{t.emoji} {t.label}{levelStr}</span>}
+      <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:T.mu,marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.handle}</div>
+      <div style={{marginTop:4,display:"flex",alignItems:"center",gap:6}}>
+        <TierBadge sc={sc} size="sm" isBiz={isBiz}/>
+        {sc!=null&&<span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:t.color,fontWeight:700}}>{fmtScore(sc)}</span>}
       </div>
     </div>
-    <div style={{display:"flex",flexDirection:"column",gap:6,alignItems:"flex-end",flexShrink:0}} onClick={e=>e.stopPropagation()}>
-      <button onClick={()=>isFollowing?onUnfollow(p.id):onFollow(p.id)} style={{padding:"5px 12px",background:isFollowing?T.faint:`linear-gradient(135deg,${AC}ee,${AC}99)`,border:isFollowing?`1px solid ${T.b2}`:"none",borderRadius:14,color:isFollowing?T.mu:"#fff",fontWeight:600,fontSize:11,transition:"all .15s"}}>{isFollowing?"✓":"Follow"}</button>
-      <button onClick={()=>onRate(p,myR)} style={{padding:"5px 12px",background:myR?T.faint:`${p.color}22`,border:`1px solid ${myR?T.b1:p.color+"40"}`,borderRadius:14,color:myR?T.mu:p.color,fontSize:11,fontWeight:600}}>{myR?"Edit ✏️":isBiz?"Review":"Rate ⭐"}</button>
+    {/* Follow + msg buttons */}
+    <div style={{display:"flex",flexDirection:"column",gap:6,flexShrink:0}} onClick={e=>e.stopPropagation()}>
+      <button onClick={()=>isFollowing?onUnfollow(p.id):onFollow(p.id)} style={{padding:"6px 12px",background:isFollowing?T.faint:`linear-gradient(135deg,${AC}ee,${AC}99)`,border:isFollowing?`1px solid ${T.b2}`:"none",borderRadius:16,color:isFollowing?T.mu:"#fff",fontWeight:600,fontSize:11,transition:"all .15s"}}>{isFollowing?"✓":"Follow"}</button>
+      <button onClick={()=>onMsg(p)} style={{padding:"6px 12px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:16,color:T.mu,fontSize:11,fontWeight:500}}>Msg</button>
     </div>
   </div>;
 }
@@ -1846,11 +1903,15 @@ function ProfileTab({myProfile,myP,T,onQR,onSettings,onEditPhoto,onScoreCard,fol
       <div style={{fontWeight:600,fontSize:14,color:T.txt,marginBottom:12}}>{isBiz?"Review Breakdown":"Rating Breakdown"} <span style={{fontSize:12,color:T.mu,fontWeight:400}}>· {n} {isBiz?"review":"rating"}{n!==1?"s":""}</span></div>
       {n>0?<>
         <div style={{marginBottom:12}}>
-          <div style={{display:"flex",justifyContent:"space-between",marginBottom:5}}>
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
             <span style={{fontSize:12,color:T.mu}}>Progress → {next?next.label:"Top tier 👑"}</span>
-            {next&&<span style={{fontSize:11,color:T.mu,fontFamily:"'JetBrains Mono',monospace"}}>{next.min.toLocaleString()} pts</span>}
+            {sc!=null&&sc>0&&<span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:t.color,fontWeight:700}}>L{levelOf(sc,isBiz)}/9</span>}
           </div>
+          {sc!=null&&sc>0&&<div style={{display:"flex",gap:3,marginBottom:5}}>
+            {Array.from({length:9},(_,i)=>{const lv=levelOf(sc,isBiz);return<div key={i} style={{flex:1,height:3,borderRadius:99,background:i<lv?t.color:`${t.color}20`,transition:"background .4s"}}/>;}).filter(Boolean)}
+          </div>}
           <div style={{height:5,background:T.b1,borderRadius:99,overflow:"hidden"}}><div style={{width:`${pct*100}%`,height:"100%",background:t.color,borderRadius:99,opacity:.9,transition:"width .9s"}}/></div>
+          {next&&<div style={{textAlign:"right",marginTop:3,fontSize:10,color:T.mu,fontFamily:"'JetBrains Mono',monospace"}}>{next.min.toLocaleString()} pts to {next.label}</div>}
         </div>
         {cats.map(c=>{const v=cAvg(myP,c.id);return<div key={c.id} style={{marginBottom:9}}>
           <div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}><span style={{fontSize:12,color:T.mu}}>{c.emoji} {c.label}</span><span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:T.txt,fontWeight:600}}>{v}/100</span></div>
@@ -2153,6 +2214,13 @@ function ScoreCardModal({profile,T,onClose}){
     function drawName(y1,y2){
       ctx.textAlign="center";ctx.font="bold 46px Inter,Arial,sans-serif";ctx.fillStyle="#111126";ctx.fillText(profile.name,W/2,y1);
       ctx.font="500 20px 'JetBrains Mono',monospace";ctx.fillStyle="#8888a8";ctx.fillText(profile.handle||"",W/2,y2);
+    }
+
+    // ── Shared: big score number ──
+    function drawScore(y){
+      ctx.textAlign="center";ctx.font="900 120px 'JetBrains Mono',monospace";
+      const sg=ctx.createLinearGradient(W/2-140,y-100,W/2+140,y);sg.addColorStop(0,t.grad[0]);sg.addColorStop(1,t.grad[1]);
+      ctx.fillStyle=sg;ctx.fillText(sc!=null?fmtScore(sc):"—",W/2,y);
     }
 
     // ── Shared: tier badge ──
@@ -2694,7 +2762,9 @@ function App(){
   const T=prefs.dark?DK:LT;
   const pop=msg=>{setToast(msg);setTimeout(()=>setToast(null),2500);};
 
-  // ── Load saved prefs ──
+  const [isWaking]=useState(false); // kept for compat, no longer used
+
+  // ── Load saved prefs ── */
   useEffect(()=>{const p=getPref();if(p.dark!==undefined)setPrefs(prev=>({...prev,...p}));},[]);
 
   /* ── Auth listener — simple, reliable, no race conditions ── */
@@ -2715,29 +2785,14 @@ function App(){
     }
 
     async function bootUser(user,deepLink){
-      if(profileLoadingRef.current)return;
+      if(profileLoadingRef.current)return; // already loading, skip
       profileLoadingRef.current=true;
-
-      // ── Deleted account check ──────────────────────────────────────────────
-      // If this auth_id is in deleted_accounts, check whether they have an
-      // active profile. If yes → truly deleted, block them. If no profile →
-      // they deleted and are trying to start fresh (especially Google OAuth
-      // which reuses the same auth_id). Un-block them so they can re-register.
-      const deleted=await isDeleted(user.id);
-      if(deleted){
-        const {data:existingProfile}=await sb.from("profiles").select("id").eq("id",user.id).maybeSingle();
-        if(!existingProfile){
-          // No profile + deletion record = user wants a fresh start. Clear the block.
-          await sb.from("deleted_accounts").delete().eq("auth_id",user.id);
-        } else {
-          // Profile still exists somehow AND deletion record exists = genuinely deleted
-          setAuthError("This account has been permanently deleted.");
-          await sb.auth.signOut();
-          profileLoadingRef.current=false;
-          return;
-        }
+      if(await isDeleted(user.id)){
+        setAuthError("This account has been permanently deleted.");
+        await sb.auth.signOut();
+        profileLoadingRef.current=false;
+        return;
       }
-      // ─────────────────────────────────────────────────────────────────────────
       setAuthError("");
       setAuthUser(user);
       loadProfile(user.id,deepLink);
@@ -2748,14 +2803,15 @@ function App(){
         if(session?.user){
           await bootUser(session.user,pendingDlRef.current);
         } else {
-          // ── Cold-start recovery ──────────────────────────────────────────────
+          // ── FIX 1: Cold-start recovery ──────────────────────────────────────────
           // On Supabase free tier, the project may be waking up when INITIAL_SESSION
-          // fires with null. Retry getSession() with short backoff.
-          // Delays: 0ms, 800ms, 1600ms — max 2.4s total (was 0+2s+4s = 6s before)
+          // fires. The session comes back null even though the user IS logged in.
+          // We call getSession() directly with retries to catch this race condition.
+          // Without this, the login screen flashes on every cold start.
           let recovered=false;
-          for(let attempt=0;attempt<3;attempt++){
+          for(let attempt=0;attempt<2;attempt++){
             try{
-              await new Promise(r=>setTimeout(r,attempt*800)); // 0ms, 800ms, 1600ms
+              await new Promise(r=>setTimeout(r,attempt===0?0:800));
               const {data:{session:s2}}=await sb.auth.getSession();
               if(s2?.user){
                 recovered=true;
@@ -2805,13 +2861,17 @@ function App(){
         }
       }
       else if(event==="SIGNED_OUT"){
+        // Only wipe state for INTENTIONAL logouts (user clicked Log Out).
+        // Supabase fires SIGNED_OUT on token-refresh failures and PWA resume —
+        // these are false alarms. We wait briefly, retry getSession(), and check
+        // localStorage before accepting the signout as real.
         const wasIntentional=localStorage.getItem("he_intent_signout")==="true";
         localStorage.removeItem("he_intent_signout");
         if(!wasIntentional){
-          // Try once to recover session before accepting logout
-          // (handles Supabase free-tier token refresh failures)
+          // Wait 1.8s — TOKEN_REFRESHED usually fires within this window and will
+          // keep authUser set, making this SIGNED_OUT a no-op.
+          await new Promise(r=>setTimeout(r,1800));
           try{
-            await new Promise(r=>setTimeout(r,800));
             const {data:{session:s2}}=await sb.auth.getSession();
             if(s2?.user){
               setAuthUser(s2.user);
@@ -2819,12 +2879,20 @@ function App(){
                 profileLoadingRef.current=true;
                 loadProfile(s2.user.id,null);
               }
-              return;
+              return; // session recovered — do NOT wipe state
             }
-          }catch(e){console.warn("SIGNED_OUT recovery failed:",e);}
-          // NOTE: Removed window.location.reload() — it caused infinite reload loops.
-          // If recovery fails, just show the login screen cleanly.
+          }catch{}
+          // Last check: if Supabase session data still exists in localStorage, reload
+          // so Supabase can re-hydrate on a clean boot rather than showing login.
+          const hasLocal=Object.keys(localStorage).some(k=>k.startsWith("sb-")||k.includes("supabase.auth"));
+          if(hasLocal&&!sessionStorage.getItem("he_signout_retry")){
+            sessionStorage.setItem("he_signout_retry","1");
+            window.location.reload();
+            return;
+          }
+          sessionStorage.removeItem("he_signout_retry");
         }
+        // Confirmed intentional or all recovery failed — wipe state
         if(pollRef.current){clearInterval(pollRef.current);pollRef.current=null;}
         profileLoadingRef.current=false;
         setAuthUser(null);setProfile(null);setProfileFetched(false);
@@ -2890,12 +2958,9 @@ function App(){
         const res2=await sb.from("profiles").select("*").eq("id",userId).maybeSingle();
         if(res2.error){
           console.error("loadProfile retry failed:",res2.error);
-          // Show error but DO NOT sign out — signing out here triggers SIGNED_OUT
-          // which previously caused a page reload loop.
-          setAuthError("Could not load your profile. Check your connection and try again.");
-          setProfileFetched(true);
-          setAuthLoading(false);
-          profileLoadingRef.current=false;
+          setAuthError("Could not load your profile. Please log in again.");
+          await sb.auth.signOut();
+          profileLoadingRef.current=false; // ── FIX 4: always reset
           return;
         }
         data=res2.data;
@@ -2917,12 +2982,9 @@ function App(){
           if(cu?.email){
             const {data:ep}=await sb.from("profiles").select("id,email,name").eq("email",cu.email).maybeSingle();
             if(ep&&ep.id!==userId){
-              // Profile exists under a different auth provider UUID.
-              // Show error but don't sign out — let user see the message and act.
-              setAuthError("This email is linked to a different login method (e.g. Google). Please sign in with that method instead.");
-              setProfileFetched(true);
-              setAuthLoading(false);
-              profileLoadingRef.current=false;
+              setAuthError("This email is linked to a different login method (e.g. Google). Please use that to sign in.");
+              await sb.auth.signOut();
+              profileLoadingRef.current=false; // ── FIX 4: always reset
               return;
             }
           }
@@ -3139,11 +3201,12 @@ function App(){
     if(!profile)return;
     const uid=profile.id;
     const userEmail=profile.email||authUser?.email||"";
+    // ── Show immediate feedback; keep the user on-screen while we clean up ──
     pop("Deleting account…");
     try{
-      // 1. Mark as deleted in our table (blocks re-login with same auth ID)
+      // 1. Blacklist this auth ID permanently so they can NEVER log back in
       await sb.from("deleted_accounts").insert({auth_id:uid,email:userEmail,deleted_at:new Date().toISOString()});
-      // 2. Delete all app data in parallel
+      // 2. Delete all related data in parallel
       await Promise.all([
         sb.from("ratings").delete().eq("rater_id",uid),
         sb.from("ratings").delete().eq("target_id",uid),
@@ -3157,22 +3220,21 @@ function App(){
         sb.from("blocks").delete().eq("blocked_id",uid),
         sb.from("reports").delete().eq("reporter_id",uid),
       ]);
-      // 3. Delete the profile row
+      // 3. Delete the profile row itself
       await sb.from("profiles").delete().eq("id",uid);
-      // 4. Also store deleted email so re-signup with same email is allowed
-      //    by removing them from deleted_accounts and letting them start fresh.
-      //    We store the email separately so the signup flow can clean up first.
     }catch(e){console.error("Delete cleanup error:",e);}
-    // 5. Clean up localStorage
+    // 4. Clean up localStorage
     try{
       localStorage.removeItem(`he_actype_${uid}`);
       const map=JSON.parse(localStorage.getItem("he_actype_map")||"{}");
       delete map[uid];
       localStorage.setItem("he_actype_map",JSON.stringify(map));
-      localStorage.removeItem(SAVED_ACCT_KEY);
     }catch{}
-    // 6. Sign out — triggers SIGNED_OUT → clears all React state
-    localStorage.setItem("he_intent_signout","true");
+    // 5. Sign out LAST — this triggers onAuthStateChange('SIGNED_OUT') which
+    //    clears ALL React state naturally (authUser, profile, profiles, etc.)
+    //    DO NOT manually clear state before this — that creates a race condition
+    //    where the Supabase session is still active but local state is wiped,
+    //    causing the profile to reload on the next render cycle.
     await sb.auth.signOut();
   }
 
@@ -3379,18 +3441,10 @@ function App(){
     }
   },[authLoading]);
 
-  // Safety fallback — if auth hasn't resolved after 8s, force-end loading.
-  // Previously this was 35s (with HE_HAS_SESSION) + another 15s nested wait = 50s freeze.
-  // Root cause of infinite loading: the nested setTimeout(15000) inside the session check
-  // meant even if Supabase responded, the splash stayed up for 15 more seconds.
-  // Fix: flat 8s maximum. If session exists, let INITIAL_SESSION/TOKEN_REFRESHED handle it.
-  // If they haven't by 8s, something is broken — show login screen immediately.
+  // Safety fallback — force-end loading after 8s
   useEffect(()=>{
     const t=setTimeout(()=>{
-      if(!authLoading)return; // already resolved, nothing to do
-      console.warn("⚠️ Auth fallback triggered after 8s — forcing loading=false");
-      setAuthLoading(false);
-      setProfileFetched(true);
+      setAuthLoading(false);setProfileFetched(true);
       const s=document.getElementById('splash');
       if(s){s.style.opacity='0';setTimeout(()=>s.remove(),200);}
     },8000);
@@ -3399,15 +3453,6 @@ function App(){
 
   // While auth is resolving — splash is already showing, render nothing underneath
   if(authLoading)return null;
-
-  // Extra guard: if authLoading just cleared but authUser hasn't been set yet
-  // (race between setAuthLoading(false) and setAuthUser), show spinner briefly
-  // rather than flashing the login screen.
-  if(!authUser&&!profileFetched){
-    return<div style={{minHeight:"100vh",background:"#09090f",display:"flex",alignItems:"center",justifyContent:"center"}}>
-      <div style={{width:20,height:20,border:"2px solid #1c1c2c",borderTopColor:"#7b72e9",borderRadius:"50%",animation:"spin .55s linear infinite"}}/>
-    </div>;
-  }
 
   if(!authUser){
     if(deepLinkProfile)return<PublicProfilePage profile={deepLinkProfile} onJoin={()=>setDeepLinkProfile(null)}/>;
@@ -3419,7 +3464,7 @@ function App(){
 
   // Active chat = full screen
   if(activeGroup)return<GroupChatScreen group={activeGroup} myProfile={profile} profiles={profiles} T={T} onBack={()=>setActiveGroup(null)} onSendGroup={handleSendGroup} onUpdateGroup={handleUpdateGroup} onDeleteGroup={handleDeleteGroup} onViewProfile={p=>setViewT(p)}/>;
-  if(activeChat)return<ChatScreen conv={activeChat} myProfile={profile} T={T} onBack={()=>setActiveChat(null)} onSend={handleSend} onMarkRead={handleMarkRead} onClearChat={handleClearChat} onBlockUser={(uid)=>{handleBlock(uid);}} onReportUser={(p)=>setReportT(p)} onViewProfile={p=>{setActiveChat(null);setViewT(p);}}/>;
+  if(activeChat)return<ChatScreen conv={activeChat} myProfile={profile} profiles={profiles} T={T} onBack={()=>setActiveChat(null)} onSend={handleSend} onMarkRead={handleMarkRead} onClearChat={handleClearChat} onBlockUser={(uid)=>{handleBlock(uid);}} onReportUser={(p)=>setReportT(p)} onViewProfile={p=>{setActiveChat(null);setViewT(p);}} onRate={handleRate}/>;
 
   const myP=profiles.find(p=>p.id===profile.id)||{...profile,ratings:[]};
   const allFeedProfiles=profiles.filter(p=>p.id!==profile.id&&!blocked.includes(p.id));
