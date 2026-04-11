@@ -1028,14 +1028,20 @@ function MsgText({txt,mine,T,onViewProfile}){
       const data=JSON.parse(txt.slice("__PROFILE__".length));
       const isBiz=data.account_type==="business";
       const t=tierOf(data.sc??0,isBiz);
-      return<div onClick={()=>onViewProfile&&onViewProfile(data)} style={{cursor:"pointer",background:mine?"rgba(255,255,255,.15)":"rgba(0,0,0,.06)",borderRadius:12,padding:"10px 12px",display:"flex",alignItems:"center",gap:10,minWidth:180}}>
-        <div style={{width:40,height:40,borderRadius:"50%",background:`${data.color||AC}28`,border:`2px solid ${data.color||AC}60`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:13,color:data.color||AC,flexShrink:0}}>{ini(data.name)}</div>
+      const col=data.color||AC;
+      return<div onClick={()=>onViewProfile&&onViewProfile(data)} style={{cursor:"pointer",background:mine?"rgba(255,255,255,.12)":"rgba(0,0,0,.05)",borderRadius:12,padding:"10px 12px",display:"flex",alignItems:"center",gap:10,minWidth:190,border:`1px solid ${mine?"rgba(255,255,255,.2)":"rgba(0,0,0,.08)"}`}}>
+        {/* Avatar: show photo if available, else initials */}
+        <div style={{width:42,height:42,borderRadius:"50%",background:`${col}28`,border:`2px solid ${col}60`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:13,color:col,flexShrink:0,overflow:"hidden"}}>
+          {data.photo
+            ?<img src={data.photo} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}} onError={e=>{e.target.style.display="none";}}/>
+            :ini(data.name)}
+        </div>
         <div style={{flex:1,minWidth:0}}>
           <div style={{fontWeight:700,fontSize:13,color:mine?"#fff":"inherit",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{data.name}</div>
-          <div style={{fontSize:10,color:mine?"rgba(255,255,255,.7)":"inherit",opacity:.8,fontFamily:"'JetBrains Mono',monospace"}}>{data.handle}</div>
-          <div style={{marginTop:3}}><span style={{background:`${t.color}22`,border:`1px solid ${t.color}44`,borderRadius:5,padding:"1px 7px",fontSize:10,fontWeight:700,color:t.color,fontFamily:"'JetBrains Mono',monospace"}}>{t.emoji} {data.tierLabel||t.label}</span></div>
+          <div style={{fontSize:10,color:mine?"rgba(255,255,255,.65)":"inherit",opacity:.85,fontFamily:"'JetBrains Mono',monospace",marginBottom:3}}>{data.handle}</div>
+          <span style={{background:`${t.color}22`,border:`1px solid ${t.color}44`,borderRadius:5,padding:"1px 7px",fontSize:10,fontWeight:700,color:t.color,fontFamily:"'JetBrains Mono',monospace"}}>{t.emoji} {data.tierLabel||t.label}</span>
         </div>
-        <div style={{fontSize:10,color:mine?"rgba(255,255,255,.6)":"inherit",opacity:.7}}>→</div>
+        <span style={{fontSize:16,color:mine?"rgba(255,255,255,.5)":"rgba(0,0,0,.3)",flexShrink:0}}>›</span>
       </div>;
     }catch{}
   }
@@ -1087,7 +1093,8 @@ function ChatScreen({conv,myProfile,profiles,T,onBack,onSend,onMarkRead,onClearC
     const isBiz=p.account_type==="business";
     const t=tierOf(sc??0,isBiz);
     const lbl=tierLevelLabel(sc,isBiz)||t.label;
-    const payload=JSON.stringify({type:"profile",profileId:p.id,name:p.name,handle:p.handle,color:p.color,account_type:p.account_type,sc,tierLabel:lbl});
+    // Include photo so the card renders correctly in chat
+    const payload=JSON.stringify({type:"profile",profileId:p.id,name:p.name,handle:p.handle,color:p.color,photo:p.photo||null,account_type:p.account_type,sc,tierLabel:lbl});
     onSend(conv.id,"__PROFILE__"+payload);
     setShowSharePicker(false);
   }
@@ -1139,8 +1146,8 @@ function ChatScreen({conv,myProfile,profiles,T,onBack,onSend,onMarkRead,onClearC
               color:mine?"#fff":T.txt,fontSize:14,lineHeight:1.5,wordBreak:"break-word"
             }}>
               <MsgText txt={m.txt} mine={mine} T={T} onViewProfile={p=>{
-                // Find full profile from state
-                const full=(profiles||[]).find(x=>x.id===p.profileId)||p;
+                // Merge with full profile from state (has ratings, photo, etc.)
+                const full=(profiles||[]).find(x=>x.id===(p.profileId||p.id))||p;
                 onViewProfile&&onViewProfile(full);
               }}/>
             </div>
@@ -3165,9 +3172,10 @@ function App(){
     }catch(e){console.error("loadAppData error:",e);}
     finally{setAuthLoading(false);profileLoadingRef.current=false;}
 
-    // Poll every 30s — stored in pollRef so SIGNED_OUT can clear it (prevents memory leak)
+    // Poll every 30s — only refresh profiles/ratings if window is visible to avoid wasted requests
     if(pollRef.current)clearInterval(pollRef.current);
     pollRef.current=setInterval(async()=>{
+      if(document.visibilityState!=="visible")return; // skip when app is in background
       const [pr,rr,dr]=await Promise.all([
         sb.from("profiles").select("*"),
         sb.from("ratings").select("*"),
@@ -3175,7 +3183,16 @@ function App(){
       ]);
       if(pr.data&&rr.data){
         const delSet=new Set((dr.data||[]).map(d=>d.auth_id));
-        setProfiles(pr.data.filter(p=>!delSet.has(p.id)).map(p=>({...p,ratings:rr.data.filter(r=>r.target_id===p.id).map(r=>({raterId:r.rater_id,raterName:r.rater_name||"",vibe:r.vibe,humor:r.humor,kindness:r.kindness,rizz:r.rizz,loyalty:r.loyalty,drip:r.drip,ts:new Date(r.updated_at).getTime()}))})));
+        setProfiles(pr.data
+          .filter(p=>!delSet.has(p.id))
+          .map(p=>({
+            ...p,
+            account_type:p.account_type||"personal",
+            ratings:rr.data
+              .filter(r=>r.target_id===p.id)
+              .map(r=>({raterId:r.rater_id,raterName:r.rater_name||"",vibe:r.vibe,humor:r.humor,kindness:r.kindness,rizz:r.rizz,loyalty:r.loyalty,drip:r.drip,ts:new Date(r.updated_at).getTime()}))
+          }))
+        );
       }
     },30000);
   }
@@ -3466,57 +3483,29 @@ function App(){
     }
   },[authLoading]);
 
-  // Safety fallback — if auth hasn't resolved after 20s, check session
-  // one final time before showing login screen. This prevents the fallback
-  // from force-showing login when the user IS logged in but the server
-  // is still slow to respond (free tier cold start).
-  // If localStorage already has a session token, wait even longer (35s)
-  // before giving up — the user is almost certainly logged in.
-  useEffect(()=>{
-    const wait=HE_HAS_SESSION?35000:20000;
-    const t=setTimeout(async()=>{
-      if(!authLoading)return;
-      try{
-        const {data:{session}}=await sb.auth.getSession();
-        if(session?.user){
-          setTimeout(()=>{
-            setAuthLoading(false);setProfileFetched(true);
-            const s=document.getElementById('splash');
-            if(s){s.style.opacity='0';setTimeout(()=>s.remove(),200);}
-          },15000);
-          return;
-        }
-      }catch(e){}
-      setAuthLoading(false);setProfileFetched(true);
-      const s=document.getElementById('splash');
-      if(s){s.style.opacity='0';setTimeout(()=>s.remove(),200);}
-    },wait);
-    return()=>clearTimeout(t);
-  },[]);
-
   // While auth is resolving — splash is already showing, render nothing underneath
   if(authLoading)return null;
-
-  // Extra guard: if authLoading just cleared but authUser hasn't been set yet
-  // (race between setAuthLoading(false) and setAuthUser), show spinner briefly
-  // rather than flashing the login screen.
-  if(!authUser&&!profileFetched){
-    return<div style={{minHeight:"100vh",background:"#09090f",display:"flex",alignItems:"center",justifyContent:"center"}}>
-      <div style={{width:20,height:20,border:"2px solid #1c1c2c",borderTopColor:"#7b72e9",borderRadius:"50%",animation:"spin .55s linear infinite"}}/>
-    </div>;
-  }
 
   if(!authUser){
     if(deepLinkProfile)return<PublicProfilePage profile={deepLinkProfile} onJoin={()=>setDeepLinkProfile(null)}/>;
     return<AuthScreen T={DK} onAuthed={handleAuthed} authError={authError} onClearAuthError={()=>setAuthError("")}/>;
   }
-  // Only show ProfileSetup if we've confirmed the user has NO profile in DB
+  // Show spinner only while profile row is being fetched (profileFetched=false means DB query in flight)
   if(!profile&&!profileFetched)return<div style={{minHeight:"100vh",background:"#09090f",display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{width:20,height:20,border:"2px solid #1c1c2c",borderTopColor:"#7b72e9",borderRadius:"50%",animation:"spin .55s linear infinite"}}/></div>;
   if(!profile&&profileFetched)return<ProfileSetup user={authUser} T={T} onDone={handleProfileCreated}/>;
 
   // Active chat = full screen
   if(activeGroup)return<GroupChatScreen group={activeGroup} myProfile={profile} profiles={profiles} T={T} onBack={()=>setActiveGroup(null)} onSendGroup={handleSendGroup} onUpdateGroup={handleUpdateGroup} onDeleteGroup={handleDeleteGroup} onViewProfile={p=>setViewT(p)}/>;
-  if(activeChat)return<ChatScreen conv={activeChat} myProfile={profile} profiles={profiles} T={T} onBack={()=>setActiveChat(null)} onSend={handleSend} onMarkRead={handleMarkRead} onClearChat={handleClearChat} onBlockUser={(uid)=>{handleBlock(uid);}} onReportUser={(p)=>setReportT(p)} onViewProfile={p=>{setActiveChat(null);setViewT(p);}}/>;
+  if(activeChat){
+    // Profile modal overlays chat — closing it returns to chat without losing state
+    return<>
+      <ChatScreen conv={activeChat} myProfile={profile} profiles={profiles} T={T} onBack={()=>setActiveChat(null)} onSend={handleSend} onMarkRead={handleMarkRead} onClearChat={handleClearChat} onBlockUser={(uid)=>{handleBlock(uid);setActiveChat(null);}} onReportUser={(p)=>setReportT(p)} onViewProfile={p=>setViewT(p)}/>
+      {viewT&&<ProfileModal profile={viewT} myId={profile.id} following={following} profiles={profiles} T={T} onClose={()=>setViewT(null)} onRate={handleRate} onFollow={handleFollow} onUnfollow={handleUnfollow} onBlock={handleBlock} onReport={setReportT} onMsg={p=>{setViewT(null);handleMsg(p);}} onViewOther={p=>setViewT(p)}/>}
+      {rateT&&<RateModal target={rateT.profile} raterId={profile.id} existing={rateT.existing} T={T} onClose={()=>setRateT(null)} onSubmit={handleSubmit}/>}
+      {reportT&&<ReportModal target={reportT} T={T} onClose={()=>setReportT(null)} onSubmit={handleReport}/>}
+      <Toast msg={toast} T={T}/>
+    </>;
+  }
 
   const myP=profiles.find(p=>p.id===profile.id)||{...profile,ratings:[]};
   const allFeedProfiles=profiles.filter(p=>p.id!==profile.id&&!blocked.includes(p.id));
