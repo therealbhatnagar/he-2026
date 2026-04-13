@@ -2846,40 +2846,21 @@ function App(){
   useEffect(()=>{const p=getPref();if(p.dark!==undefined)setPrefs(prev=>({...prev,...p}));},[]);
 
   /* ─────────────────────────────────────────────────────────────────────────
-     AUTH SYSTEM
-     ─────────────────────────────────────────────────────────────────────────
-     Design:
-     • authLoading=true  → splash visible, nothing rendered underneath
-     • authLoading=false → splash gone, render based on authUser + profile
-     • profileLoadingRef → mutex so we never run two concurrent loadProfile calls
-     • profileRef        → ref copy of profile state, safe to read inside closures
-
-     On refresh / reopen (INITIAL_SESSION):
-       - Supabase restores session from localStorage instantly
-       - We skip the deleted-account DB check (not needed for returning users)
-       - Call loadProfile → loadAppData → setAuthLoading(false)
-
-     On fresh login (handleAuthed, called directly after signInWithPassword):
-       - We call loadProfile directly — do NOT wait for SIGNED_IN event
-       - SIGNED_IN also fires; it skips if same user already loading/loaded
-
-     On logout (SIGNED_OUT):
-       - If intentional: clear all state immediately
-       - If unintentional (token refresh failed): try getSession() once;
-         if recovered restore state; if not, clear state (do NOT reload,
-         which causes a flash-to-login loop)
+     AUTH SYSTEM — single source of truth, no race conditions
   ───────────────────────────────────────────────────────────────────────── */
   const profileLoadingRef=useRef(false);
   const profileRef=useRef(null);
   const pollRef=useRef(null);
   const profilesRef=useRef([]);
   const pendingDlRef=useRef(parseDeepLink());
+  // Tracks which user ID is currently being booted so SIGNED_IN doesn't double-fire
+  const bootingUserIdRef=useRef(null);
 
   useEffect(()=>{profileRef.current=profile;},[profile]);
   useEffect(()=>{profilesRef.current=profiles;},[profiles]);
 
   useEffect(()=>{
-    // ── Helpers ──────────────────────────────────────────────────────────────
+
     async function isDeletedAccount(uid){
       try{
         const {data}=await sb.from("deleted_accounts").select("auth_id").eq("auth_id",uid).maybeSingle();
@@ -2887,25 +2868,26 @@ function App(){
       }catch{return false;}
     }
 
-    // bootUser: central entry point after auth confirms a user exists.
-    // checkDeleted=true only on fresh sign-ins (not on session restores).
+    // bootUser — single entry point for all auth paths.
+    // checkDeleted: only true for fresh sign-ins, never for session restores.
     async function bootUser(user, dl, checkDeleted=false){
-      if(profileLoadingRef.current)return;
+      // Prevent concurrent boots for the same user
+      if(profileLoadingRef.current && bootingUserIdRef.current===user.id)return;
       profileLoadingRef.current=true;
+      bootingUserIdRef.current=user.id;
 
       if(checkDeleted){
         const deleted=await isDeletedAccount(user.id);
         if(deleted){
           const {data:existing}=await sb.from("profiles").select("id").eq("id",user.id).maybeSingle();
           if(existing){
-            // Profile exists + deleted record = genuinely deleted, block login
             setAuthError("This account has been permanently deleted.");
-            sb.auth.signOut();
+            await sb.auth.signOut();
             profileLoadingRef.current=false;
+            bootingUserIdRef.current=null;
             setAuthLoading(false);
             return;
-          } else {
-            // No profile but deleted record = user wants fresh start, clear block
+          }else{
             await sb.from("deleted_accounts").delete().eq("auth_id",user.id);
           }
         }
@@ -2916,11 +2898,12 @@ function App(){
       loadProfile(user.id, dl);
     }
 
-    // clearSession: wipe all React state on confirmed logout
+    // clearSession — called only on confirmed intentional or unrecoverable logout
     function clearSession(){
       if(pollRef.current){clearInterval(pollRef.current);pollRef.current=null;}
       sb.removeAllChannels();
       profileLoadingRef.current=false;
+      bootingUserIdRef.current=null;
       setDataReady(false);
       setAuthUser(null);
       setProfile(null);
@@ -2934,36 +2917,25 @@ function App(){
       setAuthLoading(false);
     }
 
-    // ── Splash safety net: if nothing resolves in 8s, show login ──────────
-    // 8s is enough for even very slow connections. We do NOT use a shorter
-    // timeout because on Supabase free tier cold starts can take 3-5s.
-    // The timeout is cancelled as soon as INITIAL_SESSION fires (success or null).
-    const splashTimer=setTimeout(()=>{
-      setAuthLoading(false);
-    }, 8000);
+    // Safety net: if INITIAL_SESSION never fires (rare), unblock after 8s
+    const splashTimer=setTimeout(()=>setAuthLoading(false), 8000);
 
-    // ── Auth state listener ───────────────────────────────────────────────
     const {data:{subscription}}=sb.auth.onAuthStateChange(async(event,session)=>{
 
-      // ── 1. App open / refresh ─────────────────────────────────────────
+      // ── App open / refresh / PWA resume ───────────────────────────────
       if(event==="INITIAL_SESSION"){
         clearTimeout(splashTimer);
 
         if(session?.user){
-          // Session exists in localStorage — restore user without deleted check
           await bootUser(session.user, pendingDlRef.current, false);
-        } else {
-          // No session in state. Try getSession() directly (handles edge cases
-          // where INITIAL_SESSION fires before Supabase fully hydrates from storage).
+        }else{
+          // Edge case: INITIAL_SESSION fires null but token is in localStorage.
+          // This happens on Supabase free-tier cold starts. Try once directly.
           try{
             const {data:{session:s2}}=await sb.auth.getSession();
-            if(s2?.user){
-              await bootUser(s2.user, pendingDlRef.current, false);
-              return;
-            }
+            if(s2?.user){await bootUser(s2.user, pendingDlRef.current, false);return;}
           }catch{}
-
-          // Confirmed: no session. Show login or deep-linked public profile.
+          // Genuinely no session — show login (or public deep-link profile)
           if(pendingDlRef.current){
             const dl=pendingDlRef.current;
             try{
@@ -2982,35 +2954,36 @@ function App(){
         }
       }
 
-      // ── 2. Sign-in event (Google OAuth, email confirmation, etc.) ────────
-      // For email/password, handleAuthed() fires BEFORE this event and sets
-      // profileLoadingRef=true, so this will correctly no-op for that case.
+      // ── SIGNED_IN fires for: Google OAuth, email confirmation ────────
+      // For email/password: handleAuthed() already called bootUser with this
+      // user ID and set bootingUserIdRef. We skip here to prevent double-load.
       else if(event==="SIGNED_IN"&&session?.user){
-        // Already loaded for this exact user — skip (prevents double-load)
-        if(profileRef.current&&profileRef.current.id===session.user.id)return;
-        // Another user's profile is loaded (account switch) — allow re-boot
+        const uid=session.user.id;
+        // Skip if this exact user is already loaded or currently being loaded
+        if(profileRef.current?.id===uid)return;
+        if(bootingUserIdRef.current===uid)return;
+        // New user (Google OAuth / email confirm) — run full boot with deleted check
         profileLoadingRef.current=false;
         await bootUser(session.user, pendingDlRef.current, true);
       }
 
-      // ── 3. Token silently refreshed ──────────────────────────────────────
+      // ── Token silently refreshed ──────────────────────────────────────
       else if(event==="TOKEN_REFRESHED"&&session?.user){
         setAuthUser(session.user);
         if(!profileRef.current&&!profileLoadingRef.current){
           profileLoadingRef.current=true;
+          bootingUserIdRef.current=session.user.id;
           loadProfile(session.user.id, null);
         }
       }
 
-      // ── 4. Sign-out ──────────────────────────────────────────────────────
+      // ── Sign-out ──────────────────────────────────────────────────────
       else if(event==="SIGNED_OUT"){
         const intentional=localStorage.getItem("he_intent_signout")==="true";
         localStorage.removeItem("he_intent_signout");
 
         if(!intentional){
-          // Supabase fires SIGNED_OUT on token-refresh failures (common on free tier).
-          // Try once to recover the session before wiping state.
-          // Do NOT reload the page — that causes a flash-to-login loop.
+          // Token refresh failure — try to recover once (no page reload ever)
           try{
             await new Promise(r=>setTimeout(r,600));
             const {data:{session:s2}}=await sb.auth.getSession();
@@ -3018,12 +2991,12 @@ function App(){
               setAuthUser(s2.user);
               if(!profileRef.current&&!profileLoadingRef.current){
                 profileLoadingRef.current=true;
+                bootingUserIdRef.current=s2.user.id;
                 loadProfile(s2.user.id, null);
               }
-              return; // session recovered — do not wipe state
+              return;
             }
           }catch{}
-          // Recovery failed — fall through to clearSession() below
         }
         clearSession();
       }
@@ -3079,7 +3052,6 @@ function App(){
     try{
       let {data,error}=await sb.from("profiles").select("*").eq("id",userId).maybeSingle();
 
-      // ── DB errors (RLS, network) must NOT be treated as "no profile" ──
       if(error){
         console.error("loadProfile error:",error);
         await new Promise(r=>setTimeout(r,1500));
@@ -3088,7 +3060,8 @@ function App(){
           console.error("loadProfile retry failed:",res2.error);
           setAuthError("Could not load your profile. Please log in again.");
           await sb.auth.signOut();
-          profileLoadingRef.current=false; // ── FIX 4: always reset
+          profileLoadingRef.current=false;
+          bootingUserIdRef.current=null;
           return;
         }
         data=res2.data;
@@ -3100,27 +3073,32 @@ function App(){
         setGroups(loadGroups(fullProfile.id));
         loadAppData(fullProfile,dl);
       }else{
-        // No profile row — check for cross-provider collision before showing setup
+        // No profile row — check for cross-provider collision
         try{
           const {data:{user:cu}}=await sb.auth.getUser();
           if(cu?.email){
             const {data:ep}=await sb.from("profiles").select("id,email,name").eq("email",cu.email).maybeSingle();
             if(ep&&ep.id!==userId){
-              setAuthError("This email is linked to a different login method (e.g. Google). Please use that to sign in.");
+              setAuthError("This email is linked to a different login method. Please use that to sign in.");
               await sb.auth.signOut();
-              profileLoadingRef.current=false; // ── FIX 4: always reset
+              profileLoadingRef.current=false;
+              bootingUserIdRef.current=null;
               return;
             }
           }
-        }catch(e){console.error("email lookup error:",e);}
+        }catch{}
         // Genuinely new user — show ProfileSetup
-        setProfileFetched(true);setAuthLoading(false);
-        profileLoadingRef.current=false; // ── FIX 4: always reset
+        setProfileFetched(true);
+        setAuthLoading(false);
+        profileLoadingRef.current=false;
+        bootingUserIdRef.current=null;
       }
     }catch(e){
       console.error("loadProfile exception:",e);
-      setProfileFetched(true);setAuthLoading(false);
-      profileLoadingRef.current=false; // ── FIX 4: always reset
+      setProfileFetched(true);
+      setAuthLoading(false);
+      profileLoadingRef.current=false;
+      bootingUserIdRef.current=null;
     }
   }
 
@@ -3258,11 +3236,44 @@ function App(){
     }catch(e){
       console.error("loadAppData error:",e);
     }finally{
-      // Always unblock the UI and release the loading lock
       setAuthLoading(false);
       setDataReady(true);
       profileLoadingRef.current=false;
+      bootingUserIdRef.current=null;
     }
+  }
+
+  // handleRefresh — in-app data refresh. Never reloads the page.
+  // Fetches fresh profiles, ratings, follows, messages without losing auth state.
+  const [refreshing,setRefreshing]=useState(false);
+  async function handleRefresh(){
+    if(!profile||refreshing)return;
+    setRefreshing(true);
+    try{
+      const mapR=r=>({raterId:r.rater_id,raterName:r.rater_name||"",vibe:r.vibe,humor:r.humor,kindness:r.kindness,rizz:r.rizz,loyalty:r.loyalty,drip:r.drip,ts:new Date(r.updated_at).getTime()});
+      const [profRes,ratRes,followRes,myFollowersRes,blockRes,notifRes,delRes]=await Promise.all([
+        sb.from("profiles").select("*"),
+        sb.from("ratings").select("*"),
+        sb.from("follows").select("following_id").eq("follower_id",profile.id),
+        sb.from("follows").select("follower_id").eq("following_id",profile.id),
+        sb.from("blocks").select("blocked_id").eq("blocker_id",profile.id),
+        sb.from("notifications").select("*").eq("target_id",profile.id).order("created_at",{ascending:false}).limit(60),
+        sb.from("deleted_accounts").select("auth_id"),
+      ]);
+      const delSet=new Set((delRes.data||[]).map(d=>d.auth_id));
+      const allRatings=ratRes.data||[];
+      if(profRes.data){
+        setProfiles(profRes.data.filter(p=>!delSet.has(p.id)).map(p=>({...p,account_type:p.account_type||"personal",ratings:allRatings.filter(r=>r.target_id===p.id).map(mapR)})));
+      }
+      const followingIds=(followRes.data||[]).map(r=>r.following_id);
+      const followerIds=(myFollowersRes.data||[]).map(r=>r.follower_id);
+      setFollowing(followingIds);
+      setProfile(prev=>({...prev,followers_count:followerIds.length,following_count:followingIds.length}));
+      setBlocked((blockRes.data||[]).map(r=>r.blocked_id));
+      if(notifRes.data)setNotifs(notifRes.data.map(n=>({type:n.type,actorId:n.actor_id,text:n.text,ts:new Date(n.created_at).getTime(),read:n.read})));
+      pop("Refreshed ✓");
+    }catch(e){console.error("handleRefresh error:",e);}
+    finally{setRefreshing(false);}
   }
 
   function handleAdminTap(){
@@ -3271,14 +3282,13 @@ function App(){
     else adminTimer.current=setTimeout(()=>setAdminTaps(0),2500);
   }
 
-  // handleAuthed — called immediately after signInWithPassword succeeds in AuthScreen.
-  // We call loadProfile directly instead of waiting for the SIGNED_IN event because:
-  // 1. Supabase sometimes skips SIGNED_IN when a session already exists in localStorage
-  // 2. This gives us direct control over the loading flow
+  // handleAuthed — called immediately after signInWithPassword succeeds.
+  // Sets bootingUserIdRef so SIGNED_IN event knows this user is already being loaded.
   async function handleAuthed(user){
     if(!user?.id)return;
-    if(profileLoadingRef.current)return; // already loading, SIGNED_IN will handle it
+    if(bootingUserIdRef.current===user.id)return; // already booting this user
     profileLoadingRef.current=true;
+    bootingUserIdRef.current=user.id;
     setAuthError("");
     setAuthUser(user);
     loadProfile(user.id, pendingDlRef.current);
@@ -3621,6 +3631,10 @@ function App(){
         </div>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           {canInstall&&<button onClick={handleInstall} style={{padding:"7px 14px",background:`linear-gradient(135deg,${AC}cc,${AC}80)`,border:"none",borderRadius:20,color:"#fff",fontWeight:700,fontSize:12,display:"flex",alignItems:"center",gap:5,boxShadow:`0 4px 14px ${AC}40`}}>📲 Install</button>}
+          {/* In-app refresh — replaces page reload so auth is never disrupted */}
+          <button onClick={handleRefresh} disabled={refreshing} title="Refresh" style={{width:38,height:38,borderRadius:12,background:T.faint,border:`1px solid ${T.b1}`,display:"flex",alignItems:"center",justifyContent:"center",color:T.mu,fontSize:16,transition:"all .15s",flexShrink:0}}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{animation:refreshing?"spin .7s linear infinite":"none"}}><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+          </button>
           <div style={{position:"relative",cursor:"pointer"}} onClick={()=>setShowNotifs(true)}>
             <div style={{width:38,height:38,borderRadius:12,background:T.faint,border:`1px solid ${T.b1}`,display:"flex",alignItems:"center",justifyContent:"center",color:T.mu,transition:"all .15s"}}><BellIcon/></div>
             {unreadN>0&&<div style={{position:"absolute",top:-3,right:-3,minWidth:16,height:16,borderRadius:99,background:"#e0304a",border:`2px solid ${T.nav}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:8,color:"#fff",fontWeight:800,padding:"0 3px"}}>{unreadN>9?"9+":unreadN}</div>}
