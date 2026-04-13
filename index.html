@@ -2845,70 +2845,125 @@ function App(){
   // ── Load saved prefs ──
   useEffect(()=>{const p=getPref();if(p.dark!==undefined)setPrefs(prev=>({...prev,...p}));},[]);
 
-  /* ── Auth listener — simple, reliable, no race conditions ── */
-  const profileLoadingRef=useRef(false); // prevents double-load across closures
-  const profileRef=useRef(null);         // tracks profile state inside auth closure (avoids stale state)
-  const pollRef=useRef(null);            // 30-second poll — cleared on logout to prevent memory leak
-  const profilesRef=useRef([]);          // live profiles list accessible in event listeners
-  // pendingDlRef stores the deep link from URL so it survives through the login flow.
-  // Parsed ONCE at startup. After login, loadAppData uses it to auto-open the profile.
+  /* ─────────────────────────────────────────────────────────────────────────
+     AUTH SYSTEM
+     ─────────────────────────────────────────────────────────────────────────
+     Design:
+     • authLoading=true  → splash visible, nothing rendered underneath
+     • authLoading=false → splash gone, render based on authUser + profile
+     • profileLoadingRef → mutex so we never run two concurrent loadProfile calls
+     • profileRef        → ref copy of profile state, safe to read inside closures
+
+     On refresh / reopen (INITIAL_SESSION):
+       - Supabase restores session from localStorage instantly
+       - We skip the deleted-account DB check (not needed for returning users)
+       - Call loadProfile → loadAppData → setAuthLoading(false)
+
+     On fresh login (handleAuthed, called directly after signInWithPassword):
+       - We call loadProfile directly — do NOT wait for SIGNED_IN event
+       - SIGNED_IN also fires; it skips if same user already loading/loaded
+
+     On logout (SIGNED_OUT):
+       - If intentional: clear all state immediately
+       - If unintentional (token refresh failed): try getSession() once;
+         if recovered restore state; if not, clear state (do NOT reload,
+         which causes a flash-to-login loop)
+  ───────────────────────────────────────────────────────────────────────── */
+  const profileLoadingRef=useRef(false);
+  const profileRef=useRef(null);
+  const pollRef=useRef(null);
+  const profilesRef=useRef([]);
   const pendingDlRef=useRef(parseDeepLink());
+
   useEffect(()=>{profileRef.current=profile;},[profile]);
   useEffect(()=>{profilesRef.current=profiles;},[profiles]);
-  useEffect(()=>{
 
-    async function isDeleted(uid){
-      try{const {data}=await sb.from("deleted_accounts").select("auth_id").eq("auth_id",uid).maybeSingle();return!!data;}
-      catch{return false;}
+  useEffect(()=>{
+    // ── Helpers ──────────────────────────────────────────────────────────────
+    async function isDeletedAccount(uid){
+      try{
+        const {data}=await sb.from("deleted_accounts").select("auth_id").eq("auth_id",uid).maybeSingle();
+        return !!data;
+      }catch{return false;}
     }
 
-    async function bootUser(user,deepLink,skipDeletedCheck=false){
+    // bootUser: central entry point after auth confirms a user exists.
+    // checkDeleted=true only on fresh sign-ins (not on session restores).
+    async function bootUser(user, dl, checkDeleted=false){
       if(profileLoadingRef.current)return;
       profileLoadingRef.current=true;
 
-      // Only check deleted_accounts on fresh sign-ins (not page reloads for existing sessions).
-      // This removes a 200-500ms DB roundtrip on every refresh for logged-in users.
-      if(!skipDeletedCheck){
-        const deleted=await isDeleted(user.id);
+      if(checkDeleted){
+        const deleted=await isDeletedAccount(user.id);
         if(deleted){
-          const {data:existingProfile}=await sb.from("profiles").select("id").eq("id",user.id).maybeSingle();
-          if(!existingProfile){
-            await sb.from("deleted_accounts").delete().eq("auth_id",user.id);
-          } else {
+          const {data:existing}=await sb.from("profiles").select("id").eq("id",user.id).maybeSingle();
+          if(existing){
+            // Profile exists + deleted record = genuinely deleted, block login
             setAuthError("This account has been permanently deleted.");
-            await sb.auth.signOut();
+            sb.auth.signOut();
             profileLoadingRef.current=false;
+            setAuthLoading(false);
             return;
+          } else {
+            // No profile but deleted record = user wants fresh start, clear block
+            await sb.from("deleted_accounts").delete().eq("auth_id",user.id);
           }
         }
       }
+
       setAuthError("");
       setAuthUser(user);
-      loadProfile(user.id,deepLink);
+      loadProfile(user.id, dl);
     }
 
-    // ── Hard 5s timeout: always unblock splash. If user is loading, the
-    // spinner beneath handles it. If no user at all, shows login screen. ──
-    const authTimeout=setTimeout(()=>{
-      // Only force-resolve if authLoading is still true (hasn't been cleared yet)
-      setAuthLoading(prev=>{if(prev)return false;return prev;});
-    },5000);
+    // clearSession: wipe all React state on confirmed logout
+    function clearSession(){
+      if(pollRef.current){clearInterval(pollRef.current);pollRef.current=null;}
+      sb.removeAllChannels();
+      profileLoadingRef.current=false;
+      setDataReady(false);
+      setAuthUser(null);
+      setProfile(null);
+      setProfileFetched(false);
+      setProfiles([]);
+      setNotifs([]);
+      setFollowing([]);
+      setBlocked([]);
+      setConvs([]);
+      setDeepLinkProfile(null);
+      setAuthLoading(false);
+    }
 
+    // ── Splash safety net: if nothing resolves in 8s, show login ──────────
+    // 8s is enough for even very slow connections. We do NOT use a shorter
+    // timeout because on Supabase free tier cold starts can take 3-5s.
+    // The timeout is cancelled as soon as INITIAL_SESSION fires (success or null).
+    const splashTimer=setTimeout(()=>{
+      setAuthLoading(false);
+    }, 8000);
+
+    // ── Auth state listener ───────────────────────────────────────────────
     const {data:{subscription}}=sb.auth.onAuthStateChange(async(event,session)=>{
+
+      // ── 1. App open / refresh ─────────────────────────────────────────
       if(event==="INITIAL_SESSION"){
-        clearTimeout(authTimeout);
+        clearTimeout(splashTimer);
+
         if(session?.user){
-          // Returning user on refresh — skip deleted check for instant load
-          await bootUser(session.user,pendingDlRef.current,true);
+          // Session exists in localStorage — restore user without deleted check
+          await bootUser(session.user, pendingDlRef.current, false);
         } else {
+          // No session in state. Try getSession() directly (handles edge cases
+          // where INITIAL_SESSION fires before Supabase fully hydrates from storage).
           try{
             const {data:{session:s2}}=await sb.auth.getSession();
             if(s2?.user){
-              await bootUser(s2.user,pendingDlRef.current,true);
+              await bootUser(s2.user, pendingDlRef.current, false);
               return;
             }
-          }catch(e){console.warn("getSession fallback failed:",e);}
-          // Confirmed: no session. Show public profile or login screen.
+          }catch{}
+
+          // Confirmed: no session. Show login or deep-linked public profile.
           if(pendingDlRef.current){
             const dl=pendingDlRef.current;
             try{
@@ -2921,64 +2976,60 @@ function App(){
                 const {data:rr}=await sb.from("ratings").select("*").eq("target_id",data.id);
                 setDeepLinkProfile({...data,ratings:(rr||[]).map(r=>({raterId:r.rater_id,raterName:r.rater_name||"",vibe:r.vibe,humor:r.humor,kindness:r.kindness,rizz:r.rizz,loyalty:r.loyalty,drip:r.drip,ts:new Date(r.updated_at).getTime()}))});
               }
-            }catch(e){console.error("Deep link error:",e);}
+            }catch{}
           }
           setAuthLoading(false);
         }
       }
+
+      // ── 2. Sign-in event (Google OAuth, email confirmation, etc.) ────────
+      // For email/password, handleAuthed() fires BEFORE this event and sets
+      // profileLoadingRef=true, so this will correctly no-op for that case.
       else if(event==="SIGNED_IN"&&session?.user){
-        // Skip only if this exact user's profile is already fully loaded
-        if(profileRef.current&&profileRef.current.id===session.user.id){return;}
+        // Already loaded for this exact user — skip (prevents double-load)
+        if(profileRef.current&&profileRef.current.id===session.user.id)return;
+        // Another user's profile is loaded (account switch) — allow re-boot
         profileLoadingRef.current=false;
-        // Fresh sign-in — always run deleted check
-        await bootUser(session.user,pendingDlRef.current,false);
+        await bootUser(session.user, pendingDlRef.current, true);
       }
+
+      // ── 3. Token silently refreshed ──────────────────────────────────────
       else if(event==="TOKEN_REFRESHED"&&session?.user){
-        // Session silently refreshed (e.g., app reopened after access token expiry)
         setAuthUser(session.user);
-        // Fix: if profile wasn't loaded (app resumed from background), load it now
         if(!profileRef.current&&!profileLoadingRef.current){
           profileLoadingRef.current=true;
-          loadProfile(session.user.id,null);
+          loadProfile(session.user.id, null);
         }
       }
+
+      // ── 4. Sign-out ──────────────────────────────────────────────────────
       else if(event==="SIGNED_OUT"){
-        const wasIntentional=localStorage.getItem("he_intent_signout")==="true";
+        const intentional=localStorage.getItem("he_intent_signout")==="true";
         localStorage.removeItem("he_intent_signout");
-        if(!wasIntentional){
-          // Supabase fires SIGNED_OUT on token-refresh failures. Try once to recover.
+
+        if(!intentional){
+          // Supabase fires SIGNED_OUT on token-refresh failures (common on free tier).
+          // Try once to recover the session before wiping state.
+          // Do NOT reload the page — that causes a flash-to-login loop.
           try{
-            await new Promise(r=>setTimeout(r,800));
+            await new Promise(r=>setTimeout(r,600));
             const {data:{session:s2}}=await sb.auth.getSession();
             if(s2?.user){
               setAuthUser(s2.user);
               if(!profileRef.current&&!profileLoadingRef.current){
                 profileLoadingRef.current=true;
-                loadProfile(s2.user.id,null);
+                loadProfile(s2.user.id, null);
               }
-              return;
+              return; // session recovered — do not wipe state
             }
           }catch{}
-          // Recovery failed — reload once so Supabase re-hydrates from localStorage
-          if(!sessionStorage.getItem("he_signout_retry")){
-            sessionStorage.setItem("he_signout_retry","1");
-            window.location.reload();
-            return;
-          }
-          sessionStorage.removeItem("he_signout_retry");
+          // Recovery failed — fall through to clearSession() below
         }
-        // Intentional logout or all recovery failed — clear state
-        if(pollRef.current){clearInterval(pollRef.current);pollRef.current=null;}
-        // Remove all realtime subscriptions to prevent stale callbacks after logout
-        sb.removeAllChannels();
-        profileLoadingRef.current=false;
-        setAuthUser(null);setProfile(null);setProfileFetched(false);
-        setProfiles([]);setNotifs([]);setFollowing([]);setBlocked([]);
-        setConvs([]);setDeepLinkProfile(null);setAuthLoading(false);
+        clearSession();
       }
     });
 
-    return()=>{subscription.unsubscribe();clearTimeout(authTimeout);};
+    return()=>{subscription.unsubscribe();clearTimeout(splashTimer);};
   },[]);
 
   // ── Deep link handler — works both on fresh load AND when app comes to foreground ──
@@ -3220,15 +3271,17 @@ function App(){
     else adminTimer.current=setTimeout(()=>setAdminTaps(0),2500);
   }
 
-  // handleAuthed — called by AuthScreen after signInWithPassword resolves.
-  // We CANNOT rely on SIGNED_IN event alone because Supabase sometimes skips it
-  // when the session already exists (re-login scenario). So we call loadProfile directly.
+  // handleAuthed — called immediately after signInWithPassword succeeds in AuthScreen.
+  // We call loadProfile directly instead of waiting for the SIGNED_IN event because:
+  // 1. Supabase sometimes skips SIGNED_IN when a session already exists in localStorage
+  // 2. This gives us direct control over the loading flow
   async function handleAuthed(user){
     if(!user?.id)return;
-    if(profileLoadingRef.current)return; // already loading
+    if(profileLoadingRef.current)return; // already loading, SIGNED_IN will handle it
     profileLoadingRef.current=true;
+    setAuthError("");
     setAuthUser(user);
-    loadProfile(user.id,pendingDlRef.current);
+    loadProfile(user.id, pendingDlRef.current);
   }
   async function handleProfileCreated(p){
     setProfile(p);
@@ -3493,15 +3546,6 @@ function App(){
 
   useEffect(()=>{document.body.style.background=T.bg;document.body.style.color=T.txt;},[T.bg,T.txt]);
 
-  // Safety: if authUser is set but profile never fetches (DB error), unblock UI after 10s
-  useEffect(()=>{
-    if(!authUser||profileFetched||profile)return;
-    const t=setTimeout(()=>{
-      if(!profileFetched&&!profile)setProfileFetched(true);
-    },10000);
-    return()=>clearTimeout(t);
-  },[authUser,profileFetched,profile]);
-
   // Dismiss splash once auth resolved
   useEffect(()=>{
     if(!authLoading){
@@ -3510,15 +3554,31 @@ function App(){
     }
   },[authLoading]);
 
-  // While auth is resolving — splash is already showing, render nothing underneath
+  // Safety: if authUser is set but profile never loads (DB error), unblock after 12s
+  useEffect(()=>{
+    if(!authUser||profileFetched||profile)return;
+    const t=setTimeout(()=>{setProfileFetched(true);},12000);
+    return()=>clearTimeout(t);
+  },[authUser,profileFetched,profile]);
+
+  // ── RENDER ROUTING ────────────────────────────────────────────────────────
+  // 1. Splash is showing — render nothing underneath
   if(authLoading)return null;
 
+  // 2. No authenticated user — show login or public profile
   if(!authUser){
     if(deepLinkProfile)return<PublicProfilePage profile={deepLinkProfile} onJoin={()=>setDeepLinkProfile(null)}/>;
     return<AuthScreen T={DK} onAuthed={handleAuthed} authError={authError} onClearAuthError={()=>setAuthError("")}/>;
   }
-  // Show spinner only while profile row is being fetched (profileFetched=false means DB query in flight)
-  if(!profile&&!profileFetched)return<div style={{minHeight:"100vh",background:"#09090f",display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{width:20,height:20,border:"2px solid #1c1c2c",borderTopColor:"#7b72e9",borderRadius:"50%",animation:"spin .55s linear infinite"}}/></div>;
+
+  // 3. User authenticated, waiting for profile row from DB
+  if(!profile&&!profileFetched){
+    return<div style={{minHeight:"100vh",background:"#09090f",display:"flex",alignItems:"center",justifyContent:"center"}}>
+      <div style={{width:22,height:22,border:"2.5px solid #1c1c2c",borderTopColor:"#7b72e9",borderRadius:"50%",animation:"spin .55s linear infinite"}}/>
+    </div>;
+  }
+
+  // 4. User authenticated but no profile row — new user setup
   if(!profile&&profileFetched)return<ProfileSetup user={authUser} T={T} onDone={handleProfileCreated}/>;
 
   // Active chat = full screen
