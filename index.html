@@ -2786,10 +2786,11 @@ const DP={dark:true};
 
 function App(){
   const [authUser,setAuthUser]=useState(null);
-  const [authError,setAuthError]=useState(""); // shown on AuthScreen (e.g. deleted account)
+  const [authError,setAuthError]=useState("");
   const [profile,setProfile]=useState(null);
-  const [profileFetched,setProfileFetched]=useState(false); // true once we've tried to load profile from DB
+  const [profileFetched,setProfileFetched]=useState(false);
   const [authLoading,setAuthLoading]=useState(true);
+  const [dataReady,setDataReady]=useState(false); // true after loadAppData completes
   const [profiles,setProfiles]=useState([]);
   const [notifs,setNotifs]=useState([]);
   const [blocked,setBlocked]=useState([]);
@@ -2861,30 +2862,26 @@ function App(){
       catch{return false;}
     }
 
-    async function bootUser(user,deepLink){
+    async function bootUser(user,deepLink,skipDeletedCheck=false){
       if(profileLoadingRef.current)return;
       profileLoadingRef.current=true;
 
-      // ── Deleted account check ──────────────────────────────────────────────
-      // If this auth_id is in deleted_accounts, check whether they have an
-      // active profile. If yes → truly deleted, block them. If no profile →
-      // they deleted and are trying to start fresh (especially Google OAuth
-      // which reuses the same auth_id). Un-block them so they can re-register.
-      const deleted=await isDeleted(user.id);
-      if(deleted){
-        const {data:existingProfile}=await sb.from("profiles").select("id").eq("id",user.id).maybeSingle();
-        if(!existingProfile){
-          // No profile + deletion record = user wants a fresh start. Clear the block.
-          await sb.from("deleted_accounts").delete().eq("auth_id",user.id);
-        } else {
-          // Profile still exists somehow AND deletion record exists = genuinely deleted
-          setAuthError("This account has been permanently deleted.");
-          await sb.auth.signOut();
-          profileLoadingRef.current=false;
-          return;
+      // Only check deleted_accounts on fresh sign-ins (not page reloads for existing sessions).
+      // This removes a 200-500ms DB roundtrip on every refresh for logged-in users.
+      if(!skipDeletedCheck){
+        const deleted=await isDeleted(user.id);
+        if(deleted){
+          const {data:existingProfile}=await sb.from("profiles").select("id").eq("id",user.id).maybeSingle();
+          if(!existingProfile){
+            await sb.from("deleted_accounts").delete().eq("auth_id",user.id);
+          } else {
+            setAuthError("This account has been permanently deleted.");
+            await sb.auth.signOut();
+            profileLoadingRef.current=false;
+            return;
+          }
         }
       }
-      // ─────────────────────────────────────────────────────────────────────────
       setAuthError("");
       setAuthUser(user);
       loadProfile(user.id,deepLink);
@@ -2899,16 +2896,15 @@ function App(){
 
     const {data:{subscription}}=sb.auth.onAuthStateChange(async(event,session)=>{
       if(event==="INITIAL_SESSION"){
-        clearTimeout(authTimeout); // session resolved — cancel fallback timer
+        clearTimeout(authTimeout);
         if(session?.user){
-          await bootUser(session.user,pendingDlRef.current);
+          // Returning user on refresh — skip deleted check for instant load
+          await bootUser(session.user,pendingDlRef.current,true);
         } else {
-          // Try getSession() once immediately (handles PWA resume where token
-          // is in localStorage but INITIAL_SESSION fires null due to cold start).
           try{
             const {data:{session:s2}}=await sb.auth.getSession();
             if(s2?.user){
-              await bootUser(s2.user,pendingDlRef.current);
+              await bootUser(s2.user,pendingDlRef.current,true);
               return;
             }
           }catch(e){console.warn("getSession fallback failed:",e);}
@@ -2934,7 +2930,8 @@ function App(){
         // Skip only if this exact user's profile is already fully loaded
         if(profileRef.current&&profileRef.current.id===session.user.id){return;}
         profileLoadingRef.current=false;
-        await bootUser(session.user,pendingDlRef.current);
+        // Fresh sign-in — always run deleted check
+        await bootUser(session.user,pendingDlRef.current,false);
       }
       else if(event==="TOKEN_REFRESHED"&&session?.user){
         // Session silently refreshed (e.g., app reopened after access token expiry)
@@ -3079,146 +3076,142 @@ function App(){
   async function loadAppData(myProfile,dl=null){
     const uid=myProfile.id;
     try{
-    const [profRes,ratRes,followRes,myFollowersRes,blockRes,notifRes,msgRes,delRes]=await Promise.all([
-      sb.from("profiles").select("*"),
-      sb.from("ratings").select("*"),
-      sb.from("follows").select("following_id").eq("follower_id",uid),
-      sb.from("follows").select("follower_id").eq("following_id",uid),
-      sb.from("blocks").select("blocked_id").eq("blocker_id",uid),
-      sb.from("notifications").select("*").eq("target_id",uid).order("created_at",{ascending:false}).limit(60),
-      sb.from("messages").select("*").or(`sender_id.eq.${uid},receiver_id.eq.${uid}`).order("created_at",{ascending:true}),
-      sb.from("deleted_accounts").select("auth_id"),
-    ]);
-    // Build a set of deleted auth IDs so we can filter orphaned profile rows
-    const deletedIds=new Set((delRes.data||[]).map(d=>d.auth_id));
-    const allRatings=ratRes.data||[];
-    // Compute real follower/following counts from follows table
-    const followingIds=(followRes.data||[]).map(r=>r.following_id);
-    const followerIds=(myFollowersRes.data||[]).map(r=>r.follower_id);
-    if(profRes.data){
-      const merged=profRes.data
-        .filter(p=>!deletedIds.has(p.id))
-        .map(p=>({...p,account_type:p.account_type||"personal",ratings:allRatings.filter(r=>r.target_id===p.id).map(r=>({raterId:r.rater_id,raterName:r.rater_name||"",vibe:r.vibe,humor:r.humor,kindness:r.kindness,rizz:r.rizz,loyalty:r.loyalty,drip:r.drip,ts:new Date(r.updated_at).getTime()}))}));
-      setProfiles(merged);
-    }
-    // Update own profile with real counts
-    setProfile(prev=>({...prev,followers_count:followerIds.length,following_count:followingIds.length}));
-    setFollowing(followingIds);
-    setBlocked((blockRes.data||[]).map(r=>r.blocked_id));
-    if(notifRes.data)setNotifs(notifRes.data.map(n=>({type:n.type,actorId:n.actor_id,text:n.text,ts:new Date(n.created_at).getTime(),read:n.read})));
-
-    // Build conversations
-    if(msgRes.data){
-      const msgsByConv={};
-      msgRes.data.forEach(m=>{
-        const otherId=m.sender_id===uid?m.receiver_id:m.sender_id;
-        const cid=[uid,otherId].sort().join("_");
-        if(!msgsByConv[cid])msgsByConv[cid]={id:cid,oid:otherId,messages:[]};
-        msgsByConv[cid].messages.push({sid:m.sender_id,txt:m.text,ts:new Date(m.created_at).getTime(),read:m.read,status:m.status||"delivered",dbId:m.id});
-      });
-      setConvs(Object.values(msgsByConv));
-    }
-
-    // ── Real-time: ratings (unique channel per user) ──
-    sb.channel(`rt_ratings_${uid}`).on("postgres_changes",{event:"*",schema:"public",table:"ratings"},async()=>{
-      const {data:nr}=await sb.from("ratings").select("*");
-      if(nr)setProfiles(prev=>prev.map(p=>({...p,ratings:nr.filter(r=>r.target_id===p.id).map(r=>({raterId:r.rater_id,raterName:r.rater_name||"",vibe:r.vibe,humor:r.humor,kindness:r.kindness,rizz:r.rizz,loyalty:r.loyalty,drip:r.drip,ts:new Date(r.updated_at).getTime()}))})));
-    }).subscribe();
-
-    // ── Real-time: notifications ──
-    sb.channel(`rt_notifs_${uid}`).on("postgres_changes",{event:"INSERT",schema:"public",table:"notifications",filter:`target_id=eq.${uid}`},payload=>{
-      const n=payload.new;
-      setNotifs(prev=>[{type:n.type,actorId:n.actor_id,text:n.text,ts:new Date(n.created_at).getTime(),read:false},...prev].slice(0,60));
-    }).subscribe();
-
-    // ── Real-time: messages ──
-    sb.channel(`rt_msgs_${uid}`).on("postgres_changes",{event:"INSERT",schema:"public",table:"messages"},payload=>{
-      const m=payload.new;
-      if(m.sender_id!==uid&&m.receiver_id!==uid)return;
-      const otherId=m.sender_id===uid?m.receiver_id:m.sender_id;
-      const cid=[uid,otherId].sort().join("_");
-      const newMsg={sid:m.sender_id,txt:m.text,ts:new Date(m.created_at).getTime(),read:m.read,status:m.status||"delivered",dbId:m.id};
-      setConvs(prev=>{const ex=prev.find(c=>c.id===cid);if(ex)return prev.map(c=>c.id===cid?{...c,messages:[...c.messages.filter(x=>x.dbId!==newMsg.dbId),newMsg]}:c);return[...prev,{id:cid,oid:otherId,messages:[newMsg]}];});
-      setActiveChat(prev=>prev&&prev.id===cid?{...prev,messages:[...prev.messages.filter(x=>x.dbId!==newMsg.dbId),newMsg]}:prev);
-    }).subscribe();
-
-    // ── Real-time: message updates (seen status) ──
-    sb.channel(`rt_msg_upd_${uid}`).on("postgres_changes",{event:"UPDATE",schema:"public",table:"messages"},payload=>{
-      const m=payload.new;
-      const otherId=m.sender_id===uid?m.receiver_id:m.sender_id;
-      const cid=[uid,otherId].sort().join("_");
-      setConvs(prev=>prev.map(c=>c.id===cid?{...c,messages:c.messages.map(x=>x.dbId===m.id?{...x,read:m.read,status:m.status||x.status}:x)}:c));
-      setActiveChat(prev=>prev&&prev.id===cid?{...prev,messages:prev.messages.map(x=>x.dbId===m.id?{...x,read:m.read,status:m.status||x.status}:x)}:prev);
-    }).subscribe();
-
-    // ── Real-time: follows ──
-    sb.channel(`rt_follows_${uid}`).on("postgres_changes",{event:"*",schema:"public",table:"follows"},async()=>{
-      const [{data:fol},{data:fwd}]=await Promise.all([
-        sb.from("follows").select("following_id").eq("follower_id",uid),
-        sb.from("follows").select("follower_id").eq("following_id",uid),
-      ]);
-      if(fol)setFollowing(fol.map(r=>r.following_id));
-      if(fwd)setProfile(prev=>({...prev,followers_count:fwd.length,following_count:(fol||[]).length}));
-    }).subscribe();
-
-    setAuthLoading(false);
-
-    // ── Auto-open deep-linked profile (for logged-in users scanning a QR or opening a share link) ──
-    // Primary: dl param passed from INITIAL_SESSION / SIGNED_IN / handleAuthed
-    // Fallback: sessionStorage — covers the case where user scanned QR → saw PublicProfilePage
-    //           → clicked "Log in" → logged in → app loaded fresh (dl would be null by now)
-    const effectiveDl = dl || (()=>{
-      try{
-        const p=JSON.parse(sessionStorage.getItem("he_pending_profile")||"null");
-        if(p?.short_id)return{type:"short_id",val:p.short_id};
-        if(p?.handle)return{type:"handle",val:(p.handle||"").replace(/^@/,"")};
-      }catch{}
-      return null;
-    })();
-
-    if(effectiveDl){
-      pendingDlRef.current=null; // consumed
-      try{sessionStorage.removeItem("he_pending_profile");}catch{}
-      try{
-        let dq=sb.from("profiles").select("*");
-        if(effectiveDl.type==="handle")dq=dq.ilike("handle",`%${effectiveDl.val}%`);
-        else if(effectiveDl.type==="short_id"||effectiveDl.type==="invite")dq=dq.eq("short_id",effectiveDl.val);
-        else dq=dq.eq("id",effectiveDl.val);
-        const {data:dlp}=await dq.limit(1).maybeSingle();
-        if(dlp&&dlp.id!==myProfile.id){
-          const {data:dlr}=await sb.from("ratings").select("*").eq("target_id",dlp.id);
-          setViewT({...dlp,ratings:(dlr||[]).map(r=>({raterId:r.rater_id,raterName:r.rater_name||"",vibe:r.vibe,humor:r.humor,kindness:r.kindness,rizz:r.rizz,loyalty:r.loyalty,drip:r.drip,ts:new Date(r.updated_at).getTime()}))});
-          window.history.replaceState({},"",window.location.pathname);
-        }
-      }catch(e){console.error("Deep link open error:",e);}
-    }
-
-    }catch(e){console.error("loadAppData error:",e);}
-    finally{setAuthLoading(false);profileLoadingRef.current=false;}
-
-    // Poll every 30s — only refresh profiles/ratings if window is visible to avoid wasted requests
-    if(pollRef.current)clearInterval(pollRef.current);
-    pollRef.current=setInterval(async()=>{
-      if(document.visibilityState!=="visible")return; // skip when app is in background
-      const [pr,rr,dr]=await Promise.all([
+      // Fetch all app data in parallel — deleted_accounts for filtering orphaned profiles
+      const [profRes,ratRes,followRes,myFollowersRes,blockRes,notifRes,msgRes,delRes]=await Promise.all([
         sb.from("profiles").select("*"),
         sb.from("ratings").select("*"),
+        sb.from("follows").select("following_id").eq("follower_id",uid),
+        sb.from("follows").select("follower_id").eq("following_id",uid),
+        sb.from("blocks").select("blocked_id").eq("blocker_id",uid),
+        sb.from("notifications").select("*").eq("target_id",uid).order("created_at",{ascending:false}).limit(60),
+        sb.from("messages").select("*").or(`sender_id.eq.${uid},receiver_id.eq.${uid}`).order("created_at",{ascending:true}),
         sb.from("deleted_accounts").select("auth_id"),
       ]);
-      if(pr.data&&rr.data){
-        const delSet=new Set((dr.data||[]).map(d=>d.auth_id));
-        setProfiles(pr.data
-          .filter(p=>!delSet.has(p.id))
-          .map(p=>({
-            ...p,
-            account_type:p.account_type||"personal",
-            ratings:rr.data
-              .filter(r=>r.target_id===p.id)
-              .map(r=>({raterId:r.rater_id,raterName:r.rater_name||"",vibe:r.vibe,humor:r.humor,kindness:r.kindness,rizz:r.rizz,loyalty:r.loyalty,drip:r.drip,ts:new Date(r.updated_at).getTime()}))
-          }))
+
+      const deletedIds=new Set((delRes.data||[]).map(d=>d.auth_id));
+      const allRatings=ratRes.data||[];
+      const followingIds=(followRes.data||[]).map(r=>r.following_id);
+      const followerIds=(myFollowersRes.data||[]).map(r=>r.follower_id);
+
+      // Helper: map a raw ratings row to the app shape
+      const mapRating=r=>({raterId:r.rater_id,raterName:r.rater_name||"",vibe:r.vibe,humor:r.humor,kindness:r.kindness,rizz:r.rizz,loyalty:r.loyalty,drip:r.drip,ts:new Date(r.updated_at).getTime()});
+
+      if(profRes.data){
+        setProfiles(profRes.data
+          .filter(p=>!deletedIds.has(p.id))
+          .map(p=>({...p,account_type:p.account_type||"personal",ratings:allRatings.filter(r=>r.target_id===p.id).map(mapRating)}))
         );
       }
-    },30000);
+
+      setProfile(prev=>({...prev,followers_count:followerIds.length,following_count:followingIds.length}));
+      setFollowing(followingIds);
+      setBlocked((blockRes.data||[]).map(r=>r.blocked_id));
+      if(notifRes.data)setNotifs(notifRes.data.map(n=>({type:n.type,actorId:n.actor_id,text:n.text,ts:new Date(n.created_at).getTime(),read:n.read})));
+
+      if(msgRes.data){
+        const msgsByConv={};
+        msgRes.data.forEach(m=>{
+          const otherId=m.sender_id===uid?m.receiver_id:m.sender_id;
+          const cid=[uid,otherId].sort().join("_");
+          if(!msgsByConv[cid])msgsByConv[cid]={id:cid,oid:otherId,messages:[]};
+          msgsByConv[cid].messages.push({sid:m.sender_id,txt:m.text,ts:new Date(m.created_at).getTime(),read:m.read,status:m.status||"delivered",dbId:m.id});
+        });
+        setConvs(Object.values(msgsByConv));
+      }
+
+      // ── Real-time subscriptions (unique per user so re-login gets fresh channels) ──
+      sb.channel(`rt_ratings_${uid}`).on("postgres_changes",{event:"*",schema:"public",table:"ratings"},async()=>{
+        const {data:nr}=await sb.from("ratings").select("*");
+        if(nr)setProfiles(prev=>prev.map(p=>({...p,ratings:nr.filter(r=>r.target_id===p.id).map(mapRating)})));
+      }).subscribe();
+
+      sb.channel(`rt_notifs_${uid}`).on("postgres_changes",{event:"INSERT",schema:"public",table:"notifications",filter:`target_id=eq.${uid}`},payload=>{
+        const n=payload.new;
+        setNotifs(prev=>[{type:n.type,actorId:n.actor_id,text:n.text,ts:new Date(n.created_at).getTime(),read:false},...prev].slice(0,60));
+      }).subscribe();
+
+      sb.channel(`rt_msgs_${uid}`).on("postgres_changes",{event:"INSERT",schema:"public",table:"messages"},payload=>{
+        const m=payload.new;
+        if(m.sender_id!==uid&&m.receiver_id!==uid)return;
+        const otherId=m.sender_id===uid?m.receiver_id:m.sender_id;
+        const cid=[uid,otherId].sort().join("_");
+        const newMsg={sid:m.sender_id,txt:m.text,ts:new Date(m.created_at).getTime(),read:m.read,status:m.status||"delivered",dbId:m.id};
+        setConvs(prev=>{const ex=prev.find(c=>c.id===cid);if(ex)return prev.map(c=>c.id===cid?{...c,messages:[...c.messages.filter(x=>x.dbId!==newMsg.dbId),newMsg]}:c);return[...prev,{id:cid,oid:otherId,messages:[newMsg]}];});
+        setActiveChat(prev=>prev&&prev.id===cid?{...prev,messages:[...prev.messages.filter(x=>x.dbId!==newMsg.dbId),newMsg]}:prev);
+      }).subscribe();
+
+      sb.channel(`rt_msg_upd_${uid}`).on("postgres_changes",{event:"UPDATE",schema:"public",table:"messages"},payload=>{
+        const m=payload.new;
+        const otherId=m.sender_id===uid?m.receiver_id:m.sender_id;
+        const cid=[uid,otherId].sort().join("_");
+        setConvs(prev=>prev.map(c=>c.id===cid?{...c,messages:c.messages.map(x=>x.dbId===m.id?{...x,read:m.read,status:m.status||x.status}:x)}:c));
+        setActiveChat(prev=>prev&&prev.id===cid?{...prev,messages:prev.messages.map(x=>x.dbId===m.id?{...x,read:m.read,status:m.status||x.status}:x)}:prev);
+      }).subscribe();
+
+      sb.channel(`rt_follows_${uid}`).on("postgres_changes",{event:"*",schema:"public",table:"follows"},async()=>{
+        const [{data:fol},{data:fwd}]=await Promise.all([
+          sb.from("follows").select("following_id").eq("follower_id",uid),
+          sb.from("follows").select("follower_id").eq("following_id",uid),
+        ]);
+        if(fol)setFollowing(fol.map(r=>r.following_id));
+        if(fwd)setProfile(prev=>({...prev,followers_count:fwd.length,following_count:(fol||[]).length}));
+      }).subscribe();
+
+      // All data is set — now safe to hide the splash/spinner
+      setAuthLoading(false);
+
+      // ── Auto-open deep-linked profile ──
+      const effectiveDl=dl||(()=>{
+        try{
+          const p=JSON.parse(sessionStorage.getItem("he_pending_profile")||"null");
+          if(p?.short_id)return{type:"short_id",val:p.short_id};
+          if(p?.handle)return{type:"handle",val:(p.handle||"").replace(/^@/,"")};
+        }catch{}
+        return null;
+      })();
+      if(effectiveDl){
+        pendingDlRef.current=null;
+        try{sessionStorage.removeItem("he_pending_profile");}catch{}
+        try{
+          let dq=sb.from("profiles").select("*");
+          if(effectiveDl.type==="handle")dq=dq.ilike("handle",`%${effectiveDl.val}%`);
+          else if(effectiveDl.type==="short_id"||effectiveDl.type==="invite")dq=dq.eq("short_id",effectiveDl.val);
+          else dq=dq.eq("id",effectiveDl.val);
+          const {data:dlp}=await dq.limit(1).maybeSingle();
+          if(dlp&&dlp.id!==myProfile.id){
+            const {data:dlr}=await sb.from("ratings").select("*").eq("target_id",dlp.id);
+            setViewT({...dlp,ratings:(dlr||[]).map(mapRating)});
+            window.history.replaceState({},"",window.location.pathname);
+          }
+        }catch(e){console.error("Deep link open error:",e);}
+      }
+
+      // ── Poll every 30s (only when visible) ──
+      if(pollRef.current)clearInterval(pollRef.current);
+      pollRef.current=setInterval(async()=>{
+        if(document.visibilityState!=="visible")return;
+        const [pr,rr,dr]=await Promise.all([
+          sb.from("profiles").select("*"),
+          sb.from("ratings").select("*"),
+          sb.from("deleted_accounts").select("auth_id"),
+        ]);
+        if(pr.data&&rr.data){
+          const delSet=new Set((dr.data||[]).map(d=>d.auth_id));
+          setProfiles(pr.data
+            .filter(p=>!delSet.has(p.id))
+            .map(p=>({...p,account_type:p.account_type||"personal",ratings:rr.data.filter(r=>r.target_id===p.id).map(mapRating)}))
+          );
+        }
+      },30000);
+
+    }catch(e){
+      console.error("loadAppData error:",e);
+    }finally{
+      // Always unblock the UI and release the loading lock
+      setAuthLoading(false);
+      setDataReady(true);
+      profileLoadingRef.current=false;
+    }
   }
 
   function handleAdminTap(){
@@ -3577,19 +3570,32 @@ function App(){
 
       {/* CONTENT */}
       {tab==="feed"&&<div style={{padding:"14px 14px 0"}}>
-        {followedFeed.length===0?<div>
-          <div style={{textAlign:"center",padding:"28px 20px 16px",color:T.mu}}>
-            <div style={{fontSize:36,marginBottom:10,opacity:.4}}>◎</div>
-            <div style={{fontWeight:700,fontSize:16,color:T.txt,marginBottom:6}}>Your feed is empty</div>
-            <div style={{fontSize:13,opacity:.7,lineHeight:1.5}}>Follow people & businesses to see them here.</div>
-          </div>
-          {suggestedPersonal.length>0&&<><div style={{fontWeight:700,fontSize:14,color:T.txt,padding:"8px 0 10px",letterSpacing:"-.2px"}}>👤 Suggested People</div><div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:18}}>{suggestedPersonal.map((p,i)=><FeedCard key={p.id} p={p} myId={profile.id} following={following} T={T} onView={setViewT} onFollow={handleFollow} onUnfollow={handleUnfollow} onRate={handleRate} onMsg={handleMsg} idx={i}/>)}</div></>}
-          {suggestedBiz.length>0&&<><div style={{fontWeight:700,fontSize:14,color:T.txt,padding:"8px 0 10px",letterSpacing:"-.2px"}}>🏢 Businesses to Review</div><div style={{display:"flex",flexDirection:"column",gap:10}}>{suggestedBiz.map((p,i)=><FeedCard key={p.id} p={p} myId={profile.id} following={following} T={T} onView={setViewT} onFollow={handleFollow} onUnfollow={handleUnfollow} onRate={handleRate} onMsg={handleMsg} idx={i}/>)}</div></>}
-        </div>:<div>
-          {followedPersonal.length>0&&<><div style={{fontWeight:700,fontSize:13,color:T.mu,padding:"4px 0 10px",letterSpacing:".04em",textTransform:"uppercase"}}>👤 People</div><div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:18}}>{followedPersonal.map((p,i)=><FeedCard key={p.id} p={p} myId={profile.id} following={following} T={T} onView={setViewT} onFollow={handleFollow} onUnfollow={handleUnfollow} onRate={handleRate} onMsg={handleMsg} idx={i}/>)}</div></>}
-          {followedBiz.length>0&&<><div style={{fontWeight:700,fontSize:13,color:T.mu,padding:"4px 0 10px",letterSpacing:".04em",textTransform:"uppercase"}}>🏢 Businesses</div><div style={{display:"flex",flexDirection:"column",gap:12}}>{followedBiz.map((p,i)=><FeedCard key={p.id} p={p} myId={profile.id} following={following} T={T} onView={setViewT} onFollow={handleFollow} onUnfollow={handleUnfollow} onRate={handleRate} onMsg={handleMsg} idx={i}/>)}</div></>}
-          {suggestedPersonal.length>0&&<><div style={{fontWeight:700,fontSize:13,color:T.mu,padding:"18px 0 10px",letterSpacing:".04em",textTransform:"uppercase"}}>✨ Suggested</div><div style={{display:"flex",flexDirection:"column",gap:10}}>{suggestedPersonal.slice(0,3).map((p,i)=><FeedCard key={p.id} p={p} myId={profile.id} following={following} T={T} onView={setViewT} onFollow={handleFollow} onUnfollow={handleUnfollow} onRate={handleRate} onMsg={handleMsg} idx={i}/>)}</div></>}
-        </div>}
+        {!dataReady
+          ? <div style={{display:"flex",flexDirection:"column",gap:10,paddingTop:8}}>
+              {[1,2,3].map(i=><div key={i} style={{background:T.card,border:`1px solid ${T.b1}`,borderRadius:16,padding:"14px",display:"flex",alignItems:"center",gap:12,opacity:1-i*.15}}>
+                <div style={{width:46,height:46,borderRadius:"50%",background:T.b1,flexShrink:0}}/>
+                <div style={{flex:1,display:"flex",flexDirection:"column",gap:8}}>
+                  <div style={{height:12,background:T.b1,borderRadius:6,width:"60%"}}/>
+                  <div style={{height:10,background:T.b1,borderRadius:6,width:"40%"}}/>
+                </div>
+              </div>)}
+            </div>
+          : followedFeed.length===0
+            ? <div>
+                <div style={{textAlign:"center",padding:"28px 20px 16px",color:T.mu}}>
+                  <div style={{fontSize:36,marginBottom:10,opacity:.4}}>◎</div>
+                  <div style={{fontWeight:700,fontSize:16,color:T.txt,marginBottom:6}}>Your feed is empty</div>
+                  <div style={{fontSize:13,opacity:.7,lineHeight:1.5}}>Follow people & businesses to see them here.</div>
+                </div>
+                {suggestedPersonal.length>0&&<><div style={{fontWeight:700,fontSize:14,color:T.txt,padding:"8px 0 10px",letterSpacing:"-.2px"}}>👤 Suggested People</div><div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:18}}>{suggestedPersonal.map((p,i)=><FeedCard key={p.id} p={p} myId={profile.id} following={following} T={T} onView={setViewT} onFollow={handleFollow} onUnfollow={handleUnfollow} onRate={handleRate} onMsg={handleMsg} idx={i}/>)}</div></>}
+                {suggestedBiz.length>0&&<><div style={{fontWeight:700,fontSize:14,color:T.txt,padding:"8px 0 10px",letterSpacing:"-.2px"}}>🏢 Businesses to Review</div><div style={{display:"flex",flexDirection:"column",gap:10}}>{suggestedBiz.map((p,i)=><FeedCard key={p.id} p={p} myId={profile.id} following={following} T={T} onView={setViewT} onFollow={handleFollow} onUnfollow={handleUnfollow} onRate={handleRate} onMsg={handleMsg} idx={i}/>)}</div></>}
+              </div>
+            : <div>
+                {followedPersonal.length>0&&<><div style={{fontWeight:700,fontSize:13,color:T.mu,padding:"4px 0 10px",letterSpacing:".04em",textTransform:"uppercase"}}>👤 People</div><div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:18}}>{followedPersonal.map((p,i)=><FeedCard key={p.id} p={p} myId={profile.id} following={following} T={T} onView={setViewT} onFollow={handleFollow} onUnfollow={handleUnfollow} onRate={handleRate} onMsg={handleMsg} idx={i}/>)}</div></>}
+                {followedBiz.length>0&&<><div style={{fontWeight:700,fontSize:13,color:T.mu,padding:"4px 0 10px",letterSpacing:".04em",textTransform:"uppercase"}}>🏢 Businesses</div><div style={{display:"flex",flexDirection:"column",gap:12}}>{followedBiz.map((p,i)=><FeedCard key={p.id} p={p} myId={profile.id} following={following} T={T} onView={setViewT} onFollow={handleFollow} onUnfollow={handleUnfollow} onRate={handleRate} onMsg={handleMsg} idx={i}/>)}</div></>}
+                {suggestedPersonal.length>0&&<><div style={{fontWeight:700,fontSize:13,color:T.mu,padding:"18px 0 10px",letterSpacing:".04em",textTransform:"uppercase"}}>✨ Suggested</div><div style={{display:"flex",flexDirection:"column",gap:10}}>{suggestedPersonal.slice(0,3).map((p,i)=><FeedCard key={p.id} p={p} myId={profile.id} following={following} T={T} onView={setViewT} onFollow={handleFollow} onUnfollow={handleUnfollow} onRate={handleRate} onMsg={handleMsg} idx={i}/>)}</div></>}
+              </div>
+        }
       </div>}
 
       {tab==="search"&&<SearchTab profiles={profiles.filter(p=>p.id!==profile.id)} myId={profile.id} following={following} T={T} onView={setViewT} onFollow={handleFollow} onUnfollow={handleUnfollow} onRate={handleRate} myProfile={profile}/>}
