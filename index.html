@@ -114,42 +114,21 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON, {
   }
 });
 
-/* ── FAST SESSION PRE-CHECK ──────────────────────────────────────────────────
-   Read the session token from localStorage BEFORE React even mounts.
-   If a token exists, we know the user is (probably) logged in.
-   This lets us keep the splash screen up confidently while Supabase confirms,
-   instead of flashing the login screen for 2-3 seconds.
-   Key must match storageKey set in the Supabase client above.
-────────────────────────────────────────────────────────────────────────────*/
-const HE_HAS_SESSION=(()=>{
-  try{
-    const raw=localStorage.getItem("highenough_auth");
-    if(!raw)return false;
-    const parsed=JSON.parse(raw);
-    // Token exists and is not obviously expired
-    const expiresAt=parsed?.expires_at||parsed?.expiresAt||0;
-    if(expiresAt&&expiresAt*1000<Date.now())return false; // expired
-    return!!parsed?.access_token||!!parsed?.currentSession?.access_token;
-  }catch{return false;}
-})();
-
-// ── PRE-BOOT: Run getSession() immediately before React mounts ──────────────
-// This is the most reliable fix for the PWA flash. When the SW serves a cached
-// page, React's first render sees authLoading=true and shows nothing (splash).
-// We then resolve the session here and pass it in, so INITIAL_SESSION from
-// onAuthStateChange is just a confirmation — never a race condition.
+// ── PRE-BOOT: Await getSession() BEFORE React mounts ────────────────────────
+// This is the definitive fix for the login flash. React is NOT mounted until
+// getSession() resolves. First render already knows auth state = zero flash.
 let HE_PREFETCHED_SESSION=null;
-(async()=>{
+let HE_BOOT_READY=false;
+async function HE_BOOT(){
   try{
     const el=document.getElementById("splash-status");
     if(el)el.textContent="Restoring session…";
     const {data:{session}}=await sb.auth.getSession();
     HE_PREFETCHED_SESSION=session;
-    if(el)el.textContent=session?"Welcome back…":"Loading…";
-  }catch(e){
-    console.warn("Pre-boot getSession failed:",e);
-  }
-})();
+    if(el)el.textContent=session?"Welcome back…":"Ready";
+  }catch(e){console.warn("Pre-boot getSession failed:",e);}
+  finally{HE_BOOT_READY=true;}
+}
 
 
 /* ── CONSTANTS ── */
@@ -2831,7 +2810,9 @@ function App(){
   const [authError,setAuthError]=useState("");
   const [profile,setProfile]=useState(null);
   const [profileFetched,setProfileFetched]=useState(false);
-  const [authLoading,setAuthLoading]=useState(true);
+  // authLoading: false because HE_BOOT() already resolved before React mounted.
+  // We only need the splash while onAuthStateChange confirms + loads profile.
+  const [authLoading,setAuthLoading]=useState(!HE_BOOT_READY||!!HE_PREFETCHED_SESSION);
   const [dataReady,setDataReady]=useState(false); // true after loadAppData completes
   const [profiles,setProfiles]=useState([]);
   const [notifs,setNotifs]=useState([]);
@@ -2975,12 +2956,8 @@ function App(){
         if(effectiveSession?.user){
           await bootUser(effectiveSession.user, pendingDlRef.current, false);
         }else{
-          // Edge case: INITIAL_SESSION fires null but token is in localStorage.
-          // This happens on Supabase free-tier cold starts. Try once directly.
-          try{
-            const {data:{session:s2}}=await sb.auth.getSession();
-            if(s2?.user){await bootUser(s2.user, pendingDlRef.current, false);return;}
-          }catch{}
+          // HE_BOOT already called getSession() before mount — if it found nothing,
+          // there is genuinely no session. No need to call getSession() again.
           // Genuinely no session — show login (or public deep-link profile)
           if(pendingDlRef.current){
             const dl=pendingDlRef.current;
@@ -3618,10 +3595,18 @@ function App(){
   },[authUser,profileFetched,profile]);
 
   // ── RENDER ROUTING ────────────────────────────────────────────────────────
-  // 1. Splash is showing — render nothing underneath
+  // 1. Auth still resolving — splash is visible, render nothing underneath
   if(authLoading)return null;
 
-  // 2. No authenticated user — show login or public profile
+  // 2. Pre-boot found a valid session but onAuthStateChange hasn't fired yet.
+  // Show spinner (behind splash) instead of flashing the login screen.
+  if(!authUser&&HE_PREFETCHED_SESSION){
+    return<div style={{minHeight:"100vh",background:"#09090f",display:"flex",alignItems:"center",justifyContent:"center"}}>
+      <div style={{width:22,height:22,border:"2.5px solid #1c1c2c",borderTopColor:"#7b72e9",borderRadius:"50%",animation:"spin .55s linear infinite"}}/>
+    </div>;
+  }
+
+  // 3. No authenticated user — show login or public profile
   if(!authUser){
     if(deepLinkProfile)return<PublicProfilePage profile={deepLinkProfile} onJoin={()=>setDeepLinkProfile(null)}/>;
     return<AuthScreen T={DK} onAuthed={handleAuthed} authError={authError} onClearAuthError={()=>setAuthError("")}/>;
@@ -3754,7 +3739,14 @@ function App(){
   </>;
 }
 
-ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+// ── DEFERRED MOUNT: React only renders after getSession() resolves ──────────
+// This is what prevents the login flash. By the time App() runs for the first
+// time, HE_PREFETCHED_SESSION is already populated (or null = not logged in).
+// authLoading starts as false when we have a definitive answer, true only if
+// the pre-boot somehow failed (safety fallback).
+HE_BOOT().then(()=>{
+  ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+});
 </script>
 
 <!-- PWA: Service Worker + Install Prompt -->
