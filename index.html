@@ -8,31 +8,7 @@
 <meta name="theme-color" content="#09090f"/>
 <meta name="application-name" content="HighEnough"/>
 
-<!-- PWA: Inline manifest ensures start_url is always "/" regardless of external manifest.json -->
-<script id="he-manifest-inline">
-(function(){
-  const manifest={
-    name:"HighEnough",
-    short_name:"HighEnough",
-    description:"Rate your friends. Earn your reputation.",
-    start_url:"/",
-    display:"standalone",
-    background_color:"#09090f",
-    theme_color:"#09090f",
-    orientation:"portrait",
-    icons:[
-      {src:"/icon.png",sizes:"192x192",type:"image/png"},
-      {src:"/icon.png",sizes:"512x512",type:"image/png",purpose:"any maskable"}
-    ]
-  };
-  const blob=new Blob([JSON.stringify(manifest)],{type:"application/json"});
-  const url=URL.createObjectURL(blob);
-  const link=document.createElement("link");
-  link.rel="manifest";link.href=url;
-  document.head.appendChild(link);
-})();
-</script>
-<!-- Fallback external manifest (overridden by inline above) -->
+<!-- PWA Manifest -->
 <link rel="manifest" href="/manifest.json"/>
 
 <!-- iOS -->
@@ -3567,15 +3543,25 @@ function App(){
   }
   async function handleDeleteConv(cid){await handleClearChat(cid);setConvs(prev=>prev.filter(c=>c.id!==cid));pop("Conversation deleted");}
 
+  // Install prompt state — only shown when browser has a capturable install event
+  // AND app is not already running as installed standalone PWA
+  const alreadyInstalled=window.matchMedia('(display-mode: standalone)').matches||
+                          window.navigator.standalone===true;
   const [canInstall,setCanInstall]=useState(false);
   useEffect(()=>{
+    if(alreadyInstalled)return; // never show install button if already installed
     const onReady=()=>setCanInstall(true);
-    const onInstalled=()=>setCanInstall(false);
+    const onGone=()=>setCanInstall(false);
     window.addEventListener('he-install-ready',onReady);
-    window.addEventListener('he-installed',onInstalled);
-    return()=>{window.removeEventListener('he-install-ready',onReady);window.removeEventListener('he-installed',onInstalled);};
+    window.addEventListener('he-installed',onGone);
+    return()=>{window.removeEventListener('he-install-ready',onReady);window.removeEventListener('he-installed',onGone);};
   },[]);
-  async function handleInstall(){if(window.hePromptInstall)await window.hePromptInstall();setCanInstall(false);}
+  async function handleInstall(){
+    if(window.hePromptInstall){
+      setCanInstall(false); // optimistic hide
+      await window.hePromptInstall();
+    }
+  }
 
   useEffect(()=>{document.body.style.background=T.bg;document.body.style.color=T.txt;},[T.bg,T.txt]);
 
@@ -3661,7 +3647,10 @@ function App(){
           High<span style={{color:AC,fontWeight:300,letterSpacing:"0.04em"}}>Enough</span>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
-          {canInstall&&<button onClick={handleInstall} style={{padding:"7px 14px",background:`linear-gradient(135deg,${AC}cc,${AC}80)`,border:"none",borderRadius:20,color:"#fff",fontWeight:700,fontSize:12,display:"flex",alignItems:"center",gap:5,boxShadow:`0 4px 14px ${AC}40`}}>📲 Install</button>}
+          {canInstall&&<button onClick={handleInstall} style={{padding:"7px 14px",background:`linear-gradient(135deg,${AC}cc,${AC}80)`,border:"none",borderRadius:20,color:"#fff",fontWeight:700,fontSize:12,display:"flex",alignItems:"center",gap:5,boxShadow:`0 4px 14px ${AC}40`,flexShrink:0}}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Install App
+          </button>}
           {/* In-app refresh — replaces page reload so auth is never disrupted */}
           <button onClick={handleRefresh} disabled={refreshing} title="Refresh" style={{width:38,height:38,borderRadius:12,background:T.faint,border:`1px solid ${T.b1}`,display:"flex",alignItems:"center",justifyContent:"center",color:T.mu,fontSize:16,transition:"all .15s",flexShrink:0}}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{animation:refreshing?"spin .7s linear infinite":"none"}}><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
@@ -3831,39 +3820,112 @@ if('serviceWorker' in navigator){
   });
 }
 
-// PWA Install Prompt
+// ── PWA Install Prompt ───────────────────────────────────────────────────────
+// Uses the browser's native beforeinstallprompt event which triggers Chrome's
+// official "Install app" dialog — installs as a true standalone app in the
+// app drawer, NOT a browser shortcut.
+//
+// Rules:
+// - Never show if already running as installed PWA (standalone/minimal-ui)
+// - Only show the bottom banner once per session (sessionStorage flag)
+// - Header "Install" button always available when prompt is capturable
+// - After install or dismiss: clean up immediately
+
 let deferredPrompt=null;
-window.hePromptInstall=async()=>{if(!deferredPrompt)return false;await deferredPrompt.prompt();deferredPrompt=null;window.dispatchEvent(new Event('he-installed'));return true;};
-window.addEventListener('beforeinstallprompt',e=>{
-  e.preventDefault();
-  deferredPrompt=e;
-  window.dispatchEvent(new Event('he-install-ready'));
-  // Show install banner after 3s
-  setTimeout(()=>{
-    if(!deferredPrompt)return;
-    const banner=document.createElement('div');
-    banner.id='he-install-banner';
-    banner.innerHTML=`
-      <div style="position:fixed;bottom:80px;left:12px;right:12px;z-index:9999;background:#111119;border:1px solid #262638;border-radius:16px;padding:14px 16px;display:flex;align-items:center;gap:12px;box-shadow:0 8px 32px rgba(0,0,0,.6);animation:slideUp .3s ease;">
-        <div style="width:44px;height:44px;border-radius:10px;background:#09090f;border:1px solid #1c1c2c;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0">⬆</div>
-        <div style="flex:1">
-          <div style="font-weight:700;font-size:14px;color:#dde0f0">Install HighEnough</div>
-          <div style="font-size:12px;color:#4e5270;margin-top:2px">Add to Home Screen for the best experience</div>
+
+// Don't show anything if already installed as standalone app
+const HE_IS_STANDALONE=window.matchMedia('(display-mode: standalone)').matches||
+                        window.navigator.standalone===true;
+
+window.hePromptInstall=async()=>{
+  if(!deferredPrompt)return false;
+  const p=deferredPrompt;
+  deferredPrompt=null;
+  const result=await p.prompt();
+  const accepted=result?.outcome==='accepted'||result===undefined;
+  window.dispatchEvent(new Event('he-installed'));
+  return accepted;
+};
+
+if(!HE_IS_STANDALONE){
+  window.addEventListener('beforeinstallprompt',e=>{
+    e.preventDefault();
+    deferredPrompt=e;
+    window.dispatchEvent(new Event('he-install-ready'));
+
+    // Show bottom banner once per session, 2s after page load
+    // Skipped if user already dismissed it this session
+    const dismissed=sessionStorage.getItem('he-install-dismissed');
+    if(dismissed)return;
+
+    setTimeout(()=>{
+      if(!deferredPrompt)return;
+      if(document.getElementById('he-install-banner'))return;
+
+      const banner=document.createElement('div');
+      banner.id='he-install-banner';
+      banner.innerHTML=`
+        <div style="position:fixed;bottom:76px;left:10px;right:10px;z-index:9998;
+          background:#12121f;border:1px solid #2a2a40;border-radius:18px;
+          padding:14px 16px;display:flex;align-items:center;gap:12px;
+          box-shadow:0 8px 40px rgba(0,0,0,.7);animation:slideUp .28s ease;">
+          <img src="/icon.png" width="40" height="40"
+            style="border-radius:10px;flex-shrink:0;border:1px solid #2a2a40"
+            onerror="this.style.display='none'"/>
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:700;font-size:14px;color:#eeeeff;
+              font-family:'Inter',sans-serif">Install HighEnough</div>
+            <div style="font-size:11px;color:#5a5a80;margin-top:2px;
+              font-family:'Inter',sans-serif">
+              Get the full app experience — works offline, opens instantly
+            </div>
+          </div>
+          <button id="he-install-btn"
+            style="padding:9px 16px;background:linear-gradient(135deg,#7b72e9,#5a52c8);
+              border:none;border-radius:10px;color:#fff;font-weight:700;font-size:13px;
+              cursor:pointer;flex-shrink:0;font-family:'Inter',sans-serif">
+            Install
+          </button>
+          <button id="he-dismiss-btn"
+            style="background:none;border:none;color:#4e5270;font-size:18px;
+              cursor:pointer;flex-shrink:0;padding:2px 4px;line-height:1">
+            ✕
+          </button>
         </div>
-        <button id="he-install-btn" style="padding:8px 16px;background:linear-gradient(135deg,#7b72e9e0,#7b72e990);border:none;border-radius:9px;color:#fff;font-weight:700;font-size:13px;cursor:pointer;flex-shrink:0">Install</button>
-        <button id="he-dismiss-btn" style="background:none;border:none;color:#4e5270;font-size:20px;cursor:pointer;flex-shrink:0;padding:0 4px">✕</button>
-      </div>
-    `;
-    document.body.appendChild(banner);
-    document.getElementById('he-install-btn').onclick=async()=>{
-      if(deferredPrompt){await deferredPrompt.prompt();deferredPrompt=null;}
-      banner.remove();
-    };
-    document.getElementById('he-dismiss-btn').onclick=()=>banner.remove();
-    // Auto-hide after 8s
-    setTimeout(()=>{if(document.getElementById('he-install-banner'))banner.remove();},8000);
-  },3000);
-});
+      `;
+      document.body.appendChild(banner);
+
+      async function doInstall(){
+        banner.remove();
+        if(deferredPrompt){
+          await window.hePromptInstall();
+        }
+      }
+      function doDismiss(){
+        banner.remove();
+        sessionStorage.setItem('he-install-dismissed','1');
+        window.dispatchEvent(new Event('he-installed')); // hide header btn too
+      }
+
+      document.getElementById('he-install-btn').onclick=doInstall;
+      document.getElementById('he-dismiss-btn').onclick=doDismiss;
+
+      // Auto-hide after 12s without user action
+      setTimeout(()=>{
+        const b=document.getElementById('he-install-banner');
+        if(b)b.remove();
+      },12000);
+    },2000);
+  });
+
+  // Clean up if user installs via browser's own UI (omnibar button etc.)
+  window.addEventListener('appinstalled',()=>{
+    deferredPrompt=null;
+    window.dispatchEvent(new Event('he-installed'));
+    const b=document.getElementById('he-install-banner');
+    if(b)b.remove();
+  });
+}
 </script>
 </body>
 </html>
