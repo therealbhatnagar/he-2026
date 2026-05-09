@@ -313,7 +313,7 @@ const tierPctP=p=>{const sc=pScore(p);return tierPct(sc??0,p?.account_type==="bu
 
 /* ── THEMES ── */
 const DK={bg:"#060610",surf:"#0d0d1a",card:"#10101e",b1:"#1e1e30",b2:"#28283e",txt:"#e8eaf8",mu:"#5a5a80",faint:"#0c0c1c",inp:"#0a0a18",nav:"#060610",ov:"rgba(0,0,8,.96)"};
-const LT={bg:"#f0f0f8",surf:"#ffffff",card:"#fafaff",b1:"#e0e0f0",b2:"#c8c8e0",txt:"#16162a",mu:"#6868a0",faint:"#e8e8f5",inp:"#f4f4fc",nav:"#ffffff",ov:"rgba(8,8,28,.75)"};
+const LT={bg:"#ffffff",surf:"#ffffff",card:"#fafafa",b1:"#efefef",b2:"#e0e0e8",txt:"#0d0c1a",mu:"#8c87a5",faint:"#f5f5f9",inp:"#f7f7fa",nav:"#ffffff",ov:"rgba(8,8,28,.72)"};
 
 /* ── LOCAL PREFS ── */
 const getPref=()=>{try{return JSON.parse(localStorage.getItem("he_pref"))||{};}catch{return{};}};
@@ -1724,7 +1724,6 @@ function SearchTab({profiles,myId,following,T,onView,onFollow,onUnfollow,onRate,
   const [filter,setFilter]=useState("all");
   const [focused,setFocused]=useState(false);
   const [scanning,setScanning]=useState(false);
-  const [contacts,setContacts]=useState(null);
   const videoRef=useRef(null);
   const streamRef=useRef(null);
 
@@ -1756,7 +1755,6 @@ function SearchTab({profiles,myId,following,T,onView,onFollow,onUnfollow,onRate,
             const code=window.jsQR&&window.jsQR(img.data,img.width,img.height,{inversionAttempts:"dontInvert"});
             if(code?.data){
               active=false;stopScan();
-              // Navigate to the scanned URL
               const url=code.data;
               if(url.includes("highenough.in")){window.location.href=url;}
               else{alert("Not a HighEnough QR code: "+url);}
@@ -1772,28 +1770,6 @@ function SearchTab({profiles,myId,following,T,onView,onFollow,onUnfollow,onRate,
   function stopScan(){
     streamRef.current?.getTracks().forEach(t=>t.stop());
     streamRef.current=null;setScanning(false);
-  }
-
-  async function loadContacts(){
-    try{
-      if(!("contacts" in navigator&&"ContactsManager" in window)){
-        alert("Contact access not supported on this device/browser.");return;
-      }
-      const props=["name","email","tel"];
-      const ctcts=await navigator.contacts.select(props,{multiple:true});
-      setContacts(ctcts||[]);
-    }catch(e){alert("Could not access contacts.");}
-  }
-
-  function sendInvite(contact){
-    const name=contact.name?.[0]||"friend";
-    const sc=pScore(myProfile);
-    const isBiz=myProfile?.account_type==="business";
-    const tier=tierOf(sc??0,isBiz);
-    const url=`https://highenough.in/?${myProfile.short_id||shortId(myProfile.id)}`;
-    const text=`Hey ${name}! Check out my ${isBiz?"business":"profile"} on HighEnough — ${myProfile.name} (${tier.emoji} ${tier.label}${sc!=null?", "+fmtScore(sc)+" pts":""}) 👉 ${url}\n\nJoin HighEnough to rate me!`;
-    if(navigator.share){navigator.share({title:"Join me on HighEnough",text,url}).catch(()=>{});}
-    else{navigator.clipboard?.writeText(text);alert("Invite text copied!");}
   }
 
   if(scanning) return<div style={{position:"fixed",inset:0,zIndex:500,background:"#000",display:"flex",flexDirection:"column"}}>
@@ -1821,30 +1797,6 @@ function SearchTab({profiles,myId,following,T,onView,onFollow,onUnfollow,onRate,
           <button key={id} onClick={()=>setFilter(id)} style={{padding:"6px 14px",borderRadius:20,fontSize:11,fontWeight:filter===id?700:500,background:filter===id?`linear-gradient(135deg,${AC}cc,${AC}80)`:"transparent",border:`1.5px solid ${filter===id?"transparent":T.b1}`,color:filter===id?"#fff":T.mu,transition:"all .15s",boxShadow:filter===id?`0 3px 10px ${AC}40`:"none"}}>{label}</button>)}
       </div>
     </div>
-
-    {/* Contact invite section */}
-    {!q.trim()&&<div style={{margin:"8px 14px 0",padding:"12px 14px",background:`${AC}0c`,border:`1px solid ${AC}20`,borderRadius:12,display:"flex",alignItems:"center",gap:10}}>
-      <div style={{fontSize:20}}>📱</div>
-      <div style={{flex:1}}>
-        <div style={{fontWeight:600,fontSize:13,color:T.txt}}>Invite from Contacts</div>
-        <div style={{fontSize:11,color:T.mu,marginTop:1}}>Find friends not yet on HighEnough</div>
-      </div>
-      <button onClick={contacts?()=>setContacts(null):loadContacts} style={{padding:"7px 13px",background:`linear-gradient(135deg,${AC}cc,${AC}80)`,borderRadius:9,color:"#fff",fontWeight:600,fontSize:12}}>
-        {contacts?"✕ Close":"Browse"}
-      </button>
-    </div>}
-
-    {contacts&&!q.trim()&&<div style={{margin:"8px 14px",padding:"8px 0",maxHeight:200,overflowY:"auto"}}>
-      {contacts.length===0&&<div style={{textAlign:"center",padding:"16px",color:T.mu,fontSize:13}}>No contacts found</div>}
-      {contacts.map((c,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 4px",borderBottom:`1px solid ${T.b1}20`}}>
-        <div style={{width:36,height:36,borderRadius:"50%",background:`${AC}18`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,color:AC,fontSize:13}}>{(c.name?.[0]||"?")[0].toUpperCase()}</div>
-        <div style={{flex:1,minWidth:0}}>
-          <div style={{fontWeight:600,fontSize:13,color:T.txt}}>{c.name?.[0]||"Unknown"}</div>
-          <div style={{fontSize:11,color:T.mu}}>{c.email?.[0]||c.tel?.[0]||""}</div>
-        </div>
-        <button onClick={()=>sendInvite(c)} style={{padding:"6px 12px",background:`${AC}18`,border:`1px solid ${AC}30`,borderRadius:8,color:AC,fontWeight:600,fontSize:11}}>Invite</button>
-      </div>)}
-    </div>}
 
     {!q.trim()&&<>
       <div style={{padding:"14px 16px 8px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
@@ -2989,25 +2941,45 @@ function App(){
   const [toast,setToast]=useState(null);
   const adminTimer=useRef(null);
 
-  // ── Android / browser back button handler (Instagram-style in-app navigation) ──
+  // ── Refs for popstate handler — avoids stale closure on all modal states ──
+  const viewTRef=useRef(null);
+  const rateTRef=useRef(null);
+  const activeChatRef=useRef(null);
+  const activeGroupRef=useRef(null);
+  const settingsRef=useRef(false);
+  const showNotifsRef=useRef(false);
+  const showAdminRef=useRef(false);
+  const showAdminLockRef=useRef(false);
+  const tabRef=useRef("feed");
+
+  useEffect(()=>{viewTRef.current=viewT;},[viewT]);
+  useEffect(()=>{rateTRef.current=rateT;},[rateT]);
+  useEffect(()=>{activeChatRef.current=activeChat;},[activeChat]);
+  useEffect(()=>{activeGroupRef.current=activeGroup;},[activeGroup]);
+  useEffect(()=>{settingsRef.current=settings;},[settings]);
+  useEffect(()=>{showNotifsRef.current=showNotifs;},[showNotifs]);
+  useEffect(()=>{showAdminRef.current=showAdmin;},[showAdmin]);
+  useEffect(()=>{showAdminLockRef.current=showAdminLock;},[showAdminLock]);
+  useEffect(()=>{tabRef.current=tab;},[tab]);
+
+  // ── Android / browser back button handler — reads from refs, never stale ──
   useEffect(()=>{
     window.history.pushState({he:"app"},"");
     function onPop(){
-      // Priority: innermost layer closes first
-      if(activeGroup){setActiveGroup(null);window.history.pushState({he:"app"},"");return;}
-      if(activeChat){setActiveChat(null);window.history.pushState({he:"app"},"");return;}
-      if(viewT){setViewT(null);window.history.pushState({he:"app"},"");return;}
-      if(rateT){setRateT(null);window.history.pushState({he:"app"},"");return;}
-      if(settings){setSettings(false);window.history.pushState({he:"app"},"");return;}
-      if(showNotifs){setShowNotifs(false);window.history.pushState({he:"app"},"");return;}
-      if(showAdmin){setShowAdmin(false);window.history.pushState({he:"app"},"");return;}
-      if(showAdminLock){setShowAdminLock(false);window.history.pushState({he:"app"},"");return;}
-      if(tab!=="feed"){setTab("feed");window.history.pushState({he:"app"},"");return;}
-      // At root — let browser handle (shows "Leave site?" on Android)
+      if(activeGroupRef.current){setActiveGroup(null);window.history.pushState({he:"app"},"");return;}
+      if(activeChatRef.current&&viewTRef.current){setViewT(null);window.history.pushState({he:"app"},"");return;}
+      if(activeChatRef.current){setActiveChat(null);window.history.pushState({he:"app"},"");return;}
+      if(viewTRef.current){setViewT(null);window.history.pushState({he:"app"},"");return;}
+      if(rateTRef.current){setRateT(null);window.history.pushState({he:"app"},"");return;}
+      if(settingsRef.current){setSettings(false);window.history.pushState({he:"app"},"");return;}
+      if(showNotifsRef.current){setShowNotifs(false);window.history.pushState({he:"app"},"");return;}
+      if(showAdminRef.current){setShowAdmin(false);window.history.pushState({he:"app"},"");return;}
+      if(showAdminLockRef.current){setShowAdminLock(false);window.history.pushState({he:"app"},"");return;}
+      if(tabRef.current!=="feed"){setTab("feed");window.history.pushState({he:"app"},"");return;}
     }
     window.addEventListener("popstate",onPop);
     return()=>window.removeEventListener("popstate",onPop);
-  },[activeGroup,activeChat,viewT,rateT,settings,showNotifs,showAdmin,showAdminLock,tab]);
+  },[]);// eslint-disable-line react-hooks/exhaustive-deps
   const T=prefs.dark?DK:LT;
   const pop=msg=>{setToast(msg);setTimeout(()=>setToast(null),2500);};
 
@@ -3468,8 +3440,31 @@ function App(){
     pop("Welcome to HighEnough ✦");
   }
   async function handleLogout(){
+    // Synchronously clear all app state first — no waiting for Supabase event
+    if(pollRef.current){clearInterval(pollRef.current);pollRef.current=null;}
+    sb.removeAllChannels();
+    profileLoadingRef.current=false;
+    bootingUserIdRef.current=null;
+    setDataReady(false);
+    setAuthUser(null);
+    setProfile(null);
+    setProfileFetched(false);
+    setProfiles([]);
+    setNotifs([]);
+    setFollowing([]);
+    setBlocked([]);
+    setConvs([]);
+    setDeepLinkProfile(null);
+    setActiveChat(null);
+    setActiveGroup(null);
+    setViewT(null);
+    setRateT(null);
+    setSettings(false);
+    setAuthLoading(false);
+    // Mark intentional so SIGNED_OUT handler skips recovery attempt
     localStorage.setItem("he_intent_signout","true");
-    await sb.auth.signOut();
+    // Fire signOut after state is already cleared — if it fails, UI is already reset
+    try{await sb.auth.signOut();}catch{}
   }
 
   function handleCreateGroup(group){
