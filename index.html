@@ -1064,7 +1064,7 @@ function ProfileModal({profile,myId,following,profiles,T,onClose,onRate,onFollow
   if(peopleList) return<PeopleListModal title={peopleList.title} people={peopleList.people} T={T} onClose={()=>setPeopleList(null)} onView={p=>{setPeopleList(null);if(onViewOther)onViewOther(p);else onClose();}} />;
 
   // ── Full-screen profile view ──
-  return<div style={{position:"fixed",inset:0,zIndex:350,background:T.bg,display:"flex",flexDirection:"column",animation:"slideUp .22s ease",overflowY:"auto"}}>
+  return<div style={{position:"fixed",inset:0,zIndex:500,background:T.bg,display:"flex",flexDirection:"column",animation:"slideUp .22s ease",overflowY:"auto"}}>
     {/* Sticky header bar */}
     <div style={{position:"sticky",top:0,zIndex:10,background:`${T.nav}f0`,borderBottom:`1px solid ${T.b1}`,padding:"12px 16px",paddingTop:"max(12px,env(safe-area-inset-top))",display:"flex",alignItems:"center",gap:12,backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",flexShrink:0}}>
       <button onClick={onClose} style={{background:"none",color:T.txt,padding:"4px",display:"flex",alignItems:"center",flexShrink:0}}><BackIcon/></button>
@@ -2219,8 +2219,9 @@ function SettingsModal({me,prefs,T,onClose,onSave,onSavePrefs,onEditPhoto,onShow
 
   function onHdChange(val){setHd(val);clearTimeout(hdTimer.current);hdTimer.current=setTimeout(()=>checkHandle(val),600);}
 
-  function sv(){onSave({name:nm.trim()||me.name,handle:hd.trim()||me.handle,bio:bio.trim(),color:col,age:age?parseInt(age):null,interests:ints,links});setOk(true);setTimeout(()=>setOk(false),2000);}
+  function sv(){onSave({name:nm.trim()||me.name,handle:hd.trim()||me.handle,bio:bio.trim(),color:col,age:age?parseInt(age):null,interests:ints,links,biz_type:isBizProfile?bizTypeEdit:null});setOk(true);setTimeout(()=>setOk(false),2000);}
   function togInt(i){setInts(prev=>prev.includes(i)?prev.filter(x=>x!==i):[...prev,i].slice(0,6));}
+  const [bizTypeEdit,setBizTypeEdit]=useState(me.biz_type||"general");
   const isBizProfile=me.account_type==="business";
   const inp={width:"100%",padding:"11px 13px",background:T.inp,border:`1px solid ${T.b1}`,borderRadius:11,color:T.txt,fontSize:13,outline:"none",boxSizing:"border-box",marginBottom:11};
   const TABS=[{id:"profile",label:"Profile"},{id:"more",label:"Details"},{id:"privacy",label:"Privacy"},{id:"account",label:"Account"}];
@@ -2246,6 +2247,19 @@ function SettingsModal({me,prefs,T,onClose,onSave,onSavePrefs,onEditPhoto,onShow
       {hdStatus==="taken"&&<div style={{fontSize:11,color:"#e0466e",marginBottom:8}}>@{hdClean} is already taken</div>}
       {hdStatus==="ok"&&<div style={{fontSize:11,color:"#2cba9a",marginBottom:8}}>@{hdClean} is available ✓</div>}
       <input value={bio} onChange={e=>setBio(e.target.value)} placeholder="Bio" style={inp}/>
+      {isBizProfile&&<div style={{marginBottom:11}}>
+        <div style={{fontSize:11,color:T.mu,textTransform:"uppercase",letterSpacing:.8,fontWeight:600,marginBottom:8}}>Business Category</div>
+        <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:220,overflowY:"auto",padding:2}}>
+          {BIZ_TYPES.map(bt=><div key={bt.id} onClick={()=>setBizTypeEdit(bt.id)} style={{padding:"10px 13px",background:bizTypeEdit===bt.id?`${AC}14`:T.faint,border:`1.5px solid ${bizTypeEdit===bt.id?AC+"60":T.b1}`,borderRadius:11,cursor:"pointer",display:"flex",alignItems:"center",gap:10,transition:"all .15s"}}>
+            <span style={{fontSize:18,flexShrink:0}}>{bt.emoji}</span>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontWeight:600,fontSize:13,color:T.txt}}>{bt.label}</div>
+              <div style={{fontSize:10,color:T.mu,marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{(BIZ_CAT_MAP[bt.id]||[]).map(c=>c.label).join(" · ")}</div>
+            </div>
+            {bizTypeEdit===bt.id&&<div style={{width:16,height:16,borderRadius:"50%",background:AC,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}><svg width="8" height="8" viewBox="0 0 10 10" fill="none"><polyline points="1.5,5 4,7.5 8.5,2.5" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg></div>}
+          </div>)}
+        </div>
+      </div>}
       {/* UID displayed prominently */}
       <div style={{padding:"11px 13px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:11,marginBottom:11}}>
         <div style={{fontSize:11,color:T.mu,marginBottom:4,textTransform:"uppercase",letterSpacing:.8,fontWeight:600}}>Your Unique ID</div>
@@ -3045,6 +3059,8 @@ function App(){
       sb.removeAllChannels();
       profileLoadingRef.current=false;
       bootingUserIdRef.current=null;
+      // Clear the pre-fetched session so the spinner guard doesn't re-trigger
+      try{window.HE_PREFETCHED_SESSION=null;}catch{}
       setDataReady(false);
       setAuthUser(null);
       setProfile(null);
@@ -3055,6 +3071,11 @@ function App(){
       setBlocked([]);
       setConvs([]);
       setDeepLinkProfile(null);
+      setActiveChat(null);
+      setActiveGroup(null);
+      setViewT(null);
+      setRateT(null);
+      setSettings(false);
       setAuthLoading(false);
     }
 
@@ -3440,30 +3461,8 @@ function App(){
     pop("Welcome to HighEnough ✦");
   }
   async function handleLogout(){
-    // Synchronously clear all app state first — no waiting for Supabase event
-    if(pollRef.current){clearInterval(pollRef.current);pollRef.current=null;}
-    sb.removeAllChannels();
-    profileLoadingRef.current=false;
-    bootingUserIdRef.current=null;
-    setDataReady(false);
-    setAuthUser(null);
-    setProfile(null);
-    setProfileFetched(false);
-    setProfiles([]);
-    setNotifs([]);
-    setFollowing([]);
-    setBlocked([]);
-    setConvs([]);
-    setDeepLinkProfile(null);
-    setActiveChat(null);
-    setActiveGroup(null);
-    setViewT(null);
-    setRateT(null);
-    setSettings(false);
-    setAuthLoading(false);
-    // Mark intentional so SIGNED_OUT handler skips recovery attempt
     localStorage.setItem("he_intent_signout","true");
-    // Fire signOut after state is already cleared — if it fails, UI is already reset
+    try{window.HE_PREFETCHED_SESSION=null;}catch{}
     try{await sb.auth.signOut();}catch{}
   }
 
@@ -3497,9 +3496,7 @@ function App(){
     const userEmail=profile.email||authUser?.email||"";
     pop("Deleting account…");
     try{
-      // 1. Mark as deleted in our table (blocks re-login with same auth ID)
       await sb.from("deleted_accounts").insert({auth_id:uid,email:userEmail,deleted_at:new Date().toISOString()});
-      // 2. Delete all app data in parallel
       await Promise.all([
         sb.from("ratings").delete().eq("rater_id",uid),
         sb.from("ratings").delete().eq("target_id",uid),
@@ -3513,21 +3510,34 @@ function App(){
         sb.from("blocks").delete().eq("blocked_id",uid),
         sb.from("reports").delete().eq("reporter_id",uid),
       ]);
-      // 3. Delete the profile row
       await sb.from("profiles").delete().eq("id",uid);
-      // 4. Also store deleted email so re-signup with same email is allowed
-      //    by removing them from deleted_accounts and letting them start fresh.
-      //    We store the email separately so the signup flow can clean up first.
     }catch(e){console.error("Delete cleanup error:",e);}
-    // 5. Sign out — triggers SIGNED_OUT → clears all React state
+    // Mark intentional — lets SIGNED_OUT → clearSession redirect to login cleanly
     localStorage.setItem("he_intent_signout","true");
-    await sb.auth.signOut();
+    try{window.HE_PREFETCHED_SESSION=null;}catch{}
+    try{await sb.auth.signOut();}catch{}
   }
 
   async function handleSaveProfile(u){
     const updated={...profile,...u};
-    // Strip _pref fields (those are local prefs not DB fields)
-    const dbFields={id:updated.id,name:updated.name,handle:updated.handle,bio:updated.bio,color:updated.color,age:updated.age,photo:updated.photo,interests:updated.interests,links:updated.links,email:updated.email,short_id:updated.short_id,account_type:updated.account_type||"personal",followers_count:updated.followers_count,following_count:updated.following_count,created_at:updated.created_at||new Date().toISOString()};
+    const dbFields={
+      id:updated.id,
+      name:updated.name,
+      handle:updated.handle,
+      bio:updated.bio,
+      color:updated.color,
+      age:updated.age,
+      photo:updated.photo,
+      interests:updated.interests,
+      links:updated.links,
+      email:updated.email,
+      short_id:updated.short_id,
+      account_type:updated.account_type||"personal",
+      biz_type:updated.account_type==="business"?(updated.biz_type||"general"):null,
+      followers_count:updated.followers_count,
+      following_count:updated.following_count,
+      created_at:updated.created_at||new Date().toISOString()
+    };
     const {error}=await sb.from("profiles").upsert(dbFields);
     if(!error){setProfile(updated);setProfiles(prev=>prev.map(p=>p.id===updated.id?{...p,...updated}:p));pop("Profile saved");}
     else{console.error("Save error:",error);pop("Could not save. Try again.");}
@@ -3651,11 +3661,18 @@ function App(){
 
   async function handleMarkRead(cid,otherId){
     if(!cid)return;
-    // Always patch local state first — fixes stuck badge when DB already has read:true
-    // but local React state was never updated (missed realtime event)
-    setConvs(prev=>prev.map(c=>c.id===cid?{...c,messages:(c.messages||[]).map(m=>m.sid===profile.id?m:{...m,read:true,status:"seen"})}:c));
+    // Force all incoming messages to read:true in local state immediately
+    // This fixes "stuck badge" where DB already has read:true but local state disagrees
+    const markRead=msgs=>msgs.map(m=>m.sid===profile.id?m:{...m,read:true,status:"seen"});
+    setConvs(prev=>prev.map(c=>c.id===cid?{...c,messages:markRead(c.messages||[])}:c));
+    setActiveChat(prev=>prev&&prev.id===cid?{...prev,messages:markRead(prev.messages||[])}:prev);
     if(!otherId)return;
-    await sb.from("messages").update({read:true,status:"seen"}).eq("sender_id",otherId).eq("receiver_id",profile.id).eq("read",false);
+    // Fire DB update for any that aren't yet marked in backend
+    await sb.from("messages")
+      .update({read:true,status:"seen"})
+      .eq("sender_id",otherId)
+      .eq("receiver_id",profile.id)
+      .eq("read",false);
   }
 
   async function handleBlock(uid){setBlocked(prev=>[...prev,uid]);await sb.from("blocks").upsert({blocker_id:profile.id,blocked_id:uid});pop("User blocked");}
@@ -3748,8 +3765,8 @@ function App(){
   if(authLoading)return null;
 
   // 2. Pre-boot found a valid session but onAuthStateChange hasn't fired yet.
-  // Show spinner (behind splash) instead of flashing the login screen.
-  if(!authUser&&HE_PREFETCHED_SESSION){
+  // Only show spinner if session is genuinely still pending (not cleared by logout).
+  if(!authUser&&window.HE_PREFETCHED_SESSION){
     return<div style={{minHeight:"100vh",background:"#09090f",display:"flex",alignItems:"center",justifyContent:"center"}}>
       <div style={{width:22,height:22,border:"2.5px solid #1c1c2c",borderTopColor:"#7b72e9",borderRadius:"50%",animation:"spin .55s linear infinite"}}/>
     </div>;
