@@ -72,7 +72,7 @@ button:active{opacity:.8;transform:scale(.96)}
 </style>
 </head>
 <body>
-<div id="splash" style="position:fixed;inset:0;background:#09090f;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;z-index:9999;transition:opacity .3s"><div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:38px;letter-spacing:-.5px;color:#dde0f0;line-height:1">High<span style="color:#7b72e9;font-weight:300;letter-spacing:.02em">Enough</span></div><div style="width:20px;height:20px;border:2px solid #1c1c2c;border-top-color:#7b72e9;border-radius:50%;animation:spin .55s linear infinite"></div><div id="splash-status" style="font-size:11px;color:#3a3a5a;margin-top:4px;font-family:'JetBrains Mono',monospace;letter-spacing:.05em">Loading…</div></div>
+<div id="splash" style="position:fixed;inset:0;background:#09090f;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;z-index:9999;transition:opacity .3s"><div style="font-family:'Space Grotesk','Inter',system-ui,sans-serif;display:flex;align-items:baseline;line-height:1"><span style="font-weight:700;font-size:38px;letter-spacing:-.5px;color:#f0f0f8">High</span><span style="font-weight:300;font-size:38px;letter-spacing:.02em;color:#7b72e9">Enough</span></div><div style="width:20px;height:20px;border:2px solid #1c1c2c;border-top-color:#7b72e9;border-radius:50%;animation:spin .55s linear infinite"></div><div id="splash-status" style="font-size:11px;color:#3a3a5a;margin-top:4px;font-family:'JetBrains Mono',monospace;letter-spacing:.05em">Loading…</div></div>
 <div id="root"></div>
 <script type="text/babel">
 const {useState,useEffect,useRef,useCallback}=React;
@@ -222,7 +222,11 @@ const BIZ_TIERS=[
 const getBizCats=p=>{const bt=p?.biz_type||(p?.links?.biz_type)||"general";return BIZ_CAT_MAP[bt]||BIZ_CAT_MAP.general;};
 const getCats=p=>p?.account_type==="business"?getBizCats(p):CATS;
 const getTiers=p=>p?.account_type==="business"?BIZ_TIERS:TIERS;
-const PALETTE=["#7b72e9","#10a37f","#e0466e","#4f80e2","#c08a2e","#2cba9a","#9b6ee8","#d95c4a"];
+// Strip leading @s (allow max one), remove spaces and invalid chars
+const cleanHandle=raw=>{
+  const stripped=raw.replace(/^@+/,"").replace(/[^a-zA-Z0-9_.]/g,"");
+  return stripped?"@"+stripped:"";
+};
 const INTERESTS=["Gaming 🎮","Music 🎵","Sports ⚽","Art 🎨","Food 🍜","Travel ✈️","Fitness 💪","Tech 💻","Fashion 👗","Books 📚","Movies 🎬","Anime 🌸","Photography 📷","Cooking 🍳","Dance 💃","Comedy 😄","Finance 💸","Crypto ₿","Entrepreneurship 🚀","Cars 🚗","Bikes 🏍️","Football 🏈","Cricket 🏏","Basketball 🏀","Badminton 🏸","Swimming 🏊","Hiking 🥾","Yoga 🧘","Poetry 📝","Drawing ✏️","Painting 🖌️","Singing 🎤","Acting 🎭","Makeup 💄","Skincare 🧴","Astrology ♈","Pets 🐾","Gardening 🌱","DIY 🔧","Interior Design 🏠","Philosophy 🤔","Psychology 🧠","History 📜","Science 🔬","Environment 🌍","Volunteering 🤲","Politics 🗳️","Memes 😭","Netflix 🍿","K-Pop 🎶","Hip-Hop 🎧","EDM 🎛️","Streetwear 👟","Sneakers 👟","Tattoos 🖊️","Poker ♠️","Chess ♟️","Board Games 🎲","Esports 🏆","VR Gaming 🥽","Podcasts 🎙️"];
 const REPORT_REASONS=[
   {id:"spam",     label:"Spam",          desc:"Fake ratings or repeated content"},
@@ -609,9 +613,10 @@ function ProfileSetup({user,T,onDone}){
   }
 
   function onHdChange(val){
-    setHd(val);
+    const clean=cleanHandle(val);
+    setHd(clean);
     clearTimeout(hdTimer.current);
-    hdTimer.current=setTimeout(()=>checkHandle(val),600);
+    hdTimer.current=setTimeout(()=>checkHandle(clean),600);
   }
 
   function pickPhoto(){
@@ -676,7 +681,7 @@ function ProfileSetup({user,T,onDone}){
 
   if(step==="type") return<div style={{minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
     <div style={{width:"100%",maxWidth:380,animation:"ci .4s ease"}}>
-      <div style={{textAlign:"center",marginBottom:32}}><div style={{fontFamily:"'Space Grotesk',sans-serif",fontWeight:700,fontSize:32,letterSpacing:"-.5px",color:T.txt}}>High<span style={{color:AC,fontWeight:300,letterSpacing:".02em"}}>Enough</span></div><div style={{fontSize:13,color:T.mu,marginTop:8}}>What kind of account do you want?</div></div>
+      <div style={{textAlign:"center",marginBottom:32}}><div style={{fontFamily:"'Space Grotesk','Inter',system-ui,sans-serif",display:"flex",alignItems:"baseline",lineHeight:1}}><span style={{fontWeight:700,fontSize:32,letterSpacing:"-.5px",color:T.txt}}>High</span><span style={{fontWeight:300,fontSize:32,letterSpacing:".02em",color:AC}}>Enough</span><div style={{fontSize:13,color:T.mu,marginTop:8}}>What kind of account do you want?</div></div>
       <div style={{display:"flex",flexDirection:"column",gap:14,marginBottom:24}}>
         {[{id:"personal",emoji:"👤",title:"Personal",desc:"For individuals — rate friends, build your social rep & climb personal tiers"},
           {id:"business",emoji:"🏢",title:"Business / Brand",desc:"For companies, brands & services — let customers rate their experience"}].map(t=>
@@ -696,7 +701,7 @@ function ProfileSetup({user,T,onDone}){
   if(step==="biztype") return<div style={{minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
     <div style={{width:"100%",maxWidth:380,animation:"ci .4s ease"}}>
       <div style={{textAlign:"center",marginBottom:28}}>
-        <div style={{fontFamily:"'Space Grotesk',sans-serif",fontWeight:700,fontSize:32,letterSpacing:"-.5px",color:T.txt}}>High<span style={{color:AC,fontWeight:300,letterSpacing:".02em"}}>Enough</span></div>
+        <div style={{fontFamily:"'Space Grotesk','Inter',system-ui,sans-serif",display:"flex",alignItems:"baseline",lineHeight:1}}><span style={{fontWeight:700,fontSize:32,letterSpacing:"-.5px",color:T.txt}}>High</span><span style={{fontWeight:300,fontSize:32,letterSpacing:".02em",color:AC}}>Enough</span>
         <div style={{fontSize:13,color:T.mu,marginTop:8}}>What best describes your business?</div>
         <div style={{fontSize:11,color:T.mu,marginTop:4,opacity:.7}}>This determines your rating categories</div>
       </div>
@@ -724,7 +729,7 @@ function ProfileSetup({user,T,onDone}){
 
   return<div style={{minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
     <div style={{width:"100%",maxWidth:380,animation:"ci .4s ease"}}>
-      <div style={{textAlign:"center",marginBottom:24}}><div style={{fontFamily:"'Space Grotesk',sans-serif",fontWeight:700,fontSize:32,letterSpacing:"-.5px",color:T.txt}}>High<span style={{color:AC,fontWeight:300,letterSpacing:".02em"}}>Enough</span></div><div style={{fontSize:13,color:T.mu,marginTop:8}}>{acType==="business"?"Set up your business profile":"Set up your profile"}</div></div>
+      <div style={{textAlign:"center",marginBottom:24}}><div style={{fontFamily:"'Space Grotesk','Inter',system-ui,sans-serif",display:"flex",alignItems:"baseline",lineHeight:1}}><span style={{fontWeight:700,fontSize:32,letterSpacing:"-.5px",color:T.txt}}>High</span><span style={{fontWeight:300,fontSize:32,letterSpacing:".02em",color:AC}}>Enough</span><div style={{fontSize:13,color:T.mu,marginTop:8}}>{acType==="business"?"Set up your business profile":"Set up your profile"}</div></div>
 
       {/* Avatar with photo upload */}
       <div style={{display:"flex",justifyContent:"center",marginBottom:14}}>
@@ -2139,7 +2144,7 @@ function EditProfileModal({me,T,onClose,onSave,onEditPhoto}){
     const {data}=await sb.from("profiles").select("id").eq("handle","@"+clean).neq("id",me.id).maybeSingle();
     setHdStatus(data?"taken":"ok");
   }
-  function onHdChange(val){setHd(val);clearTimeout(hdTimer.current);hdTimer.current=setTimeout(()=>checkHandle(val),600);}
+  function onHdChange(val){const clean=cleanHandle(val);setHd(clean);clearTimeout(hdTimer.current);hdTimer.current=setTimeout(()=>checkHandle(clean),600);}
   function togInt(i){setInts(prev=>prev.includes(i)?prev.filter(x=>x!==i):[...prev,i].slice(0,6));}
   function onBizTypeClick(id){
     if(id===bizTypeEdit)return;
@@ -3013,7 +3018,9 @@ function App(){
   const [profileFetched,setProfileFetched]=useState(false);
   // authLoading: false because HE_BOOT() already resolved before React mounted.
   // We only need the splash while onAuthStateChange confirms + loads profile.
-  const [authLoading,setAuthLoading]=useState(!HE_BOOT_READY||!!HE_PREFETCHED_SESSION);
+  // authLoading=true only when boot completed AND found a real session to restore.
+  // If HE_BOOT failed or found no session, start false → show login immediately.
+  const [authLoading,setAuthLoading]=useState(HE_BOOT_READY&&!!HE_PREFETCHED_SESSION);
   const [dataReady,setDataReady]=useState(false); // true after loadAppData completes
   const [profiles,setProfiles]=useState([]);
   const [notifs,setNotifs]=useState([]);
@@ -3172,8 +3179,12 @@ function App(){
       setAuthLoading(false);
     }
 
-    // Safety net: if INITIAL_SESSION never fires (rare), unblock after 8s
-    const splashTimer=setTimeout(()=>setAuthLoading(false), 8000);
+    // Safety net: if INITIAL_SESSION never fires (network issue, offline, etc.)
+    // unblock after 6s so the user sees the login screen instead of hanging forever
+    const splashTimer=setTimeout(()=>{
+      setAuthLoading(false);
+      setDataReady(false);
+    }, 6000);
 
     const {data:{subscription}}=sb.auth.onAuthStateChange(async(event,session)=>{
 
@@ -3323,7 +3334,12 @@ function App(){
       }
 
       if(data){
-        const fullProfile={...data,account_type:data.account_type||"personal"};
+        // Auto-fix any double-@ handle that may have been saved before the fix
+        const fixedHandle=data.handle?data.handle.replace(/^@+/,"@"):data.handle;
+        if(fixedHandle!==data.handle){
+          sb.from("profiles").update({handle:fixedHandle}).eq("id",data.id).then(()=>{});
+        }
+        const fullProfile={...data,handle:fixedHandle,account_type:data.account_type||"personal"};
         setProfile(fullProfile);setProfileFetched(true);
         setGroups(loadGroups(fullProfile.id));
         loadAppData(fullProfile,dl);
@@ -3912,8 +3928,8 @@ function App(){
     <div style={{minHeight:"100vh",background:T.bg,color:T.txt,paddingBottom:68}}>
       {/* HEADER */}
       <div style={{background:`${T.nav}e8`,borderBottom:`1px solid ${T.b1}`,padding:"14px 18px",position:"sticky",top:0,zIndex:100,display:"flex",alignItems:"center",justifyContent:"space-between",backdropFilter:"blur(24px)",WebkitBackdropFilter:"blur(24px)"}}>
-        <div style={{fontFamily:"'Space Grotesk',sans-serif",fontWeight:700,fontSize:22,letterSpacing:"-.5px",color:T.txt,cursor:"pointer",userSelect:"none",lineHeight:1}} onClick={handleAdminTap}>
-          High<span style={{color:AC,fontWeight:300,letterSpacing:".02em"}}>Enough</span>
+        <div style={{fontFamily:"'Space Grotesk','Inter',system-ui,sans-serif",display:"flex",alignItems:"baseline",cursor:"pointer",userSelect:"none",lineHeight:1}} onClick={handleAdminTap}>
+          <span style={{fontWeight:700,fontSize:22,letterSpacing:"-.5px",color:T.txt}}>High</span><span style={{fontWeight:300,fontSize:22,letterSpacing:".02em",color:AC}}>Enough</span>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           {canInstall&&<button onClick={handleInstall} style={{padding:"7px 14px",background:`linear-gradient(135deg,${AC}cc,${AC}80)`,border:"none",borderRadius:20,color:"#fff",fontWeight:700,fontSize:12,display:"flex",alignItems:"center",gap:5,boxShadow:`0 4px 14px ${AC}40`,flexShrink:0}}>
