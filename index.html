@@ -37,9 +37,7 @@
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<link rel="preconnect" href="https://fonts.googleapis.com"/>
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&family=Space+Grotesk:wght@700&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet"/>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body,#root{background:#09090f;min-height:100vh}
@@ -74,21 +72,14 @@ button:active{opacity:.8;transform:scale(.96)}
 </style>
 </head>
 <body>
-<div id="splash" style="position:fixed;inset:0;background:#09090f;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;z-index:9999;transition:opacity .4s ease,visibility .4s ease">
-  <div style="display:flex;align-items:baseline;line-height:1">
-    <span style="font-family:'Space Grotesk','Inter',system-ui,sans-serif;font-weight:700;font-size:42px;letter-spacing:-.5px;color:#ffffff">High</span><span style="font-family:'Space Grotesk','Inter',system-ui,sans-serif;font-weight:700;font-size:42px;letter-spacing:-.5px;color:#7864dc">Enough</span>
-  </div>
-  <div style="width:22px;height:22px;border:2.5px solid #1c1c2e;border-top-color:#7864dc;border-radius:50%;animation:spin .6s linear infinite"></div>
-  <div id="splash-status" style="font-size:11px;color:#3a3a5a;font-family:'JetBrains Mono',monospace;letter-spacing:.06em">Loading…</div>
-</div>
+<div id="splash" style="position:fixed;inset:0;background:#09090f;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;z-index:9999;transition:opacity .3s"><div style="font-family:'Inter',sans-serif;font-weight:800;font-size:42px;letter-spacing:-2px;color:#ffffff;line-height:1">High<span style="color:#7864dc;font-weight:700;letter-spacing:-.5px">Enough</span></div><div style="width:20px;height:20px;border:2px solid #1c1c2c;border-top-color:#7864dc;border-radius:50%;animation:spin .55s linear infinite"></div><div id="splash-status" style="font-size:11px;color:#3a3a5a;margin-top:4px;font-family:'JetBrains Mono',monospace;letter-spacing:.05em">Loading…</div></div>
 <div id="root"></div>
 <script>
-  // Visual failsafe — if JS stalls for any reason, force-hide splash after 5s
-  // so the user is never stuck on a black screen
+  // Hard failsafe — force-remove splash after 6s no matter what
   setTimeout(function(){
     var s=document.getElementById('splash');
-    if(s){s.style.opacity='0';s.style.visibility='hidden';setTimeout(function(){if(s.parentNode)s.parentNode.removeChild(s);},400);}
-  },5000);
+    if(s){s.style.opacity='0';s.style.pointerEvents='none';setTimeout(function(){if(s&&s.parentNode)s.parentNode.removeChild(s);},400);}
+  },6000);
 </script>
 <script type="text/babel">
 const {useState,useEffect,useRef,useCallback}=React;
@@ -111,7 +102,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON, {
 // getSession() resolves. First render already knows auth state = zero flash.
 let HE_PREFETCHED_SESSION=null;
 let HE_BOOT_READY=false;
-let HE_BOOT=async function(){
+async function HE_BOOT(){
   try{
     const el=document.getElementById("splash-status");
     if(el)el.textContent="Restoring session…";
@@ -120,7 +111,7 @@ let HE_BOOT=async function(){
     if(el)el.textContent=session?"Welcome back…":"Ready";
   }catch(e){console.warn("Pre-boot getSession failed:",e);}
   finally{HE_BOOT_READY=true;}
-};
+}
 
 
 /* ── CONSTANTS ── */
@@ -556,7 +547,7 @@ function AuthScreen({T,onAuthed,authError,onClearAuthError}){
     <div style={{position:"absolute",bottom:-120,left:-90,width:320,height:320,borderRadius:"50%",background:`radial-gradient(circle,${AC}0b,transparent 68%)`,pointerEvents:"none"}}/>
     <div style={{width:"100%",maxWidth:380,position:"relative",animation:"ci .4s ease"}}>
       <div style={{textAlign:"center",marginBottom:40}}>
-        <div style={{fontFamily:"'Space Grotesk','Inter',system-ui,sans-serif",display:"flex",alignItems:"baseline",lineHeight:1}}><span style={{fontWeight:700,fontSize:46,letterSpacing:"-2px",color:T.txt}}>High</span><span style={{fontWeight:700,fontSize:46,letterSpacing:"-2px",color:AC}}>Enough</span></div>
+        <div style={{display:"flex",alignItems:"baseline",lineHeight:1}}><span style={{fontWeight:700,fontSize:46,letterSpacing:"-2px",color:T.txt}}>High</span><span style={{fontWeight:700,fontSize:46,letterSpacing:"-2px",color:AC}}>Enough</span></div>
         <div style={{fontSize:11,color:T.mu,marginTop:8,letterSpacing:"0.18em",textTransform:"uppercase",fontWeight:500}}>Rate · Rise · Repeat</div>
       </div>
 
@@ -697,7 +688,7 @@ function ProfileSetup({user,T,onDone}){
 
   if(step==="type") return<div style={{minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
     <div style={{width:"100%",maxWidth:380,animation:"ci .4s ease"}}>
-      <div style={{textAlign:"center",marginBottom:32}}><div style={{fontFamily:"'Space Grotesk','Inter',system-ui,sans-serif",display:"flex",alignItems:"baseline",lineHeight:1}}><span style={{fontWeight:700,fontSize:32,letterSpacing:"-.3px",color:T.txt}}>High</span><span style={{fontWeight:700,fontSize:32,letterSpacing:"-.3px",color:AC}}>Enough</span><div style={{fontSize:13,color:T.mu,marginTop:8}}>What kind of account do you want?</div></div>
+      <div style={{textAlign:"center",marginBottom:32}}><div style={{display:"flex",alignItems:"baseline",lineHeight:1}}><span style={{fontWeight:700,fontSize:32,letterSpacing:"-.3px",color:T.txt}}>High</span><span style={{fontWeight:700,fontSize:32,letterSpacing:"-.3px",color:AC}}>Enough</span><div style={{fontSize:13,color:T.mu,marginTop:8}}>What kind of account do you want?</div></div>
       <div style={{display:"flex",flexDirection:"column",gap:14,marginBottom:24}}>
         {[{id:"personal",emoji:"👤",title:"Personal",desc:"For individuals — rate friends, build your social rep & climb personal tiers"},
           {id:"business",emoji:"🏢",title:"Business / Brand",desc:"For companies, brands & services — let customers rate their experience"}].map(t=>
@@ -717,7 +708,7 @@ function ProfileSetup({user,T,onDone}){
   if(step==="biztype") return<div style={{minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
     <div style={{width:"100%",maxWidth:380,animation:"ci .4s ease"}}>
       <div style={{textAlign:"center",marginBottom:28}}>
-        <div style={{fontFamily:"'Space Grotesk','Inter',system-ui,sans-serif",display:"flex",alignItems:"baseline",lineHeight:1}}><span style={{fontWeight:700,fontSize:32,letterSpacing:"-.3px",color:T.txt}}>High</span><span style={{fontWeight:700,fontSize:32,letterSpacing:"-.3px",color:AC}}>Enough</span>
+        <div style={{display:"flex",alignItems:"baseline",lineHeight:1}}><span style={{fontWeight:700,fontSize:32,letterSpacing:"-.3px",color:T.txt}}>High</span><span style={{fontWeight:700,fontSize:32,letterSpacing:"-.3px",color:AC}}>Enough</span>
         <div style={{fontSize:13,color:T.mu,marginTop:8}}>What best describes your business?</div>
         <div style={{fontSize:11,color:T.mu,marginTop:4,opacity:.7}}>This determines your rating categories</div>
       </div>
@@ -745,7 +736,7 @@ function ProfileSetup({user,T,onDone}){
 
   return<div style={{minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
     <div style={{width:"100%",maxWidth:380,animation:"ci .4s ease"}}>
-      <div style={{textAlign:"center",marginBottom:24}}><div style={{fontFamily:"'Space Grotesk','Inter',system-ui,sans-serif",display:"flex",alignItems:"baseline",lineHeight:1}}><span style={{fontWeight:700,fontSize:32,letterSpacing:"-.3px",color:T.txt}}>High</span><span style={{fontWeight:700,fontSize:32,letterSpacing:"-.3px",color:AC}}>Enough</span><div style={{fontSize:13,color:T.mu,marginTop:8}}>{acType==="business"?"Set up your business profile":"Set up your profile"}</div></div>
+      <div style={{textAlign:"center",marginBottom:24}}><div style={{display:"flex",alignItems:"baseline",lineHeight:1}}><span style={{fontWeight:700,fontSize:32,letterSpacing:"-.3px",color:T.txt}}>High</span><span style={{fontWeight:700,fontSize:32,letterSpacing:"-.3px",color:AC}}>Enough</span><div style={{fontSize:13,color:T.mu,marginTop:8}}>{acType==="business"?"Set up your business profile":"Set up your profile"}</div></div>
 
       {/* Avatar with photo upload */}
       <div style={{display:"flex",justifyContent:"center",marginBottom:14}}>
@@ -3033,10 +3024,8 @@ function App(){
   const [profile,setProfile]=useState(null);
   const [profileFetched,setProfileFetched]=useState(false);
   // authLoading: false because HE_BOOT() already resolved before React mounted.
-  // We only need the splash while onAuthStateChange confirms + loads profile.
-  // authLoading=true only when boot completed AND found a real session to restore.
-  // If HE_BOOT failed or found no session, start false → show login immediately.
-  const [authLoading,setAuthLoading]=useState(HE_BOOT_READY&&!!HE_PREFETCHED_SESSION);
+  // Only true if HE_BOOT found a session (we need to wait for INITIAL_SESSION + profile load).
+  const [authLoading,setAuthLoading]=useState(!HE_BOOT_READY||!!HE_PREFETCHED_SESSION);
   const [dataReady,setDataReady]=useState(false); // true after loadAppData completes
   const [profiles,setProfiles]=useState([]);
   const [notifs,setNotifs]=useState([]);
@@ -3887,7 +3876,7 @@ function App(){
 
   // 2. Pre-boot found a valid session but onAuthStateChange hasn't fired yet.
   // Only show spinner if session is genuinely still pending (not cleared by logout).
-  if(!authUser&&window.HE_PREFETCHED_SESSION){
+  if(!authUser&&HE_PREFETCHED_SESSION){
     return<div style={{minHeight:"100vh",background:"#09090f",display:"flex",alignItems:"center",justifyContent:"center"}}>
       <div style={{width:22,height:22,border:"2.5px solid #1c1c2c",borderTopColor:"#7b72e9",borderRadius:"50%",animation:"spin .55s linear infinite"}}/>
     </div>;
@@ -3944,7 +3933,7 @@ function App(){
     <div style={{minHeight:"100vh",background:T.bg,color:T.txt,paddingBottom:68}}>
       {/* HEADER */}
       <div style={{background:`${T.nav}e8`,borderBottom:`1px solid ${T.b1}`,padding:"14px 18px",position:"sticky",top:0,zIndex:100,display:"flex",alignItems:"center",justifyContent:"space-between",backdropFilter:"blur(24px)",WebkitBackdropFilter:"blur(24px)"}}>
-        <div style={{fontFamily:"'Space Grotesk','Inter',system-ui,sans-serif",display:"flex",alignItems:"baseline",cursor:"pointer",userSelect:"none",lineHeight:1}} onClick={handleAdminTap}>
+        <div style={{display:"flex",alignItems:"baseline",cursor:"pointer",userSelect:"none",lineHeight:1}} onClick={handleAdminTap}>
           <span style={{fontWeight:700,fontSize:22,letterSpacing:"-.3px",color:T.txt}}>High</span><span style={{fontWeight:700,fontSize:22,letterSpacing:"-.3px",color:AC}}>Enough</span>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
@@ -4039,29 +4028,10 @@ function App(){
   </>;
 }
 
-// ── DEFERRED MOUNT: React only renders after getSession() resolves ──────────
-// Promise.race caps the session check at 2s — if Supabase is slow or offline,
-// React still mounts. .finally() guarantees render even on error or timeout.
-HE_BOOT=async function(){
-  try{
-    const el=document.getElementById("splash-status");
-    if(el)el.textContent="Restoring session…";
-    const sessionPromise=sb.auth.getSession().then(({data:{session}})=>session);
-    const timeoutPromise=new Promise(resolve=>setTimeout(()=>resolve(null),2000));
-    HE_PREFETCHED_SESSION=await Promise.race([sessionPromise,timeoutPromise]);
-    if(el)el.textContent=HE_PREFETCHED_SESSION?"Welcome back…":"Ready";
-  }catch(e){
-    console.warn("HE_BOOT failed:",e);
-    HE_PREFETCHED_SESSION=null;
-  }finally{
-    HE_BOOT_READY=true;
-  }
-};
-
-function mountApp(){
+// ── MOUNT: React renders after getSession() resolves ──────────────────────
+HE_BOOT().then(function(){
   ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
-}
-HE_BOOT().then(mountApp).catch(mountApp);
+});
 </script>
 
 <!-- PWA: Service Worker + Install Prompt -->
