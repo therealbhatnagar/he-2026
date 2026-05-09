@@ -219,7 +219,7 @@ const BIZ_TIERS=[
   {label:"Elite",     emoji:"💎",min:1300,max:2799, color:"#7c56c0",grad:["#6340a8","#9470d8"],glow:"#7c56c030"},
   {label:"HighEnough",emoji:"👑",min:2800,max:Infinity,color:"#c09038",grad:["#a87828","#d8ac50"],glow:"#c0903840"},
 ];
-const getBizCats=p=>BIZ_CAT_MAP[p?.biz_type||"general"]||BIZ_CAT_MAP.general;
+const getBizCats=p=>{const bt=p?.biz_type||(p?.links?.biz_type)||"general";return BIZ_CAT_MAP[bt]||BIZ_CAT_MAP.general;};
 const getCats=p=>p?.account_type==="business"?getBizCats(p):CATS;
 const getTiers=p=>p?.account_type==="business"?BIZ_TIERS:TIERS;
 const PALETTE=["#7b72e9","#10a37f","#e0466e","#4f80e2","#c08a2e","#2cba9a","#9b6ee8","#d95c4a"];
@@ -459,14 +459,17 @@ function AuthScreen({T,onAuthed,authError,onClearAuthError}){
         const emailToUse=rawInput.includes("@")&&rawInput.includes(".")?rawInput:rawInput;
 
         // ── Check if this email belongs to a previously deleted account ──
-        // If so, we must remove them from deleted_accounts first so they can
-        // start fresh. The old Supabase auth record for that email will be
-        // reused by Supabase automatically.
+        // Remove deletion record so this email is allowed to start fresh.
+        // Also remove by auth_id (Supabase reuses same auth ID for same email).
         const {data:deletedRow}=await sb.from("deleted_accounts")
-          .select("auth_id").eq("email",emailToUse).maybeSingle();
+          .select("auth_id,email").eq("email",emailToUse).maybeSingle();
         if(deletedRow){
-          // Remove the deletion record so this email is allowed again
-          await sb.from("deleted_accounts").delete().eq("email",emailToUse);
+          await Promise.all([
+            sb.from("deleted_accounts").delete().eq("email",emailToUse),
+            sb.from("deleted_accounts").delete().eq("auth_id",deletedRow.auth_id),
+            // Also remove any leftover profile row so they get a clean ProfileSetup
+            sb.from("profiles").delete().eq("id",deletedRow.auth_id),
+          ]);
         }
 
         const {data,error}=await sb.auth.signUp({
@@ -640,25 +643,34 @@ function ProfileSetup({user,T,onDone}){
       age:null,
       photo:photo||null,
       interests:[],
-      links:{},
+      links:{biz_type:acType==="business"?bizType:undefined},
       email:user.email||"",
       short_id:sid,
       account_type:acType,
-      biz_type:acType==="business"?bizType:null,
       followers_count:0,
       following_count:0,
       created_at:new Date().toISOString()
     };
 
+    // Try with biz_type column first; if schema doesn't have it yet, store in links
+    const withBizType={...dbProfile,biz_type:acType==="business"?bizType:null};
+
     try{
-      const {error}=await sb.from("profiles").upsert(dbProfile,{onConflict:"id"});
+      let error;
+      // First attempt: with biz_type column
+      ({error}=await sb.from("profiles").upsert(withBizType,{onConflict:"id"}));
+      if(error?.message?.includes("biz_type")){
+        // Column doesn't exist yet — save without it (biz_type stored in links.biz_type)
+        ({error}=await sb.from("profiles").upsert(dbProfile,{onConflict:"id"}));
+      }
       if(error){
         console.error("Profile save error:",error);
         if(error.code==="23505")setErr("Username already taken. Try a different one.");
         else setErr("Could not save: "+error.message);
         setLoading(false);return;
       }
-      onDone({...dbProfile,account_type:acType,biz_type:acType==="business"?bizType:null});
+      const finalProfile={...withBizType,biz_type:acType==="business"?bizType:null};
+      onDone(finalProfile);
     }catch(e){setErr("Unexpected error: "+e.message);setLoading(false);}
   }
 
@@ -1076,46 +1088,51 @@ function ProfileModal({profile,myId,following,profiles,T,onClose,onRate,onFollow
     </div>
 
     <div style={{flex:1,padding:"0 0 32px",maxWidth:560,margin:"0 auto",width:"100%"}}>
-      {/* ── Hero banner with tier gradient ── */}
-      <div style={{background:`linear-gradient(160deg,${t.grad[0]}cc,${t.grad[1]}88)`,padding:"28px 20px 24px",position:"relative",overflow:"hidden"}}>
-        <div style={{position:"absolute",inset:0,background:T.bg,opacity:.45,pointerEvents:"none"}}/>
-        <div style={{position:"relative",display:"flex",alignItems:"center",gap:18}}>
+      {/* ── Profile header — no banner, clean card style ── */}
+      <div style={{padding:"24px 20px 0",background:T.bg}}>
+        {/* Avatar + name row */}
+        <div style={{display:"flex",alignItems:"flex-start",gap:16,marginBottom:18}}>
           <div style={{position:"relative",flexShrink:0}}>
-            <Ava p={profile} size={82} T={T} ring/>
-            {isBiz&&<div style={{position:"absolute",bottom:-2,right:-2,width:24,height:24,borderRadius:"50%",background:AC,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,border:`2px solid ${T.bg}`}}>🏢</div>}
+            <div style={{width:88,height:88,borderRadius:"50%",padding:3,background:`linear-gradient(135deg,${t.color},${t.grad?.[1]||t.color}88)`,boxShadow:`0 0 0 1px ${T.bg},0 8px 24px ${t.color}40`}}>
+              <Ava p={profile} size={82} T={T}/>
+            </div>
+            {isBiz&&<div style={{position:"absolute",bottom:0,right:0,width:26,height:26,borderRadius:"50%",background:`linear-gradient(135deg,${AC},${AC}99)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,border:`2px solid ${T.bg}`,boxShadow:`0 2px 8px ${AC}40`}}>🏢</div>}
           </div>
-          <div style={{flex:1,minWidth:0}}>
-            <div style={{fontWeight:800,fontSize:22,color:T.txt,letterSpacing:"-.4px",lineHeight:1.2}}>{profile.name}</div>
-            <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:AC,marginTop:4,fontWeight:600}}>{profile.handle} <span style={{color:T.mu,fontWeight:400}}>#{profile.short_id||shortId(profile.id)}</span>{profile.age&&<span style={{color:T.mu}}> · {profile.age}</span>}</div>
-            {profile.bio&&<p style={{color:T.mu,fontSize:12.5,marginTop:8,lineHeight:1.55,margin:"8px 0 0"}}>{profile.bio}</p>}
+          <div style={{flex:1,minWidth:0,paddingTop:4}}>
+            <div style={{fontWeight:800,fontSize:21,color:T.txt,letterSpacing:"-.4px",lineHeight:1.15,marginBottom:3}}>{profile.name}</div>
+            <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap",marginBottom:6}}>
+              <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:AC,fontWeight:600}}>{profile.handle}</span>
+              <span style={{color:T.mu,fontSize:11}}>·</span>
+              <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:T.mu}}>#{profile.short_id||shortId(profile.id)}</span>
+              {profile.age&&<><span style={{color:T.mu,fontSize:11}}>·</span><span style={{fontSize:11,color:T.mu}}>{profile.age}</span></>}
+            </div>
+            {profile.bio&&<p style={{color:T.mu,fontSize:12.5,lineHeight:1.55,margin:0}}>{profile.bio}</p>}
           </div>
         </div>
-      </div>
 
-      <div style={{padding:"16px 16px 0"}}>
         {/* Stats row */}
         <div style={{display:"flex",gap:8,marginBottom:14}}>
-          <button style={{flex:1,padding:"10px 4px",borderRadius:12,background:T.faint,border:`1px solid ${T.b1}`,cursor:"pointer",textAlign:"center"}} onClick={showFollowers}>
-            <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:16,fontWeight:800,color:T.txt}}>{fmtCount(profile.followers_count||0)}</div>
+          <button style={{flex:1,padding:"12px 4px",borderRadius:14,background:T.faint,border:`1px solid ${T.b1}`,cursor:"pointer",textAlign:"center"}} onClick={showFollowers}>
+            <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:17,fontWeight:800,color:T.txt}}>{fmtCount(profile.followers_count||0)}</div>
             <div style={{fontSize:10,color:T.mu,marginTop:2}}>Followers</div>
           </button>
-          <button style={{flex:1,padding:"10px 4px",borderRadius:12,background:T.faint,border:`1px solid ${T.b1}`,cursor:"pointer",textAlign:"center"}} onClick={showFollowing}>
-            <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:16,fontWeight:800,color:T.txt}}>{fmtCount(profile.following_count||0)}</div>
+          <button style={{flex:1,padding:"12px 4px",borderRadius:14,background:T.faint,border:`1px solid ${T.b1}`,cursor:"pointer",textAlign:"center"}} onClick={showFollowing}>
+            <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:17,fontWeight:800,color:T.txt}}>{fmtCount(profile.following_count||0)}</div>
             <div style={{fontSize:10,color:T.mu,marginTop:2}}>Following</div>
           </button>
-          <button style={{flex:1,padding:"10px 4px",borderRadius:12,background:`${t.color}14`,border:`1px solid ${t.color}30`,cursor:"pointer",textAlign:"center"}} onClick={showRaters}>
-            <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:16,fontWeight:800,color:t.color}}>{sc!=null?fmtScore(sc):"—"}</div>
+          <button style={{flex:1,padding:"12px 4px",borderRadius:14,background:`linear-gradient(135deg,${t.color}20,${t.color}08)`,border:`1.5px solid ${t.color}35`,cursor:"pointer",textAlign:"center",boxShadow:`0 2px 12px ${t.color}18`}} onClick={showRaters}>
+            <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:17,fontWeight:800,color:t.color,textShadow:`0 0 12px ${t.color}60`}}>{sc!=null?fmtScore(sc):"—"}</div>
             <div style={{fontSize:10,color:t.color,opacity:.85,marginTop:2}}>{n} {isBiz?"Reviews":"Ratings"}</div>
           </button>
         </div>
 
-        {/* Tier progress */}
-        <div style={{background:T.card,border:`1px solid ${T.b1}`,borderRadius:14,padding:"12px 14px",marginBottom:14}}>
+        {/* Tier progress bar */}
+        <div style={{background:`linear-gradient(135deg,${t.color}14,${t.color}06)`,border:`1.5px solid ${t.color}28`,borderRadius:14,padding:"12px 14px",marginBottom:14,boxShadow:`0 2px 12px ${t.color}10`}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
             <TierBadge sc={sc} size="sm" isBiz={isBiz}/>
             {next?<span style={{fontSize:11,color:T.mu,fontFamily:"'JetBrains Mono',monospace"}}>{next.emoji} {next.label} at {next.min.toLocaleString()}</span>:<span style={{fontSize:11,color:t.color,fontWeight:600}}>Top tier 🔝</span>}
           </div>
-          <div style={{height:5,background:T.b1,borderRadius:99,overflow:"hidden"}}><div style={{width:`${pct*100}%`,height:"100%",background:t.color,borderRadius:99,transition:"width .9s"}}/></div>
+          <div style={{height:6,background:T.b1,borderRadius:99,overflow:"hidden"}}><div style={{width:`${pct*100}%`,height:"100%",background:`linear-gradient(90deg,${t.color}88,${t.color})`,borderRadius:99,transition:"width .9s",boxShadow:`0 0 8px ${t.color}60`}}/></div>
         </div>
 
         {(profile.interests||[]).length>0&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:14}}>{profile.interests.map(i=><Tag key={i} label={i} color={profile.color}/>)}</div>}
@@ -1126,10 +1143,21 @@ function ProfileModal({profile,myId,following,profiles,T,onClose,onRate,onFollow
           {links.tiktok&&<a href={`https://tiktok.com/@${links.tiktok.replace("@","")}`} target="_blank" rel="noreferrer" style={{fontSize:11,color:T.mu,background:T.faint,border:`1px solid ${T.b1}`,borderRadius:6,padding:"3px 10px",fontWeight:600}}>🎵 {links.tiktok}</a>}
           {links.website&&<a href={links.website} target="_blank" rel="noreferrer" style={{fontSize:11,color:AC,background:`${AC}14`,border:`1px solid ${AC}28`,borderRadius:6,padding:"3px 10px",fontWeight:600}}>🔗 Site</a>}
         </div>}
+      </div>
 
+      <div style={{padding:"0 16px"}}>
         {/* Category bars */}
         <div style={{height:1,background:T.b1,marginBottom:14}}/>
-        {n>0?<div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:14}}>{cats.map(c=>{const v=cAvg(profile,c.id);return<div key={c.id}><div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{fontSize:13,color:T.mu}}>{c.emoji} {c.label}</span><span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:12,color:T.txt,fontWeight:600}}>{v}/100</span></div>{c.sub&&<div style={{fontSize:10,color:T.mu,opacity:.6,marginBottom:4}}>{c.sub}</div>}<div style={{height:5,background:T.faint,borderRadius:99,overflow:"hidden"}}><div style={{width:`${v}%`,height:"100%",background:profile.color,borderRadius:99,opacity:.9,transition:"width .7s"}}/></div></div>;})}
+        {n>0?<div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:14}}>{cats.map(c=>{const v=cAvg(profile,c.id);return<div key={c.id}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+            <span style={{fontSize:13,color:T.txt,fontWeight:500}}>{c.emoji} {c.label}</span>
+            <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:12,fontWeight:800,color:v>=80?"#4ade80":v>=60?profile.color:T.mu,background:v>=80?"#4ade8014":v>=60?`${profile.color}14`:T.faint,border:`1px solid ${v>=80?"#4ade8030":v>=60?profile.color+"28":T.b1}`,borderRadius:6,padding:"2px 8px"}}>{v}/100</span>
+          </div>
+          {c.sub&&<div style={{fontSize:10,color:T.mu,opacity:.65,marginBottom:5}}>{c.sub}</div>}
+          <div style={{height:6,background:T.faint,borderRadius:99,overflow:"hidden"}}>
+            <div style={{width:`${v}%`,height:"100%",background:v>=80?`linear-gradient(90deg,#4ade8099,#4ade80)`:`linear-gradient(90deg,${profile.color}80,${profile.color})`,borderRadius:99,transition:"width .7s"}}/>
+          </div>
+        </div>;})}
         </div>:<div style={{background:`linear-gradient(135deg,${t.grad[0]}30,${t.grad[1]}18)`,border:`1px solid ${t.color}25`,borderRadius:14,padding:"20px 16px",marginBottom:8,textAlign:"center",position:"relative",overflow:"hidden"}}>
           <div style={{position:"absolute",right:-10,top:-10,fontSize:72,opacity:.07,pointerEvents:"none"}}>👻</div>
           <div style={{fontSize:22,marginBottom:6}}>👻</div>
@@ -1971,55 +1999,54 @@ function ProfileTab({myProfile,myP,T,onQR,onSettings,onEditPhoto,onScoreCard,fol
   </div>;
 
   return<div>
+    {/* Header row */}
     <div style={{padding:"14px 16px 0",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
       <div>
-        <div style={{fontWeight:700,fontSize:17,color:T.txt}}>{myProfile.name}</div>
-        {/* UID shown clearly */}
-        <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:AC,marginTop:2,fontWeight:600,letterSpacing:1}}>UID #{myProfile.short_id||shortId(myProfile.id)}</div>
+        <div style={{fontWeight:800,fontSize:18,color:T.txt,letterSpacing:"-.3px"}}>{myProfile.name}</div>
+        <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:AC,marginTop:2,fontWeight:600,letterSpacing:.8}}>UID #{myProfile.short_id||shortId(myProfile.id)}</div>
       </div>
-      <button onClick={onSettings} style={{padding:"7px 14px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:9,color:T.txt,fontWeight:600,fontSize:13}}>⚙️ Settings</button>
+      <button onClick={onSettings} style={{padding:"7px 14px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:10,color:T.txt,fontWeight:600,fontSize:13}}>⚙️ Settings</button>
     </div>
     <div style={{padding:"16px 16px 0"}}>
-      {/* Avatar + stats — Instagram style */}
-      <div style={{display:"flex",alignItems:"center",gap:18,marginBottom:14}}>
-        <div style={{position:"relative",cursor:"pointer"}} onClick={onEditPhoto}>
-          <Ava p={myP} size={82} T={T} ring/>
-          <div style={{position:"absolute",bottom:-2,right:-2,width:26,height:26,borderRadius:"50%",background:`${myProfile.color}cc`,border:`2px solid ${T.bg}`,display:"flex",alignItems:"center",justifyContent:"center"}}><EditIcon/></div>
+      {/* Avatar + stats */}
+      <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:14}}>
+        <div style={{position:"relative",cursor:"pointer",flexShrink:0}} onClick={onEditPhoto}>
+          <div style={{width:88,height:88,borderRadius:"50%",padding:3,background:`linear-gradient(135deg,${t.color},${t.grad?.[1]||t.color}88)`,boxShadow:`0 0 0 1px ${T.bg},0 6px 20px ${t.color}40`}}>
+            <Ava p={myP} size={82} T={T}/>
+          </div>
+          <div style={{position:"absolute",bottom:0,right:0,width:26,height:26,borderRadius:"50%",background:`linear-gradient(135deg,${myProfile.color}dd,${myProfile.color}99)`,border:`2px solid ${T.bg}`,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:`0 2px 8px ${myProfile.color}50`}}><EditIcon/></div>
         </div>
-        {/* Stats — tappable, no blue underlines */}
+        {/* Stats */}
         <div style={{flex:1,display:"flex",gap:6}}>
-          <button onClick={()=>{sb.from("follows").select("follower_id").eq("following_id",myProfile.id).then(({data})=>{const ids=(data||[]).map(r=>r.follower_id);const list=(profiles||[]).filter(p=>ids.includes(p.id)).map(p=>({...p,score:pScore(p)}));setPeopleList({title:"Followers",people:list});});}} style={{flex:1,background:T.faint,borderRadius:12,padding:"10px 0",textAlign:"center",border:`1px solid ${T.b1}`,cursor:"pointer"}}>
-            <div style={{fontFamily:"'JetBrains Mono',monospace",fontWeight:700,fontSize:15,color:T.txt}}>{fmtCount(myProfile.followers_count||0)}</div>
+          <button onClick={()=>{sb.from("follows").select("follower_id").eq("following_id",myProfile.id).then(({data})=>{const ids=(data||[]).map(r=>r.follower_id);const list=(profiles||[]).filter(p=>ids.includes(p.id)).map(p=>({...p,score:pScore(p)}));setPeopleList({title:"Followers",people:list});});}} style={{flex:1,background:T.faint,borderRadius:13,padding:"11px 0",textAlign:"center",border:`1px solid ${T.b1}`,cursor:"pointer"}}>
+            <div style={{fontFamily:"'JetBrains Mono',monospace",fontWeight:800,fontSize:16,color:T.txt}}>{fmtCount(myProfile.followers_count||0)}</div>
             <div style={{fontSize:10,color:T.mu,marginTop:2}}>Followers</div>
           </button>
-          <button onClick={()=>{const list=(profiles||[]).filter(p=>following.includes(p.id)).map(p=>({...p,score:pScore(p)}));setPeopleList({title:"Following",people:list});}} style={{flex:1,background:T.faint,borderRadius:12,padding:"10px 0",textAlign:"center",border:`1px solid ${T.b1}`,cursor:"pointer"}}>
-            <div style={{fontFamily:"'JetBrains Mono',monospace",fontWeight:700,fontSize:15,color:T.txt}}>{fmtCount(myProfile.following_count||0)}</div>
+          <button onClick={()=>{const list=(profiles||[]).filter(p=>following.includes(p.id)).map(p=>({...p,score:pScore(p)}));setPeopleList({title:"Following",people:list});}} style={{flex:1,background:T.faint,borderRadius:13,padding:"11px 0",textAlign:"center",border:`1px solid ${T.b1}`,cursor:"pointer"}}>
+            <div style={{fontFamily:"'JetBrains Mono',monospace",fontWeight:800,fontSize:16,color:T.txt}}>{fmtCount(myProfile.following_count||0)}</div>
             <div style={{fontSize:10,color:T.mu,marginTop:2}}>Following</div>
           </button>
           <button onClick={()=>{
             const cats2=getCats(myP);
             const raters=(myP.ratings||[]).map(r=>{
               const given=Math.round(cats2.reduce((s,c)=>s+(r[c.id]||0),0)/cats2.length);
-              // Look up full profile from loaded state so name/photo/tier are correct
               const rp=(profiles||[]).find(p=>p.id===r.raterId);
-              return rp
-                ?{...rp,score:pScore(rp),ratingGiven:given}
-                :{id:r.raterId,name:r.raterName||"?",handle:"",color:AC,ratingGiven:given};
+              return rp?{...rp,score:pScore(rp),ratingGiven:given}:{id:r.raterId,name:r.raterName||"?",handle:"",color:AC,ratingGiven:given};
             });
             setPeopleList({title:"Rated by",people:raters});
-          }} style={{flex:1,background:`${t.color}14`,borderRadius:12,padding:"10px 0",textAlign:"center",border:`1px solid ${t.color}28`,cursor:"pointer"}}>
-            <div style={{fontFamily:"'JetBrains Mono',monospace",fontWeight:700,fontSize:15,color:t.color}}>{sc!=null?fmtScore(sc):"—"}</div>
+          }} style={{flex:1,background:`linear-gradient(135deg,${t.color}20,${t.color}08)`,borderRadius:13,padding:"11px 0",textAlign:"center",border:`1.5px solid ${t.color}35`,cursor:"pointer",boxShadow:`0 2px 12px ${t.color}18`}}>
+            <div style={{fontFamily:"'JetBrains Mono',monospace",fontWeight:800,fontSize:16,color:t.color,textShadow:`0 0 10px ${t.color}60`}}>{sc!=null?fmtScore(sc):"—"}</div>
             <div style={{fontSize:10,color:t.color,opacity:.8,marginTop:2}}>Score</div>
           </button>
         </div>
       </div>
-      {myProfile.bio&&<p style={{color:T.mu,fontSize:13,lineHeight:1.5,marginBottom:10}}>{myProfile.bio}</p>}
-      <div style={{marginBottom:10}}><TierBadge sc={sc} size="md" isBiz={isBiz}/></div>
+      {myProfile.bio&&<p style={{color:T.mu,fontSize:13,lineHeight:1.55,marginBottom:10}}>{myProfile.bio}</p>}
+      <div style={{marginBottom:12}}><TierBadge sc={sc} size="md" isBiz={isBiz}/></div>
       {/* Action buttons */}
       <div style={{display:"flex",gap:8,marginBottom:16}}>
-        <button onClick={onSettings} style={{flex:1,padding:"9px 0",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:10,color:T.txt,fontWeight:600,fontSize:12}}>Edit Profile</button>
-        <button onClick={onScoreCard} style={{flex:1,padding:"9px 0",background:`${AC}14`,border:`1px solid ${AC}28`,borderRadius:10,color:AC,fontWeight:600,fontSize:12}}>Score Card</button>
-        <button onClick={shareMyProfile} style={{flex:1,padding:"9px 0",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:10,color:T.txt,fontWeight:600,fontSize:12,display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
+        <button onClick={onSettings} style={{flex:1,padding:"10px 0",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:11,color:T.txt,fontWeight:600,fontSize:12}}>Edit Profile</button>
+        <button onClick={onScoreCard} style={{flex:1,padding:"10px 0",background:`linear-gradient(135deg,${AC}22,${AC}0e)`,border:`1.5px solid ${AC}35`,borderRadius:11,color:AC,fontWeight:700,fontSize:12,boxShadow:`0 2px 10px ${AC}20`}}>Score Card</button>
+        <button onClick={shareMyProfile} style={{flex:1,padding:"10px 0",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:11,color:T.txt,fontWeight:600,fontSize:12,display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
           Share
         </button>
@@ -3036,6 +3063,7 @@ function App(){
         if(deleted){
           const {data:existing}=await sb.from("profiles").select("id").eq("id",user.id).maybeSingle();
           if(existing){
+            // Old profile still exists — truly blocked
             setAuthError("This account has been permanently deleted.");
             await sb.auth.signOut();
             profileLoadingRef.current=false;
@@ -3043,6 +3071,8 @@ function App(){
             setAuthLoading(false);
             return;
           }else{
+            // Profile row gone — user signed up fresh with same email
+            // Clean up the stale deleted_accounts row and let them through
             await sb.from("deleted_accounts").delete().eq("auth_id",user.id);
           }
         }
@@ -3520,25 +3550,21 @@ function App(){
 
   async function handleSaveProfile(u){
     const updated={...profile,...u};
-    const dbFields={
-      id:updated.id,
-      name:updated.name,
-      handle:updated.handle,
-      bio:updated.bio,
-      color:updated.color,
-      age:updated.age,
-      photo:updated.photo,
-      interests:updated.interests,
-      links:updated.links,
-      email:updated.email,
-      short_id:updated.short_id,
+    // biz_type may or may not exist as a column — try with it, fallback without
+    const base={
+      id:updated.id,name:updated.name,handle:updated.handle,bio:updated.bio,
+      color:updated.color,age:updated.age,photo:updated.photo,interests:updated.interests,
+      links:{...(updated.links||{}),biz_type:updated.account_type==="business"?(updated.biz_type||"general"):undefined},
+      email:updated.email,short_id:updated.short_id,
       account_type:updated.account_type||"personal",
-      biz_type:updated.account_type==="business"?(updated.biz_type||"general"):null,
-      followers_count:updated.followers_count,
-      following_count:updated.following_count,
+      followers_count:updated.followers_count,following_count:updated.following_count,
       created_at:updated.created_at||new Date().toISOString()
     };
-    const {error}=await sb.from("profiles").upsert(dbFields);
+    let error;
+    ({error}=await sb.from("profiles").upsert({...base,biz_type:updated.account_type==="business"?(updated.biz_type||"general"):null}));
+    if(error?.message?.includes("biz_type")){
+      ({error}=await sb.from("profiles").upsert(base));
+    }
     if(!error){setProfile(updated);setProfiles(prev=>prev.map(p=>p.id===updated.id?{...p,...updated}:p));pop("Profile saved");}
     else{console.error("Save error:",error);pop("Could not save. Try again.");}
   }
