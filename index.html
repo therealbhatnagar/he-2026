@@ -37,7 +37,7 @@
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body,#root{background:#09090f;min-height:100vh}
@@ -72,7 +72,7 @@ button:active{opacity:.8;transform:scale(.96)}
 </style>
 </head>
 <body>
-<div id="splash" style="position:fixed;inset:0;background:#09090f;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;z-index:9999;transition:opacity .3s"><div style="font-weight:800;font-size:42px;letter-spacing:-2px;color:#dde0f0;line-height:1">High<span style="color:#7b72e9;font-weight:300;letter-spacing:.04em">Enough</span></div><div style="width:20px;height:20px;border:2px solid #1c1c2c;border-top-color:#7b72e9;border-radius:50%;animation:spin .55s linear infinite"></div><div id="splash-status" style="font-size:11px;color:#3a3a5a;margin-top:4px;font-family:'JetBrains Mono',monospace;letter-spacing:.05em">Loading…</div></div>
+<div id="splash" style="position:fixed;inset:0;background:#09090f;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;z-index:9999;transition:opacity .3s"><div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:38px;letter-spacing:-.5px;color:#dde0f0;line-height:1">High<span style="color:#7b72e9;font-weight:300;letter-spacing:.02em">Enough</span></div><div style="width:20px;height:20px;border:2px solid #1c1c2c;border-top-color:#7b72e9;border-radius:50%;animation:spin .55s linear infinite"></div><div id="splash-status" style="font-size:11px;color:#3a3a5a;margin-top:4px;font-family:'JetBrains Mono',monospace;letter-spacing:.05em">Loading…</div></div>
 <div id="root"></div>
 <script type="text/babel">
 const {useState,useEffect,useRef,useCallback}=React;
@@ -211,7 +211,7 @@ const BIZ_CAT_MAP={
   ],
 };
 const BIZ_TIERS=[
-  {label:"Unknown",   emoji:"❓",min:0,   max:0,    color:"#4c5266",grad:["#3e4257","#4c5266"],glow:"#4c526618"},
+  {label:"New",       emoji:"🌱",min:0,   max:0,    color:"#6e7a94",grad:["#505a70","#6e7a94"],glow:"#6e7a9420"},
   {label:"Starter",   emoji:"⚙️",min:1,   max:79,   color:"#7a8098",grad:["#636780","#7a8098"],glow:"#7a809820"},
   {label:"Reliable",  emoji:"🔵",min:80,  max:249,  color:"#3878b0",grad:["#2860a0","#4a90c8"],glow:"#3878b028"},
   {label:"Trusted",   emoji:"🟢",min:250, max:599,  color:"#10a37f",grad:["#0a8060","#20c09a"],glow:"#10a37f28"},
@@ -676,7 +676,7 @@ function ProfileSetup({user,T,onDone}){
 
   if(step==="type") return<div style={{minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
     <div style={{width:"100%",maxWidth:380,animation:"ci .4s ease"}}>
-      <div style={{textAlign:"center",marginBottom:32}}><div style={{fontWeight:800,fontSize:36,letterSpacing:"-2px",color:T.txt}}>High<span style={{color:AC,fontWeight:300,letterSpacing:"0.04em"}}>Enough</span></div><div style={{fontSize:13,color:T.mu,marginTop:8}}>What kind of account do you want?</div></div>
+      <div style={{textAlign:"center",marginBottom:32}}><div style={{fontFamily:"'Space Grotesk',sans-serif",fontWeight:700,fontSize:32,letterSpacing:"-.5px",color:T.txt}}>High<span style={{color:AC,fontWeight:300,letterSpacing:".02em"}}>Enough</span></div><div style={{fontSize:13,color:T.mu,marginTop:8}}>What kind of account do you want?</div></div>
       <div style={{display:"flex",flexDirection:"column",gap:14,marginBottom:24}}>
         {[{id:"personal",emoji:"👤",title:"Personal",desc:"For individuals — rate friends, build your social rep & climb personal tiers"},
           {id:"business",emoji:"🏢",title:"Business / Brand",desc:"For companies, brands & services — let customers rate their experience"}].map(t=>
@@ -696,7 +696,7 @@ function ProfileSetup({user,T,onDone}){
   if(step==="biztype") return<div style={{minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
     <div style={{width:"100%",maxWidth:380,animation:"ci .4s ease"}}>
       <div style={{textAlign:"center",marginBottom:28}}>
-        <div style={{fontWeight:800,fontSize:36,letterSpacing:"-2px",color:T.txt}}>High<span style={{color:AC,fontWeight:300,letterSpacing:"0.04em"}}>Enough</span></div>
+        <div style={{fontFamily:"'Space Grotesk',sans-serif",fontWeight:700,fontSize:32,letterSpacing:"-.5px",color:T.txt}}>High<span style={{color:AC,fontWeight:300,letterSpacing:".02em"}}>Enough</span></div>
         <div style={{fontSize:13,color:T.mu,marginTop:8}}>What best describes your business?</div>
         <div style={{fontSize:11,color:T.mu,marginTop:4,opacity:.7}}>This determines your rating categories</div>
       </div>
@@ -724,7 +724,7 @@ function ProfileSetup({user,T,onDone}){
 
   return<div style={{minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
     <div style={{width:"100%",maxWidth:380,animation:"ci .4s ease"}}>
-      <div style={{textAlign:"center",marginBottom:24}}><div style={{fontWeight:800,fontSize:36,letterSpacing:"-2px",color:T.txt}}>High<span style={{color:AC,fontWeight:300,letterSpacing:"0.04em"}}>Enough</span></div><div style={{fontSize:13,color:T.mu,marginTop:8}}>{acType==="business"?"Set up your business profile":"Set up your profile"}</div></div>
+      <div style={{textAlign:"center",marginBottom:24}}><div style={{fontFamily:"'Space Grotesk',sans-serif",fontWeight:700,fontSize:32,letterSpacing:"-.5px",color:T.txt}}>High<span style={{color:AC,fontWeight:300,letterSpacing:".02em"}}>Enough</span></div><div style={{fontSize:13,color:T.mu,marginTop:8}}>{acType==="business"?"Set up your business profile":"Set up your profile"}</div></div>
 
       {/* Avatar with photo upload */}
       <div style={{display:"flex",justifyContent:"center",marginBottom:14}}>
@@ -1956,7 +1956,7 @@ function FeedCard({p,myId,following,T,onView,onFollow,onUnfollow,onRate,onMsg,id
 }
 
 /* ── PROFILE TAB (own) ── */
-function ProfileTab({myProfile,myP,T,onQR,onSettings,onEditPhoto,onScoreCard,following,profiles,onViewProfile}){
+function ProfileTab({myProfile,myP,T,onQR,onSettings,onEditProfile,onEditPhoto,onScoreCard,following,profiles,onViewProfile}){
   const isBiz=myProfile.account_type==="business";
   const cats=getCats(myP);
   const sc=pScore(myP),t=tierOf(sc??0,isBiz),pct=tierPct(sc??0,isBiz);
@@ -2044,7 +2044,7 @@ function ProfileTab({myProfile,myP,T,onQR,onSettings,onEditPhoto,onScoreCard,fol
       <div style={{marginBottom:12}}><TierBadge sc={sc} size="md" isBiz={isBiz}/></div>
       {/* Action buttons */}
       <div style={{display:"flex",gap:8,marginBottom:16}}>
-        <button onClick={onSettings} style={{flex:1,padding:"10px 0",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:11,color:T.txt,fontWeight:600,fontSize:12}}>Edit Profile</button>
+        <button onClick={onEditProfile} style={{flex:1,padding:"10px 0",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:11,color:T.txt,fontWeight:600,fontSize:12}}>Edit Profile</button>
         <button onClick={onScoreCard} style={{flex:1,padding:"10px 0",background:`linear-gradient(135deg,${AC}22,${AC}0e)`,border:`1.5px solid ${AC}35`,borderRadius:11,color:AC,fontWeight:700,fontSize:12,boxShadow:`0 2px 10px ${AC}20`}}>Score Card</button>
         <button onClick={shareMyProfile} style={{flex:1,padding:"10px 0",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:11,color:T.txt,fontWeight:600,fontSize:12,display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
@@ -2064,39 +2064,178 @@ function ProfileTab({myProfile,myP,T,onQR,onSettings,onEditPhoto,onScoreCard,fol
           <div style={{height:5,background:T.b1,borderRadius:99,overflow:"hidden"}}><div style={{width:`${pct*100}%`,height:"100%",background:t.color,borderRadius:99,opacity:.9,transition:"width .9s"}}/></div>
         </div>
         {cats.map(c=>{const v=cAvg(myP,c.id);return<div key={c.id} style={{marginBottom:9}}>
-          <div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}><span style={{fontSize:12,color:T.mu}}>{c.emoji} {c.label}</span><span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:T.txt,fontWeight:600}}>{v}/100</span></div>
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}><span style={{fontSize:12,color:T.mu}}>{c.emoji} {c.label}</span><span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:v>0?T.txt:T.mu,fontWeight:600}}>{v}/100</span></div>
           {c.sub&&<div style={{fontSize:10,color:T.mu,opacity:.6,marginBottom:3}}>{c.sub}</div>}
-          <div style={{height:4,background:T.faint,borderRadius:99,overflow:"hidden"}}><div style={{width:`${v}%`,height:"100%",background:myProfile.color,borderRadius:99,opacity:.85}}/></div>
+          <div style={{height:4,background:T.faint,borderRadius:99,overflow:"hidden"}}><div style={{width:`${v}%`,height:"100%",background:v>=80?"#4ade80":v>=60?myProfile.color:T.b2,borderRadius:99,opacity:.85,transition:"width .6s"}}/></div>
         </div>;})}
-      </>:<div style={{borderRadius:16,overflow:"hidden",marginTop:4}}>
-        {/* Ghost tier card */}
-        <div style={{background:`linear-gradient(135deg,${t.grad[0]}44,${t.grad[1]}22)`,border:`1px solid ${t.color}30`,borderRadius:16,padding:"22px 18px",marginBottom:12,position:"relative",overflow:"hidden"}}>
-          <div style={{position:"absolute",right:-18,top:-18,fontSize:88,opacity:.07,lineHeight:1,pointerEvents:"none",userSelect:"none"}}>👻</div>
-          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
-            <TierBadge sc={null} size="sm" isBiz={isBiz}/>
-            <span style={{fontSize:12,color:T.mu}}>Starting tier</span>
+      {n===0&&<div style={{borderRadius:16,overflow:"hidden",marginTop:8}}>
+        {isBiz?<>
+          {/* Business new user — professional */}
+          <div style={{background:`linear-gradient(135deg,${t.grad[0]}30,${t.grad[1]}18)`,border:`1px solid ${t.color}28`,borderRadius:16,padding:"20px 18px",marginBottom:10,position:"relative",overflow:"hidden"}}>
+            <div style={{position:"absolute",right:-14,top:-14,fontSize:72,opacity:.06,lineHeight:1,pointerEvents:"none"}}>🏢</div>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+              <TierBadge sc={null} size="sm" isBiz={true}/>
+              <span style={{fontSize:12,color:T.mu}}>No reviews yet</span>
+            </div>
+            <div style={{fontWeight:800,fontSize:18,color:T.txt,letterSpacing:"-.3px",marginBottom:6}}>Start collecting reviews</div>
+            <div style={{fontSize:12,color:T.mu,lineHeight:1.65}}>Share your profile with customers. Every review builds your public reputation and moves you up the tier ladder.</div>
           </div>
-          <div style={{fontWeight:800,fontSize:20,color:T.txt,letterSpacing:"-.4px",marginBottom:4}}>You're a Ghost 👻</div>
-          <div style={{fontSize:12,color:T.mu,lineHeight:1.6}}>No one can see your score yet. Get your first {isBiz?"review":"rating"} to unlock your tier and start climbing.</div>
-        </div>
-        {/* Steps */}
-        {[
-          {n:"1",icon:"🔗",title:"Share your profile",desc:"Send your link or QR to someone you know"},
-          {n:"2",icon:"⭐",title:`Get ${isBiz?"reviewed":"rated"}`,desc:`They ${isBiz?"review your business":"rate you"} across 6 categories`},
-          {n:"3",icon:"🏆",title:"Earn your tier",desc:"Your score goes live — climb from Ghost to HighEnough"},
-        ].map(s=><div key={s.n} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 14px",background:T.card,border:`1px solid ${T.b1}`,borderRadius:12,marginBottom:7}}>
-          <div style={{width:34,height:34,borderRadius:"50%",background:`${AC}18`,border:`1px solid ${AC}30`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>{s.icon}</div>
-          <div style={{flex:1,minWidth:0}}>
-            <div style={{fontWeight:700,fontSize:13,color:T.txt}}>{s.title}</div>
-            <div style={{fontSize:11,color:T.mu,marginTop:1}}>{s.desc}</div>
+          {[
+            {icon:"🔗",title:"Share your profile link",desc:"Post it on your bio, WhatsApp or Instagram"},
+            {icon:"📱",title:"Show your QR code",desc:"Let customers scan and review you instantly"},
+            {icon:"📊",title:"Build your reputation",desc:"Reviews across 6 categories build your overall score"},
+          ].map((s,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",background:T.card,border:`1px solid ${T.b1}`,borderRadius:12,marginBottom:7}}>
+            <div style={{width:36,height:36,borderRadius:10,background:`${AC}14`,border:`1px solid ${AC}22`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,flexShrink:0}}>{s.icon}</div>
+            <div style={{flex:1}}><div style={{fontWeight:600,fontSize:13,color:T.txt}}>{s.title}</div><div style={{fontSize:11,color:T.mu,marginTop:1}}>{s.desc}</div></div>
+          </div>)}
+        </>:<>
+          {/* Personal new user */}
+          <div style={{background:`linear-gradient(135deg,${t.grad[0]}44,${t.grad[1]}22)`,border:`1px solid ${t.color}30`,borderRadius:16,padding:"20px 18px",marginBottom:10,position:"relative",overflow:"hidden"}}>
+            <div style={{position:"absolute",right:-14,top:-14,fontSize:80,opacity:.07,lineHeight:1,pointerEvents:"none"}}>👻</div>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+              <TierBadge sc={null} size="sm" isBiz={false}/>
+              <span style={{fontSize:12,color:T.mu}}>Starting tier</span>
+            </div>
+            <div style={{fontWeight:800,fontSize:18,color:T.txt,letterSpacing:"-.3px",marginBottom:6}}>You're a Ghost 👻</div>
+            <div style={{fontSize:12,color:T.mu,lineHeight:1.65}}>No one can see your score yet. Get your first rating to unlock your tier and start climbing.</div>
           </div>
-          <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:T.mu,opacity:.5,flexShrink:0}}>0{s.n}</div>
-        </div>)}
+          {[
+            {icon:"🔗",title:"Share your profile",desc:"Send your link or QR to someone you know"},
+            {icon:"⭐",title:"Get rated",desc:"They rate you across 6 categories above"},
+            {icon:"🏆",title:"Earn your tier",desc:"Your score goes live — climb from Ghost to HighEnough"},
+          ].map((s,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",background:T.card,border:`1px solid ${T.b1}`,borderRadius:12,marginBottom:7}}>
+            <div style={{width:36,height:36,borderRadius:10,background:`${AC}14`,border:`1px solid ${AC}22`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,flexShrink:0}}>{s.icon}</div>
+            <div style={{flex:1}}><div style={{fontWeight:600,fontSize:13,color:T.txt}}>{s.title}</div><div style={{fontSize:11,color:T.mu,marginTop:1}}>{s.desc}</div></div>
+            <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:T.mu,opacity:.4,flexShrink:0}}>0{i+1}</div>
+          </div>)}
+        </>}
       </div>}
     </div>
   </div>;
 }
-/* ── CHANGE EMAIL & PASSWORD ── */
+/* ── EDIT PROFILE MODAL ── */
+function EditProfileModal({me,T,onClose,onSave,onEditPhoto}){
+  const [nm,setNm]=useState(me.name);
+  const [hd,setHd]=useState(me.handle||"");
+  const [bio,setBio]=useState(me.bio||"");
+  const [col,setCol]=useState(me.color);
+  const [age,setAge]=useState(me.age||"");
+  const [ints,setInts]=useState(me.interests||[]);
+  const [links,setLinks]=useState(me.links||{instagram:"",twitter:"",tiktok:"",website:""});
+  const [bizTypeEdit,setBizTypeEdit]=useState(me.biz_type||(me.links?.biz_type)||"general");
+  const [bizWarn,setBizWarn]=useState(false);
+  const [pendingBizType,setPendingBizType]=useState(null);
+  const [hdStatus,setHdStatus]=useState(null);
+  const [ok,setOk]=useState(false);
+  const [tab,setTab]=useState("profile");
+  const hdTimer=useRef(null);
+  const isBiz=me.account_type==="business";
+  const inp={width:"100%",padding:"12px 14px",background:T.inp,border:`1px solid ${T.b1}`,borderRadius:13,color:T.txt,fontSize:14,outline:"none",boxSizing:"border-box",marginBottom:12,fontFamily:"'Inter',sans-serif"};
+
+  async function checkHandle(val){
+    const clean=val.trim().replace(/^@/,"").toLowerCase();
+    if(!clean||clean===(me.handle||"").replace(/^@/,"")){setHdStatus(null);return;}
+    setHdStatus("checking");
+    const {data}=await sb.from("profiles").select("id").eq("handle","@"+clean).neq("id",me.id).maybeSingle();
+    setHdStatus(data?"taken":"ok");
+  }
+  function onHdChange(val){setHd(val);clearTimeout(hdTimer.current);hdTimer.current=setTimeout(()=>checkHandle(val),600);}
+  function togInt(i){setInts(prev=>prev.includes(i)?prev.filter(x=>x!==i):[...prev,i].slice(0,6));}
+  function onBizTypeClick(id){
+    if(id===bizTypeEdit)return;
+    if(me.biz_type&&me.biz_type!==id){setPendingBizType(id);setBizWarn(true);}
+    else{setBizTypeEdit(id);}
+  }
+  function confirmBizChange(){setBizTypeEdit(pendingBizType);setPendingBizType(null);setBizWarn(false);}
+  function sv(){
+    if(hdStatus==="taken"||hdStatus==="checking")return;
+    onSave({name:nm.trim()||me.name,handle:hd.trim()||me.handle,bio:bio.trim(),color:col,age:age?parseInt(age):null,interests:ints,links:{...links,biz_type:isBiz?bizTypeEdit:undefined},biz_type:isBiz?bizTypeEdit:null});
+    setOk(true);setTimeout(()=>setOk(false),2000);
+  }
+  const hdClean=hd.trim().replace(/^@/,"");
+  const TABS=isBiz?["profile","category","links"]:["profile","interests","links"];
+
+  return<Overlay onBg={onClose} T={T} wide>
+    {/* Warn modal for biz type change */}
+    {bizWarn&&<div style={{position:"absolute",inset:0,zIndex:10,background:"rgba(0,0,0,.6)",display:"flex",alignItems:"center",justifyContent:"center",padding:24,borderRadius:"inherit"}}>
+      <div style={{background:T.surf,borderRadius:18,padding:"24px 20px",maxWidth:320,width:"100%",boxShadow:`0 24px 60px rgba(0,0,0,.5)`}}>
+        <div style={{fontSize:28,textAlign:"center",marginBottom:10}}>⚠️</div>
+        <div style={{fontWeight:700,fontSize:16,color:T.txt,textAlign:"center",marginBottom:8}}>Change business category?</div>
+        <div style={{fontSize:13,color:T.mu,textAlign:"center",lineHeight:1.6,marginBottom:18}}>Changing your category will update your rating criteria. <strong style={{color:T.txt}}>All existing ratings and score gains will be cleared.</strong> This cannot be undone.</div>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={()=>{setPendingBizType(null);setBizWarn(false);}} style={{flex:1,padding:"11px 0",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:11,color:T.mu,fontWeight:600,fontSize:13}}>Cancel</button>
+          <button onClick={confirmBizChange} style={{flex:1,padding:"11px 0",background:"#e0466e",borderRadius:11,color:"#fff",fontWeight:700,fontSize:13}}>Yes, Change</button>
+        </div>
+      </div>
+    </div>}
+
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+      <div style={{fontWeight:700,fontSize:18,color:T.txt}}>Edit Profile</div>
+      <button onClick={onClose} style={{background:"none",color:T.mu,fontSize:20,padding:4}}>✕</button>
+    </div>
+
+    {/* Tab bar */}
+    <div style={{display:"flex",gap:2,marginBottom:20,background:T.faint,borderRadius:12,padding:3}}>
+      {TABS.map(t=><button key={t} onClick={()=>setTab(t)} style={{flex:1,padding:"8px 0",borderRadius:9,background:tab===t?T.surf:"transparent",border:tab===t?`1px solid ${T.b1}`:"1px solid transparent",color:tab===t?T.txt:T.mu,fontWeight:tab===t?700:500,fontSize:12,textTransform:"capitalize",transition:"all .12s",boxShadow:tab===t?"0 1px 4px rgba(0,0,0,.1)":"none"}}>{t}</button>)}
+    </div>
+
+    {tab==="profile"&&<div>
+      {/* Avatar */}
+      <div style={{display:"flex",justifyContent:"center",marginBottom:14}}>
+        <div style={{position:"relative"}}>
+          <div style={{width:86,height:86,borderRadius:"50%",padding:3,background:`linear-gradient(135deg,${col},${col}88)`}}>
+            <div style={{width:80,height:80,borderRadius:"50%",overflow:"hidden",background:T.faint,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:26,color:col}}>
+              {me.photo?<img src={me.photo} style={{width:"100%",height:"100%",objectFit:"cover"}} alt=""/>:ini(nm)}
+            </div>
+          </div>
+          <button onClick={onEditPhoto} style={{position:"absolute",bottom:0,right:0,width:28,height:28,borderRadius:"50%",background:`linear-gradient(135deg,${AC},${AC}88)`,border:`2px solid ${T.surf}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,boxShadow:`0 2px 8px ${AC}40`}}>📷</button>
+        </div>
+      </div>
+      {/* Color palette */}
+      <div style={{display:"flex",gap:7,justifyContent:"center",marginBottom:18}}>{PALETTE.map(c=><div key={c} onClick={()=>setCol(c)} style={{width:24,height:24,borderRadius:"50%",background:c,cursor:"pointer",outline:col===c?`2.5px solid ${T.txt}`:"2.5px solid transparent",outlineOffset:2,transform:col===c?"scale(1.25)":"scale(1)",transition:"transform .12s"}}/>)}</div>
+      <input value={nm} onChange={e=>setNm(e.target.value)} placeholder="Display Name" style={inp}/>
+      <div style={{position:"relative",marginBottom:12}}>
+        <input value={hd} onChange={e=>onHdChange(e.target.value)} placeholder="@username" style={{...inp,marginBottom:0,border:`1px solid ${hdStatus==="taken"?"#e0466e":hdStatus==="ok"?"#2cba9a":T.b1}`,paddingRight:36}}/>
+        {hdStatus&&<span style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",fontSize:14,fontWeight:700,color:hdStatus==="taken"?"#e0466e":hdStatus==="ok"?"#2cba9a":T.mu}}>{hdStatus==="taken"?"✕":hdStatus==="ok"?"✓":"…"}</span>}
+      </div>
+      {hdStatus==="taken"&&<div style={{fontSize:11,color:"#e0466e",marginBottom:8}}>@{hdClean} is already taken</div>}
+      <textarea value={bio} onChange={e=>setBio(e.target.value)} placeholder={isBiz?"Describe your business…":"Write something about yourself…"} rows={3} style={{...inp,resize:"none",lineHeight:1.55}}/>
+      {!isBiz&&<input value={age||""} onChange={e=>setAge(e.target.value)} placeholder="Age (optional)" type="number" style={inp}/>}
+    </div>}
+
+    {tab==="interests"&&!isBiz&&<div>
+      <div style={{fontSize:12,color:T.mu,marginBottom:12}}>Pick up to 6 interests</div>
+      <div style={{display:"flex",flexWrap:"wrap",gap:7}}>
+        {INTERESTS.map(i=>{const sel=ints.includes(i);return<div key={i} onClick={()=>togInt(i)} style={{padding:"6px 12px",borderRadius:20,fontSize:12,fontWeight:sel?600:400,background:sel?`${AC}18`:"transparent",border:`1.5px solid ${sel?AC+"60":T.b1}`,color:sel?AC:T.mu,cursor:"pointer",transition:"all .12s"}}>{i}</div>;})}
+      </div>
+    </div>}
+
+    {tab==="category"&&isBiz&&<div>
+      <div style={{fontSize:12,color:T.mu,marginBottom:12,lineHeight:1.6}}>This determines which 6 categories customers use to rate you.</div>
+      <div style={{display:"flex",flexDirection:"column",gap:7}}>
+        {BIZ_TYPES.map(bt=><div key={bt.id} onClick={()=>onBizTypeClick(bt.id)} style={{padding:"12px 14px",background:bizTypeEdit===bt.id?`${AC}12`:T.faint,border:`1.5px solid ${bizTypeEdit===bt.id?AC+"55":T.b1}`,borderRadius:13,cursor:"pointer",display:"flex",alignItems:"center",gap:11,transition:"all .13s"}}>
+          <span style={{fontSize:20,flexShrink:0}}>{bt.emoji}</span>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontWeight:600,fontSize:13,color:T.txt}}>{bt.label}</div>
+            <div style={{fontSize:10,color:T.mu,marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{(BIZ_CAT_MAP[bt.id]||[]).map(c=>c.label).join(" · ")}</div>
+          </div>
+          {bizTypeEdit===bt.id&&<div style={{width:18,height:18,borderRadius:"50%",background:AC,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}><svg width="9" height="9" viewBox="0 0 10 10" fill="none"><polyline points="1.5,5 4,7.5 8.5,2.5" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg></div>}
+        </div>)}
+      </div>
+    </div>}
+
+    {tab==="links"&&<div>
+      {[["instagram","📸 Instagram","@handle"],["twitter","𝕏 Twitter / X","@handle"],["tiktok","🎵 TikTok","@handle"],["website","🔗 Website","https://..."]].map(([key,label,ph])=><div key={key}>
+        <div style={{fontSize:11,color:T.mu,marginBottom:4,fontWeight:600}}>{label}</div>
+        <input value={links[key]||""} onChange={e=>setLinks(prev=>({...prev,[key]:e.target.value}))} placeholder={ph} style={inp}/>
+      </div>)}
+    </div>}
+
+    <button onClick={sv} disabled={hdStatus==="taken"||hdStatus==="checking"} style={{width:"100%",padding:"13px 0",background:ok?"#2cba9a":`linear-gradient(135deg,${AC}e0,${AC}90)`,borderRadius:13,color:"#fff",fontWeight:700,fontSize:14,marginTop:8,transition:"background .2s"}}>{ok?"✓ Saved!":"Save Changes"}</button>
+  </Overlay>;
+}
+
+
 function ChangeEmailSection({T,inp}){
   const [open,setOpen]=useState(false);
   const [newEmail,setNewEmail]=useState("");
@@ -2227,91 +2366,19 @@ function SettingsProfileUrl({me,T}){
 }
 
 function SettingsModal({me,prefs,T,onClose,onSave,onSavePrefs,onEditPhoto,onShowBlocked,onLogout,onDelete,onQR}){
-  const [tab,setTab]=useState("profile");
-  const [nm,setNm]=useState(me.name);const[hd,setHd]=useState(me.handle);const[bio,setBio]=useState(me.bio||"");const[col,setCol]=useState(me.color);
-  const [age,setAge]=useState(me.age||"");const[ints,setInts]=useState(me.interests||[]);
-  const [links,setLinks]=useState(me.links||{instagram:"",twitter:"",tiktok:"",website:""});
-  const [ok,setOk]=useState(false);const[logQ,setLogQ]=useState(false);
+  const [tab,setTab]=useState("privacy");
+  const [logQ,setLogQ]=useState(false);
   const [delStep,setDelStep]=useState(0);const[delReason,setDelReason]=useState("");
-  const [hdStatus,setHdStatus]=useState(null);const[showPrivacy,setShowPrivacy]=useState(false);
-  const hdTimer=useRef(null);
-
-  async function checkHandle(val){
-    const clean=val.trim().replace(/^@/,"").toLowerCase();
-    if(!clean||clean===(me.handle||"").replace(/^@/,"")){setHdStatus(null);return;}
-    setHdStatus("checking");
-    const {data}=await sb.from("profiles").select("id").eq("handle","@"+clean).neq("id",me.id).maybeSingle();
-    setHdStatus(data?"taken":"ok");
-  }
-
-  function onHdChange(val){setHd(val);clearTimeout(hdTimer.current);hdTimer.current=setTimeout(()=>checkHandle(val),600);}
-
-  function sv(){onSave({name:nm.trim()||me.name,handle:hd.trim()||me.handle,bio:bio.trim(),color:col,age:age?parseInt(age):null,interests:ints,links,biz_type:isBizProfile?bizTypeEdit:null});setOk(true);setTimeout(()=>setOk(false),2000);}
-  function togInt(i){setInts(prev=>prev.includes(i)?prev.filter(x=>x!==i):[...prev,i].slice(0,6));}
-  const [bizTypeEdit,setBizTypeEdit]=useState(me.biz_type||"general");
-  const isBizProfile=me.account_type==="business";
+  const [showPrivacy,setShowPrivacy]=useState(false);
   const inp={width:"100%",padding:"11px 13px",background:T.inp,border:`1px solid ${T.b1}`,borderRadius:11,color:T.txt,fontSize:13,outline:"none",boxSizing:"border-box",marginBottom:11};
-  const TABS=[{id:"profile",label:"Profile"},{id:"more",label:"Details"},{id:"privacy",label:"Privacy"},{id:"account",label:"Account"}];
-  const hdClean=hd.trim().replace(/^@/,"");
-  const hdBorderColor=hdStatus==="taken"?"#e0466e":hdStatus==="ok"?"#2cba9a":T.b1;
-
+  const TABS=[{id:"privacy",label:"Privacy"},{id:"account",label:"Account"}];
   const DEL_REASONS=["I don't use it anymore","Privacy concerns","Too many notifications","I found a better app","I want to start fresh","Other"];
 
   return<Overlay onBg={onClose} T={T} wide>
     <div style={{fontWeight:700,fontSize:18,color:T.txt,marginBottom:14}}>Settings</div>
-    <div style={{display:"flex",gap:2,marginBottom:18,overflowX:"auto",paddingBottom:2}}>
-      {TABS.map(t=><button key={t.id} onClick={()=>setTab(t.id)} style={{padding:"7px 13px",borderRadius:8,border:tab===t.id?`1px solid ${T.b1}`:"1px solid transparent",background:tab===t.id?T.faint:"transparent",color:tab===t.id?T.txt:T.mu,fontWeight:tab===t.id?600:400,fontSize:12,whiteSpace:"nowrap",transition:"all .12s"}}>{t.label}</button>)}
+    <div style={{display:"flex",gap:2,marginBottom:18,background:T.faint,borderRadius:12,padding:3}}>
+      {TABS.map(t=><button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,padding:"8px 0",borderRadius:9,background:tab===t.id?T.surf:"transparent",border:tab===t.id?`1px solid ${T.b1}`:"1px solid transparent",color:tab===t.id?T.txt:T.mu,fontWeight:tab===t.id?700:500,fontSize:13,transition:"all .12s",boxShadow:tab===t.id?"0 1px 4px rgba(0,0,0,.1)":"none"}}>{t.label}</button>)}
     </div>
-    {tab==="profile"&&<div>
-      <div style={{display:"flex",justifyContent:"center",marginBottom:12}}><div style={{position:"relative"}}><Ava p={{...me,color:col}} size={76} T={T}/><button onClick={onEditPhoto} style={{position:"absolute",bottom:-3,right:-3,width:24,height:24,borderRadius:"50%",background:`${col}cc`,border:`2px solid ${T.card}`,display:"flex",alignItems:"center",justifyContent:"center"}}><EditIcon/></button></div></div>
-      <div style={{display:"flex",gap:7,justifyContent:"center",marginBottom:18}}>{PALETTE.map(c=><div key={c} onClick={()=>setCol(c)} style={{width:22,height:22,borderRadius:"50%",background:c,cursor:"pointer",outline:col===c?`2.5px solid ${T.txt}`:"2.5px solid transparent",outlineOffset:2,transform:col===c?"scale(1.25)":"scale(1)",transition:"transform .12s"}}/>)}</div>
-      <input value={nm} onChange={e=>setNm(e.target.value)} placeholder="Display Name" style={inp}/>
-      {/* Username with live check */}
-      <div style={{position:"relative",marginBottom:11}}>
-        <input value={hd} onChange={e=>onHdChange(e.target.value)} placeholder="@username" style={{...inp,marginBottom:0,border:`1px solid ${hdBorderColor}`,paddingRight:32}}/>
-        {hdStatus&&<span style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",fontSize:14,fontWeight:700,color:hdStatus==="taken"?"#e0466e":hdStatus==="ok"?"#2cba9a":T.mu}}>{hdStatus==="taken"?"✕":hdStatus==="ok"?"✓":"…"}</span>}
-      </div>
-      {hdStatus==="taken"&&<div style={{fontSize:11,color:"#e0466e",marginBottom:8}}>@{hdClean} is already taken</div>}
-      {hdStatus==="ok"&&<div style={{fontSize:11,color:"#2cba9a",marginBottom:8}}>@{hdClean} is available ✓</div>}
-      <input value={bio} onChange={e=>setBio(e.target.value)} placeholder="Bio" style={inp}/>
-      {isBizProfile&&<div style={{marginBottom:11}}>
-        <div style={{fontSize:11,color:T.mu,textTransform:"uppercase",letterSpacing:.8,fontWeight:600,marginBottom:8}}>Business Category</div>
-        <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:220,overflowY:"auto",padding:2}}>
-          {BIZ_TYPES.map(bt=><div key={bt.id} onClick={()=>setBizTypeEdit(bt.id)} style={{padding:"10px 13px",background:bizTypeEdit===bt.id?`${AC}14`:T.faint,border:`1.5px solid ${bizTypeEdit===bt.id?AC+"60":T.b1}`,borderRadius:11,cursor:"pointer",display:"flex",alignItems:"center",gap:10,transition:"all .15s"}}>
-            <span style={{fontSize:18,flexShrink:0}}>{bt.emoji}</span>
-            <div style={{flex:1,minWidth:0}}>
-              <div style={{fontWeight:600,fontSize:13,color:T.txt}}>{bt.label}</div>
-              <div style={{fontSize:10,color:T.mu,marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{(BIZ_CAT_MAP[bt.id]||[]).map(c=>c.label).join(" · ")}</div>
-            </div>
-            {bizTypeEdit===bt.id&&<div style={{width:16,height:16,borderRadius:"50%",background:AC,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}><svg width="8" height="8" viewBox="0 0 10 10" fill="none"><polyline points="1.5,5 4,7.5 8.5,2.5" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg></div>}
-          </div>)}
-        </div>
-      </div>}
-      {/* UID displayed prominently */}
-      <div style={{padding:"11px 13px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:11,marginBottom:11}}>
-        <div style={{fontSize:11,color:T.mu,marginBottom:4,textTransform:"uppercase",letterSpacing:.8,fontWeight:600}}>Your Unique ID</div>
-        <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:16,fontWeight:700,color:AC,letterSpacing:2}}>#{me.short_id||shortId(me.id)}</div>
-        <div style={{fontSize:11,color:T.mu,marginTop:3}}>📧 {me.email||"No email set"}</div>
-      </div>
-      {/* Profile URL — safe component, no hook inside render */}
-      <SettingsProfileUrl me={me} T={T}/>
-      <button disabled={hdStatus==="taken"} onClick={sv} style={{width:"100%",padding:"12px 0",background:hdStatus==="taken"?T.faint:`linear-gradient(135deg,${col}e0,${col}90)`,borderRadius:11,color:hdStatus==="taken"?T.mu:"#fff",fontWeight:700,fontSize:14,marginBottom:10}}>{ok?"Saved ✓":"Save Changes"}</button>
-      {/* QR Code button */}
-      <button onClick={()=>{onClose();setTimeout(()=>onQR&&onQR(),80);}} style={{width:"100%",padding:"11px 0",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:11,color:T.txt,fontWeight:600,fontSize:13,display:"flex",alignItems:"center",justifyContent:"center",gap:8,marginBottom:14}}>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="3" height="3"/><rect x="19" y="14" width="2" height="2"/><rect x="14" y="19" width="2" height="2"/><rect x="18" y="18" width="3" height="3" rx=".5"/></svg>
-        My QR Code
-      </button>
-      <div style={{height:1,background:T.b1,marginBottom:14}}/>
-      <SRow label="🌙 Dark Mode" val={prefs.dark} onChange={v=>onSavePrefs({...prefs,dark:v})} T={T}/>
-    </div>}
-    {tab==="more"&&<div>
-      {!isBizProfile&&<><input type="number" value={age} onChange={e=>setAge(e.target.value)} placeholder="Age" min={13} max={99} style={inp}/>
-      <div style={{fontSize:11,color:T.mu,textTransform:"uppercase",letterSpacing:.8,marginBottom:8,fontWeight:600}}>Interests ({ints.length}/6)</div>
-      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:16,maxHeight:200,overflowY:"auto"}}>{INTERESTS.map(i=><div key={i} onClick={()=>togInt(i)} style={{padding:"5px 12px",borderRadius:6,cursor:"pointer",fontSize:12,fontWeight:500,background:ints.includes(i)?`${AC}1a`:T.faint,border:`1px solid ${ints.includes(i)?AC+"44":T.b1}`,color:ints.includes(i)?AC:T.mu,transition:"all .12s"}}>{i}</div>)}</div></>}
-      <div style={{fontSize:11,color:T.mu,textTransform:"uppercase",letterSpacing:.8,marginBottom:8,fontWeight:600}}>Social Links</div>
-      {[{k:"instagram",ph:"@username"},{k:"twitter",ph:"@username"},{k:"tiktok",ph:"@username"},{k:"website",ph:"https://…"}].map(f=><input key={f.k} value={links[f.k]||""} onChange={e=>setLinks(l=>({...l,[f.k]:e.target.value}))} placeholder={`${f.k} ${f.ph}`} style={inp}/>)}
-      <button onClick={sv} style={{width:"100%",padding:"12px 0",background:`linear-gradient(135deg,${AC}e0,${AC}90)`,borderRadius:11,color:"#fff",fontWeight:700,fontSize:14}}>{ok?"Saved ✓":"Save Details"}</button>
-    </div>}
     {tab==="privacy"&&<div style={{display:"flex",flexDirection:"column",gap:10}}>
       <button onClick={()=>{onClose();onShowBlocked();}} style={{display:"flex",alignItems:"center",gap:10,padding:"13px 14px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:11,width:"100%",color:T.txt,fontSize:14,fontWeight:500,textAlign:"left"}}><ShieldIcon/><div style={{flex:1}}><div>Blocked Users</div><div style={{fontSize:11,color:T.mu,marginTop:1}}>Manage people you have blocked</div></div><span style={{color:T.mu,fontSize:18}}>›</span></button>
       <button onClick={()=>setShowPrivacy(true)} style={{display:"flex",alignItems:"center",gap:10,padding:"13px 14px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:11,width:"100%",color:T.txt,fontSize:14,fontWeight:500,textAlign:"left"}}>
@@ -2319,22 +2386,17 @@ function SettingsModal({me,prefs,T,onClose,onSave,onSavePrefs,onEditPhoto,onShow
         <div style={{flex:1}}><div>Privacy Policy</div><div style={{fontSize:11,color:T.mu,marginTop:1}}>How we handle your data</div></div>
         <span style={{color:T.mu,fontSize:18}}>›</span>
       </button>
+      <SRow label="🌙 Dark Mode" val={prefs.dark} onChange={v=>onSavePrefs({...prefs,dark:v})} T={T}/>
       {showPrivacy&&<PrivacyPolicy T={T} onClose={()=>setShowPrivacy(false)}/>}
     </div>}
     {tab==="account"&&<div>
       <div style={{padding:"10px 13px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:9,marginBottom:8,fontSize:12,color:T.mu}}>Email: <strong style={{color:T.txt}}>{me.email}</strong></div>
       <div style={{padding:"10px 13px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:9,marginBottom:14,fontSize:12,color:T.mu}}>Member since <strong style={{color:T.txt}}>{new Date(me.created_at||Date.now()).toLocaleDateString()}</strong></div>
-
-      {/* Change Email */}
       <ChangeEmailSection T={T} inp={inp}/>
-      {/* Change Password */}
       <ChangePasswordSection T={T} inp={inp}/>
-
       <div style={{height:1,background:T.b1,marginBottom:14,marginTop:6}}/>
       {!logQ?<button onClick={()=>setLogQ(true)} style={{width:"100%",padding:"12px 0",background:"transparent",border:`1px solid ${T.b1}`,borderRadius:11,color:T.mu,fontWeight:600,fontSize:13,marginBottom:8}}>Log Out</button>
         :<div style={{background:T.faint,border:`1px solid ${T.b1}`,borderRadius:11,padding:"13px 14px",marginBottom:8}}><p style={{color:T.txt,fontSize:13,marginBottom:11}}>Log out of your account?</p><div style={{display:"flex",gap:7}}><button onClick={()=>{onClose();onLogout();}} style={{flex:1,padding:"9px 0",background:AC,borderRadius:9,color:"#fff",fontWeight:700,fontSize:13}}>Log Out</button><button onClick={()=>setLogQ(false)} style={{flex:1,padding:"9px 0",background:"transparent",border:`1px solid ${T.b1}`,borderRadius:9,color:T.mu,fontSize:13}}>Cancel</button></div></div>}
-
-      {/* 3-step delete */}
       {delStep===0&&<button onClick={()=>setDelStep(1)} style={{width:"100%",padding:"12px 0",background:"transparent",border:"1px solid #7a303040",borderRadius:11,color:"#c06060",fontWeight:600,fontSize:13}}>Delete Account</button>}
       {delStep===1&&<div style={{background:"#7a303010",border:"1px solid #7a303030",borderRadius:11,padding:"14px"}}>
         <div style={{fontWeight:700,fontSize:14,color:"#c06060",marginBottom:4}}>Why are you leaving?</div>
@@ -2971,6 +3033,7 @@ function App(){
   const [viewT,setViewT]=useState(null);
   const [qrT,setQRT]=useState(null);
   const [settings,setSettings]=useState(false);
+  const [editProfile,setEditProfile]=useState(false);
   const [photo,setPhoto]=useState(false);
   const [scoreCard,setScoreCard]=useState(null);
   const [reportT,setReportT]=useState(null);
@@ -3849,8 +3912,8 @@ function App(){
     <div style={{minHeight:"100vh",background:T.bg,color:T.txt,paddingBottom:68}}>
       {/* HEADER */}
       <div style={{background:`${T.nav}e8`,borderBottom:`1px solid ${T.b1}`,padding:"14px 18px",position:"sticky",top:0,zIndex:100,display:"flex",alignItems:"center",justifyContent:"space-between",backdropFilter:"blur(24px)",WebkitBackdropFilter:"blur(24px)"}}>
-        <div style={{fontWeight:900,fontSize:24,letterSpacing:"-2px",color:T.txt,cursor:"pointer",userSelect:"none",lineHeight:1}} onClick={handleAdminTap}>
-          High<span style={{color:AC,fontWeight:300,letterSpacing:"0.04em"}}>Enough</span>
+        <div style={{fontFamily:"'Space Grotesk',sans-serif",fontWeight:700,fontSize:22,letterSpacing:"-.5px",color:T.txt,cursor:"pointer",userSelect:"none",lineHeight:1}} onClick={handleAdminTap}>
+          High<span style={{color:AC,fontWeight:300,letterSpacing:".02em"}}>Enough</span>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           {canInstall&&<button onClick={handleInstall} style={{padding:"7px 14px",background:`linear-gradient(135deg,${AC}cc,${AC}80)`,border:"none",borderRadius:20,color:"#fff",fontWeight:700,fontSize:12,display:"flex",alignItems:"center",gap:5,boxShadow:`0 4px 14px ${AC}40`,flexShrink:0}}>
@@ -3913,7 +3976,7 @@ function App(){
 
       {tab==="inbox"&&<InboxTab convs={convs.map(c=>{const other=profiles.find(p=>p.id===c.oid);return other?{...c,other}:null;}).filter(Boolean)} profiles={profiles} myProfile={profile} following={following} T={T} onOpen={(conv,other)=>setActiveChat({...conv,other})} onDeleteConv={handleDeleteConv} onViewProfile={p=>setViewT(p)} groups={groups} onOpenGroup={g=>setActiveGroup(g)} onCreateGroup={handleCreateGroup}/>}
 
-      {tab==="profile"&&<ProfileTab myProfile={profile} myP={myP} T={T} onQR={()=>setQRT(myP)} onSettings={()=>setSettings(true)} onEditPhoto={()=>setPhoto(true)} onScoreCard={()=>setScoreCard(myP)} following={following} profiles={profiles} onViewProfile={p=>setViewT(p)}/>}
+      {tab==="profile"&&<ProfileTab myProfile={profile} myP={myP} T={T} onQR={()=>setQRT(myP)} onSettings={()=>setSettings(true)} onEditProfile={()=>setEditProfile(true)} onEditPhoto={()=>setPhoto(true)} onScoreCard={()=>setScoreCard(myP)} following={following} profiles={profiles} onViewProfile={p=>setViewT(p)}/>}
     </div>
 
     {/* BOTTOM NAV */}
@@ -3931,6 +3994,7 @@ function App(){
     {rateT      &&<RateModal target={rateT.profile} raterId={profile.id} existing={rateT.existing} T={T} onClose={()=>setRateT(null)} onSubmit={handleSubmit}/>}
     {viewT      &&<ProfileModal profile={viewT} myId={profile.id} following={following} profiles={profiles} T={T} onClose={()=>setViewT(null)} onRate={handleRate} onFollow={handleFollow} onUnfollow={handleUnfollow} onBlock={handleBlock} onReport={setReportT} onMsg={p=>{setViewT(null);handleMsg(p);}} onViewOther={p=>setViewT(p)}/>}
     {qrT        &&<QRModal profile={qrT} T={T} onClose={()=>setQRT(null)}/>}
+    {editProfile&&<EditProfileModal me={profile} T={T} onClose={()=>setEditProfile(false)} onSave={handleSaveProfile} onEditPhoto={()=>{setEditProfile(false);setPhoto(true);}}/>}
     {settings   &&<SettingsModal me={profile} prefs={prefs} T={T} onClose={()=>setSettings(false)} onSave={handleSaveProfile} onSavePrefs={handleSavePrefs} onEditPhoto={()=>{setSettings(false);setPhoto(true);}} onShowBlocked={()=>{setSettings(false);setShowBlocked(true);}} onLogout={handleLogout} onDelete={handleDeleteAccount} onQR={()=>{setSettings(false);setTimeout(()=>setQRT(myP),80);}}/>}
     {photo      &&<PhotoModal profile={profile} T={T} onClose={()=>setPhoto(false)} onSave={handleSavePhoto}/>}
     {scoreCard  &&<ScoreCardModal profile={scoreCard} T={T} onClose={()=>setScoreCard(null)}/>}
