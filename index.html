@@ -1956,7 +1956,7 @@ function FeedCard({p,myId,following,T,onView,onFollow,onUnfollow,onRate,onMsg,id
 }
 
 /* ── PROFILE TAB (own) ── */
-function ProfileTab({myProfile,myP,T,onQR,onSettings,onEditPhoto,onScoreCard,following,profiles,onViewProfile}){
+function ProfileTab({myProfile,myP,T,onQR,onSettings,onEditProfile,onEditPhoto,onScoreCard,following,profiles,onViewProfile}){
   const isBiz=myProfile.account_type==="business";
   const cats=getCats(myP);
   const sc=pScore(myP),t=tierOf(sc??0,isBiz),pct=tierPct(sc??0,isBiz);
@@ -2044,7 +2044,7 @@ function ProfileTab({myProfile,myP,T,onQR,onSettings,onEditPhoto,onScoreCard,fol
       <div style={{marginBottom:12}}><TierBadge sc={sc} size="md" isBiz={isBiz}/></div>
       {/* Action buttons */}
       <div style={{display:"flex",gap:8,marginBottom:16}}>
-        <button onClick={onSettings} style={{flex:1,padding:"10px 0",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:11,color:T.txt,fontWeight:600,fontSize:12}}>Edit Profile</button>
+        <button onClick={onEditProfile} style={{flex:1,padding:"10px 0",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:11,color:T.txt,fontWeight:600,fontSize:12}}>✏️ Edit Profile</button>
         <button onClick={onScoreCard} style={{flex:1,padding:"10px 0",background:`linear-gradient(135deg,${AC}22,${AC}0e)`,border:`1.5px solid ${AC}35`,borderRadius:11,color:AC,fontWeight:700,fontSize:12,boxShadow:`0 2px 10px ${AC}20`}}>Score Card</button>
         <button onClick={shareMyProfile} style={{flex:1,padding:"10px 0",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:11,color:T.txt,fontWeight:600,fontSize:12,display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
@@ -2069,29 +2069,55 @@ function ProfileTab({myProfile,myP,T,onQR,onSettings,onEditPhoto,onScoreCard,fol
           <div style={{height:4,background:T.faint,borderRadius:99,overflow:"hidden"}}><div style={{width:`${v}%`,height:"100%",background:myProfile.color,borderRadius:99,opacity:.85}}/></div>
         </div>;})}
       </>:<div style={{borderRadius:16,overflow:"hidden",marginTop:4}}>
-        {/* Ghost tier card */}
-        <div style={{background:`linear-gradient(135deg,${t.grad[0]}44,${t.grad[1]}22)`,border:`1px solid ${t.color}30`,borderRadius:16,padding:"22px 18px",marginBottom:12,position:"relative",overflow:"hidden"}}>
-          <div style={{position:"absolute",right:-18,top:-18,fontSize:88,opacity:.07,lineHeight:1,pointerEvents:"none",userSelect:"none"}}>👻</div>
-          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
-            <TierBadge sc={null} size="sm" isBiz={isBiz}/>
-            <span style={{fontSize:12,color:T.mu}}>Starting tier</span>
-          </div>
-          <div style={{fontWeight:800,fontSize:20,color:T.txt,letterSpacing:"-.4px",marginBottom:4}}>You're a Ghost 👻</div>
-          <div style={{fontSize:12,color:T.mu,lineHeight:1.6}}>No one can see your score yet. Get your first {isBiz?"review":"rating"} to unlock your tier and start climbing.</div>
-        </div>
-        {/* Steps */}
-        {[
-          {n:"1",icon:"🔗",title:"Share your profile",desc:"Send your link or QR to someone you know"},
-          {n:"2",icon:"⭐",title:`Get ${isBiz?"reviewed":"rated"}`,desc:`They ${isBiz?"review your business":"rate you"} across 6 categories`},
-          {n:"3",icon:"🏆",title:"Earn your tier",desc:"Your score goes live — climb from Ghost to HighEnough"},
-        ].map(s=><div key={s.n} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 14px",background:T.card,border:`1px solid ${T.b1}`,borderRadius:12,marginBottom:7}}>
-          <div style={{width:34,height:34,borderRadius:"50%",background:`${AC}18`,border:`1px solid ${AC}30`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>{s.icon}</div>
-          <div style={{flex:1,minWidth:0}}>
-            <div style={{fontWeight:700,fontSize:13,color:T.txt}}>{s.title}</div>
-            <div style={{fontSize:11,color:T.mu,marginTop:1}}>{s.desc}</div>
-          </div>
-          <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:T.mu,opacity:.5,flexShrink:0}}>0{s.n}</div>
-        </div>)}
+        {isBiz
+          /* ── Business empty state: show review categories ── */
+          ? <div>
+              <div style={{background:`linear-gradient(135deg,${AC}12,${AC}06)`,border:`1px solid ${AC}22`,borderRadius:14,padding:"16px 16px 12px",marginBottom:12}}>
+                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+                  <TierBadge sc={null} size="sm" isBiz={true}/>
+                  <span style={{fontSize:12,color:T.mu}}>No reviews yet</span>
+                </div>
+                <div style={{fontWeight:700,fontSize:15,color:T.txt,marginBottom:4}}>Customers will review you on:</div>
+                <div style={{display:"flex",flexDirection:"column",gap:6,marginTop:8}}>
+                  {cats.map(c=><div key={c.id} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",background:T.card,border:`1px solid ${T.b1}`,borderRadius:10}}>
+                    <span style={{fontSize:18,flexShrink:0}}>{c.emoji}</span>
+                    <div style={{flex:1}}>
+                      <div style={{fontWeight:600,fontSize:13,color:T.txt}}>{c.label}</div>
+                      {c.sub&&<div style={{fontSize:11,color:T.mu,marginTop:1}}>{c.sub}</div>}
+                    </div>
+                    <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:T.mu}}>0–100</div>
+                  </div>)}
+                </div>
+              </div>
+              {[
+                {icon:"🔗",title:"Share your business link",num:"01"},
+                {icon:"✍️",title:"Get reviewed by customers",num:"02"},
+                {icon:"🏆",title:"Earn your tier",num:"03"},
+              ].map(s=><div key={s.num} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 12px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:10,marginBottom:6}}>
+                <div style={{width:30,height:30,borderRadius:"50%",background:`${AC}14`,border:`1px solid ${AC}28`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0}}>{s.icon}</div>
+                <div style={{flex:1,fontWeight:600,fontSize:13,color:T.txt}}>{s.title}</div>
+                <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:T.mu}}>{s.num}</span>
+              </div>)}
+            </div>
+          /* ── Personal empty state: ghost card ── */
+          : <><div style={{background:`linear-gradient(135deg,${t.grad[0]}44,${t.grad[1]}22)`,border:`1px solid ${t.color}30`,borderRadius:16,padding:"22px 18px",marginBottom:12,position:"relative",overflow:"hidden"}}>
+              <div style={{position:"absolute",right:-18,top:-18,fontSize:88,opacity:.07,lineHeight:1,pointerEvents:"none",userSelect:"none"}}>👻</div>
+              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+                <TierBadge sc={null} size="sm" isBiz={isBiz}/>
+                <span style={{fontSize:12,color:T.mu}}>Starting tier</span>
+              </div>
+              <div style={{fontWeight:800,fontSize:20,color:T.txt,letterSpacing:"-.4px",marginBottom:4}}>You're a Ghost 👻</div>
+              <div style={{fontSize:12,color:T.mu,lineHeight:1.6}}>No one can see your score yet. Get your first rating to unlock your tier and start climbing.</div>
+            </div>
+            {[
+              {icon:"🔗",title:"Share your profile",desc:"Send your link or QR to someone you know",n:"01"},
+              {icon:"⭐",title:"Get rated",desc:"They rate you across 6 categories",n:"02"},
+              {icon:"🏆",title:"Earn your tier",desc:"Your score goes live — climb from Ghost to HighEnough",n:"03"},
+            ].map(s=><div key={s.n} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 14px",background:T.card,border:`1px solid ${T.b1}`,borderRadius:12,marginBottom:7}}>
+              <div style={{width:34,height:34,borderRadius:"50%",background:`${AC}18`,border:`1px solid ${AC}30`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>{s.icon}</div>
+              <div style={{flex:1,minWidth:0}}><div style={{fontWeight:700,fontSize:13,color:T.txt}}>{s.title}</div><div style={{fontSize:11,color:T.mu,marginTop:1}}>{s.desc}</div></div>
+              <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:T.mu,opacity:.5,flexShrink:0}}>{s.n}</div>
+            </div>)}</> }
       </div>}
     </div>
   </div>;
@@ -2226,15 +2252,22 @@ function SettingsProfileUrl({me,T}){
   </div>;
 }
 
-function SettingsModal({me,prefs,T,onClose,onSave,onSavePrefs,onEditPhoto,onShowBlocked,onLogout,onDelete,onQR}){
-  const [tab,setTab]=useState("profile");
-  const [nm,setNm]=useState(me.name);const[hd,setHd]=useState(me.handle);const[bio,setBio]=useState(me.bio||"");const[col,setCol]=useState(me.color);
-  const [age,setAge]=useState(me.age||"");const[ints,setInts]=useState(me.interests||[]);
+/* ── EDIT PROFILE MODAL (profile info only) ── */
+function EditProfileModal({me,prefs,T,onClose,onSave,onEditPhoto,onQR}){
+  const [nm,setNm]=useState(me.name);
+  const [hd,setHd]=useState(me.handle);
+  const [bio,setBio]=useState(me.bio||"");
+  const [col,setCol]=useState(me.color);
+  const [dob,setDob]=useState(me.dob||"");
+  const [ints,setInts]=useState(me.interests||[]);
   const [links,setLinks]=useState(me.links||{instagram:"",twitter:"",tiktok:"",website:""});
-  const [ok,setOk]=useState(false);const[logQ,setLogQ]=useState(false);
-  const [delStep,setDelStep]=useState(0);const[delReason,setDelReason]=useState("");
-  const [hdStatus,setHdStatus]=useState(null);const[showPrivacy,setShowPrivacy]=useState(false);
+  const [bizTypeEdit,setBizTypeEdit]=useState(me.biz_type||"general");
+  const [ok,setOk]=useState(false);
+  const [hdStatus,setHdStatus]=useState(null);
   const hdTimer=useRef(null);
+  const isBizProfile=me.account_type==="business";
+
+  const inp={width:"100%",padding:"11px 13px",background:T.inp,border:`1px solid ${T.b1}`,borderRadius:11,color:T.txt,fontSize:13,outline:"none",boxSizing:"border-box",marginBottom:11};
 
   async function checkHandle(val){
     const clean=val.trim().replace(/^@/,"").toLowerCase();
@@ -2243,17 +2276,102 @@ function SettingsModal({me,prefs,T,onClose,onSave,onSavePrefs,onEditPhoto,onShow
     const {data}=await sb.from("profiles").select("id").eq("handle","@"+clean).neq("id",me.id).maybeSingle();
     setHdStatus(data?"taken":"ok");
   }
-
   function onHdChange(val){setHd(val);clearTimeout(hdTimer.current);hdTimer.current=setTimeout(()=>checkHandle(val),600);}
 
-  function sv(){onSave({name:nm.trim()||me.name,handle:hd.trim()||me.handle,bio:bio.trim(),color:col,age:age?parseInt(age):null,interests:ints,links,biz_type:isBizProfile?bizTypeEdit:null});setOk(true);setTimeout(()=>setOk(false),2000);}
+  function computeAge(dobStr){
+    if(!dobStr)return null;
+    try{const b=new Date(dobStr);const now=new Date();let a=now.getFullYear()-b.getFullYear();const m=now.getMonth()-b.getMonth();if(m<0||(m===0&&now.getDate()<b.getDate()))a--;return a>=0?a:null;}catch{return null;}
+  }
+
+  async function sv(){
+    const bizTypeChanged=isBizProfile&&bizTypeEdit!==me.biz_type;
+    if(bizTypeChanged){
+      const confirmed=window.confirm("Changing your business category will clear all existing reviews and ratings so you can start fresh. Continue?");
+      if(!confirmed)return;
+      try{await sb.from("ratings").delete().eq("target_id",me.id);}catch(e){console.error("Clear ratings error:",e);}
+    }
+    onSave({name:nm.trim()||me.name,handle:hd.trim()||me.handle,bio:bio.trim(),color:col,age:computeAge(dob),dob:dob||null,interests:ints,links,biz_type:isBizProfile?bizTypeEdit:null,_clearRatings:bizTypeChanged});
+    setOk(true);setTimeout(()=>setOk(false),2000);
+  }
+
   function togInt(i){setInts(prev=>prev.includes(i)?prev.filter(x=>x!==i):[...prev,i].slice(0,6));}
-  const [bizTypeEdit,setBizTypeEdit]=useState(me.biz_type||"general");
-  const isBizProfile=me.account_type==="business";
-  const inp={width:"100%",padding:"11px 13px",background:T.inp,border:`1px solid ${T.b1}`,borderRadius:11,color:T.txt,fontSize:13,outline:"none",boxSizing:"border-box",marginBottom:11};
-  const TABS=[{id:"profile",label:"Profile"},{id:"more",label:"Details"},{id:"privacy",label:"Privacy"},{id:"account",label:"Account"}];
   const hdClean=hd.trim().replace(/^@/,"");
   const hdBorderColor=hdStatus==="taken"?"#e0466e":hdStatus==="ok"?"#2cba9a":T.b1;
+
+  return<Overlay onBg={onClose} T={T} wide>
+    <div style={{fontWeight:700,fontSize:18,color:T.txt,marginBottom:18}}>Edit Profile</div>
+
+    {/* Avatar */}
+    <div style={{display:"flex",justifyContent:"center",marginBottom:12}}>
+      <div style={{position:"relative"}}>
+        <Ava p={{...me,color:col}} size={76} T={T}/>
+        <button onClick={onEditPhoto} style={{position:"absolute",bottom:-3,right:-3,width:24,height:24,borderRadius:"50%",background:`${col}cc`,border:`2px solid ${T.card}`,display:"flex",alignItems:"center",justifyContent:"center"}}><EditIcon/></button>
+      </div>
+    </div>
+    <div style={{display:"flex",gap:7,justifyContent:"center",marginBottom:18}}>{PALETTE.map(c=><div key={c} onClick={()=>setCol(c)} style={{width:22,height:22,borderRadius:"50%",background:c,cursor:"pointer",outline:col===c?`2.5px solid ${T.txt}`:"2.5px solid transparent",outlineOffset:2,transform:col===c?"scale(1.25)":"scale(1)",transition:"transform .12s"}}/>)}</div>
+
+    <input value={nm} onChange={e=>setNm(e.target.value)} placeholder="Display Name" style={inp}/>
+    <div style={{position:"relative",marginBottom:11}}>
+      <input value={hd} onChange={e=>onHdChange(e.target.value)} placeholder="@username" style={{...inp,marginBottom:0,border:`1px solid ${hdBorderColor}`,paddingRight:32}}/>
+      {hdStatus&&<span style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",fontSize:14,fontWeight:700,color:hdStatus==="taken"?"#e0466e":hdStatus==="ok"?"#2cba9a":T.mu}}>{hdStatus==="taken"?"✕":hdStatus==="ok"?"✓":"…"}</span>}
+    </div>
+    {hdStatus==="taken"&&<div style={{fontSize:11,color:"#e0466e",marginBottom:8}}>@{hdClean} is already taken</div>}
+    {hdStatus==="ok"&&<div style={{fontSize:11,color:"#2cba9a",marginBottom:8}}>@{hdClean} is available ✓</div>}
+    <input value={bio} onChange={e=>setBio(e.target.value)} placeholder={isBizProfile?"What do you offer?":"Bio"} style={inp}/>
+
+    {/* Business category selector */}
+    {isBizProfile&&<div style={{marginBottom:11}}>
+      <div style={{fontSize:11,color:T.mu,textTransform:"uppercase",letterSpacing:.8,fontWeight:600,marginBottom:8}}>Business Category</div>
+      <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:200,overflowY:"auto",padding:2}}>
+        {BIZ_TYPES.map(bt=><div key={bt.id} onClick={()=>setBizTypeEdit(bt.id)} style={{padding:"10px 13px",background:bizTypeEdit===bt.id?`${AC}14`:T.faint,border:`1.5px solid ${bizTypeEdit===bt.id?AC+"60":T.b1}`,borderRadius:11,cursor:"pointer",display:"flex",alignItems:"center",gap:10,transition:"all .15s"}}>
+          <span style={{fontSize:18,flexShrink:0}}>{bt.emoji}</span>
+          <div style={{flex:1,minWidth:0}}><div style={{fontWeight:600,fontSize:13,color:T.txt}}>{bt.label}</div><div style={{fontSize:10,color:T.mu,marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{(BIZ_CAT_MAP[bt.id]||[]).map(c=>c.label).join(" · ")}</div></div>
+          {bizTypeEdit===bt.id&&<div style={{width:16,height:16,borderRadius:"50%",background:AC,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}><svg width="8" height="8" viewBox="0 0 10 10" fill="none"><polyline points="1.5,5 4,7.5 8.5,2.5" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg></div>}
+        </div>)}
+      </div>
+    </div>}
+
+    {/* DOB for personal only */}
+    {!isBizProfile&&<>
+      <div style={{fontSize:11,color:T.mu,textTransform:"uppercase",letterSpacing:.8,fontWeight:600,marginBottom:6}}>Date of Birth <span style={{fontSize:10,opacity:.6,fontWeight:400,textTransform:"none"}}>(private)</span></div>
+      <input type="date" value={dob} onChange={e=>setDob(e.target.value)} max={new Date().toISOString().split("T")[0]} style={{...inp,marginBottom:4,colorScheme:T===DK?"dark":"light"}}/>
+      {dob&&computeAge(dob)!==null&&<div style={{fontSize:11,color:AC,marginBottom:11,fontFamily:"'JetBrains Mono',monospace"}}>Age: {computeAge(dob)} · auto-updates on your birthday</div>}
+      {!dob&&<div style={{fontSize:11,color:T.mu,marginBottom:11}}>Your age updates automatically from your birthday.</div>}
+
+      {/* Interests */}
+      <div style={{fontSize:11,color:T.mu,textTransform:"uppercase",letterSpacing:.8,marginBottom:8,fontWeight:600}}>Interests ({ints.length}/6)</div>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:16,maxHeight:200,overflowY:"auto"}}>{INTERESTS.map(i=><div key={i} onClick={()=>togInt(i)} style={{padding:"5px 12px",borderRadius:6,cursor:"pointer",fontSize:12,fontWeight:500,background:ints.includes(i)?`${AC}1a`:T.faint,border:`1px solid ${ints.includes(i)?AC+"44":T.b1}`,color:ints.includes(i)?AC:T.mu,transition:"all .12s"}}>{i}</div>)}</div>
+    </>}
+
+    {/* Social Links */}
+    <div style={{fontSize:11,color:T.mu,textTransform:"uppercase",letterSpacing:.8,marginBottom:8,fontWeight:600}}>Social Links</div>
+    {[{k:"instagram",ph:"@username"},{k:"twitter",ph:"@username"},{k:"tiktok",ph:"@username"},{k:"website",ph:"https://…"}].map(f=><input key={f.k} value={links[f.k]||""} onChange={e=>setLinks(l=>({...l,[f.k]:e.target.value}))} placeholder={`${f.k} ${f.ph}`} style={inp}/>)}
+
+    {/* UID */}
+    <div style={{padding:"11px 13px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:11,marginBottom:11}}>
+      <div style={{fontSize:11,color:T.mu,marginBottom:4,textTransform:"uppercase",letterSpacing:.8,fontWeight:600}}>Your Unique ID</div>
+      <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:16,fontWeight:700,color:AC,letterSpacing:2}}>#{me.short_id||shortId(me.id)}</div>
+      <div style={{fontSize:11,color:T.mu,marginTop:3}}>📧 {me.email||"No email set"}</div>
+    </div>
+    <SettingsProfileUrl me={me} T={T}/>
+
+    <button disabled={hdStatus==="taken"} onClick={sv} style={{width:"100%",padding:"12px 0",background:hdStatus==="taken"?T.faint:`linear-gradient(135deg,${col}e0,${col}90)`,borderRadius:11,color:hdStatus==="taken"?T.mu:"#fff",fontWeight:700,fontSize:14,marginBottom:10}}>{ok?"Saved ✓":"Save Changes"}</button>
+    <button onClick={()=>{onClose();setTimeout(()=>onQR&&onQR(),80);}} style={{width:"100%",padding:"11px 0",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:11,color:T.txt,fontWeight:600,fontSize:13,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="3" height="3"/><rect x="19" y="14" width="2" height="2"/><rect x="14" y="19" width="2" height="2"/><rect x="18" y="18" width="3" height="3" rx=".5"/></svg>
+      My QR Code
+    </button>
+  </Overlay>;
+}
+
+/* ── SETTINGS MODAL (app settings only — no profile fields) ── */
+function SettingsModal({me,prefs,T,onClose,onSave,onSavePrefs,onEditPhoto,onShowBlocked,onLogout,onDelete,onQR}){
+  const [tab,setTab]=useState("appearance");
+  const [ok,setOk]=useState(false);const[logQ,setLogQ]=useState(false);
+  const [delStep,setDelStep]=useState(0);const[delReason,setDelReason]=useState("");
+  const [showPrivacy,setShowPrivacy]=useState(false);
+  const isBizProfile=me.account_type==="business";
+  const inp={width:"100%",padding:"11px 13px",background:T.inp,border:`1px solid ${T.b1}`,borderRadius:11,color:T.txt,fontSize:13,outline:"none",boxSizing:"border-box",marginBottom:11};
+  const TABS=[{id:"appearance",label:"Appearance"},{id:"privacy",label:"Privacy"},{id:"account",label:"Account"}];
 
   const DEL_REASONS=["I don't use it anymore","Privacy concerns","Too many notifications","I found a better app","I want to start fresh","Other"];
 
@@ -2262,55 +2380,13 @@ function SettingsModal({me,prefs,T,onClose,onSave,onSavePrefs,onEditPhoto,onShow
     <div style={{display:"flex",gap:2,marginBottom:18,overflowX:"auto",paddingBottom:2}}>
       {TABS.map(t=><button key={t.id} onClick={()=>setTab(t.id)} style={{padding:"7px 13px",borderRadius:8,border:tab===t.id?`1px solid ${T.b1}`:"1px solid transparent",background:tab===t.id?T.faint:"transparent",color:tab===t.id?T.txt:T.mu,fontWeight:tab===t.id?600:400,fontSize:12,whiteSpace:"nowrap",transition:"all .12s"}}>{t.label}</button>)}
     </div>
-    {tab==="profile"&&<div>
-      <div style={{display:"flex",justifyContent:"center",marginBottom:12}}><div style={{position:"relative"}}><Ava p={{...me,color:col}} size={76} T={T}/><button onClick={onEditPhoto} style={{position:"absolute",bottom:-3,right:-3,width:24,height:24,borderRadius:"50%",background:`${col}cc`,border:`2px solid ${T.card}`,display:"flex",alignItems:"center",justifyContent:"center"}}><EditIcon/></button></div></div>
-      <div style={{display:"flex",gap:7,justifyContent:"center",marginBottom:18}}>{PALETTE.map(c=><div key={c} onClick={()=>setCol(c)} style={{width:22,height:22,borderRadius:"50%",background:c,cursor:"pointer",outline:col===c?`2.5px solid ${T.txt}`:"2.5px solid transparent",outlineOffset:2,transform:col===c?"scale(1.25)":"scale(1)",transition:"transform .12s"}}/>)}</div>
-      <input value={nm} onChange={e=>setNm(e.target.value)} placeholder="Display Name" style={inp}/>
-      {/* Username with live check */}
-      <div style={{position:"relative",marginBottom:11}}>
-        <input value={hd} onChange={e=>onHdChange(e.target.value)} placeholder="@username" style={{...inp,marginBottom:0,border:`1px solid ${hdBorderColor}`,paddingRight:32}}/>
-        {hdStatus&&<span style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",fontSize:14,fontWeight:700,color:hdStatus==="taken"?"#e0466e":hdStatus==="ok"?"#2cba9a":T.mu}}>{hdStatus==="taken"?"✕":hdStatus==="ok"?"✓":"…"}</span>}
-      </div>
-      {hdStatus==="taken"&&<div style={{fontSize:11,color:"#e0466e",marginBottom:8}}>@{hdClean} is already taken</div>}
-      {hdStatus==="ok"&&<div style={{fontSize:11,color:"#2cba9a",marginBottom:8}}>@{hdClean} is available ✓</div>}
-      <input value={bio} onChange={e=>setBio(e.target.value)} placeholder="Bio" style={inp}/>
-      {isBizProfile&&<div style={{marginBottom:11}}>
-        <div style={{fontSize:11,color:T.mu,textTransform:"uppercase",letterSpacing:.8,fontWeight:600,marginBottom:8}}>Business Category</div>
-        <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:220,overflowY:"auto",padding:2}}>
-          {BIZ_TYPES.map(bt=><div key={bt.id} onClick={()=>setBizTypeEdit(bt.id)} style={{padding:"10px 13px",background:bizTypeEdit===bt.id?`${AC}14`:T.faint,border:`1.5px solid ${bizTypeEdit===bt.id?AC+"60":T.b1}`,borderRadius:11,cursor:"pointer",display:"flex",alignItems:"center",gap:10,transition:"all .15s"}}>
-            <span style={{fontSize:18,flexShrink:0}}>{bt.emoji}</span>
-            <div style={{flex:1,minWidth:0}}>
-              <div style={{fontWeight:600,fontSize:13,color:T.txt}}>{bt.label}</div>
-              <div style={{fontSize:10,color:T.mu,marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{(BIZ_CAT_MAP[bt.id]||[]).map(c=>c.label).join(" · ")}</div>
-            </div>
-            {bizTypeEdit===bt.id&&<div style={{width:16,height:16,borderRadius:"50%",background:AC,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}><svg width="8" height="8" viewBox="0 0 10 10" fill="none"><polyline points="1.5,5 4,7.5 8.5,2.5" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg></div>}
-          </div>)}
-        </div>
-      </div>}
-      {/* UID displayed prominently */}
-      <div style={{padding:"11px 13px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:11,marginBottom:11}}>
-        <div style={{fontSize:11,color:T.mu,marginBottom:4,textTransform:"uppercase",letterSpacing:.8,fontWeight:600}}>Your Unique ID</div>
-        <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:16,fontWeight:700,color:AC,letterSpacing:2}}>#{me.short_id||shortId(me.id)}</div>
-        <div style={{fontSize:11,color:T.mu,marginTop:3}}>📧 {me.email||"No email set"}</div>
-      </div>
-      {/* Profile URL — safe component, no hook inside render */}
-      <SettingsProfileUrl me={me} T={T}/>
-      <button disabled={hdStatus==="taken"} onClick={sv} style={{width:"100%",padding:"12px 0",background:hdStatus==="taken"?T.faint:`linear-gradient(135deg,${col}e0,${col}90)`,borderRadius:11,color:hdStatus==="taken"?T.mu:"#fff",fontWeight:700,fontSize:14,marginBottom:10}}>{ok?"Saved ✓":"Save Changes"}</button>
-      {/* QR Code button */}
-      <button onClick={()=>{onClose();setTimeout(()=>onQR&&onQR(),80);}} style={{width:"100%",padding:"11px 0",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:11,color:T.txt,fontWeight:600,fontSize:13,display:"flex",alignItems:"center",justifyContent:"center",gap:8,marginBottom:14}}>
+    {tab==="appearance"&&<div>
+      <SRow label="🌙 Dark Mode" val={prefs.dark} onChange={v=>onSavePrefs({...prefs,dark:v})} T={T}/>
+      <div style={{height:1,background:T.b1,margin:"14px 0"}}/>
+      <button onClick={()=>{onClose();setTimeout(()=>onQR&&onQR(),80);}} style={{width:"100%",padding:"11px 0",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:11,color:T.txt,fontWeight:600,fontSize:13,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="3" height="3"/><rect x="19" y="14" width="2" height="2"/><rect x="14" y="19" width="2" height="2"/><rect x="18" y="18" width="3" height="3" rx=".5"/></svg>
         My QR Code
       </button>
-      <div style={{height:1,background:T.b1,marginBottom:14}}/>
-      <SRow label="🌙 Dark Mode" val={prefs.dark} onChange={v=>onSavePrefs({...prefs,dark:v})} T={T}/>
-    </div>}
-    {tab==="more"&&<div>
-      {!isBizProfile&&<><input type="number" value={age} onChange={e=>setAge(e.target.value)} placeholder="Age" min={13} max={99} style={inp}/>
-      <div style={{fontSize:11,color:T.mu,textTransform:"uppercase",letterSpacing:.8,marginBottom:8,fontWeight:600}}>Interests ({ints.length}/6)</div>
-      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:16,maxHeight:200,overflowY:"auto"}}>{INTERESTS.map(i=><div key={i} onClick={()=>togInt(i)} style={{padding:"5px 12px",borderRadius:6,cursor:"pointer",fontSize:12,fontWeight:500,background:ints.includes(i)?`${AC}1a`:T.faint,border:`1px solid ${ints.includes(i)?AC+"44":T.b1}`,color:ints.includes(i)?AC:T.mu,transition:"all .12s"}}>{i}</div>)}</div></>}
-      <div style={{fontSize:11,color:T.mu,textTransform:"uppercase",letterSpacing:.8,marginBottom:8,fontWeight:600}}>Social Links</div>
-      {[{k:"instagram",ph:"@username"},{k:"twitter",ph:"@username"},{k:"tiktok",ph:"@username"},{k:"website",ph:"https://…"}].map(f=><input key={f.k} value={links[f.k]||""} onChange={e=>setLinks(l=>({...l,[f.k]:e.target.value}))} placeholder={`${f.k} ${f.ph}`} style={inp}/>)}
-      <button onClick={sv} style={{width:"100%",padding:"12px 0",background:`linear-gradient(135deg,${AC}e0,${AC}90)`,borderRadius:11,color:"#fff",fontWeight:700,fontSize:14}}>{ok?"Saved ✓":"Save Details"}</button>
     </div>}
     {tab==="privacy"&&<div style={{display:"flex",flexDirection:"column",gap:10}}>
       <button onClick={()=>{onClose();onShowBlocked();}} style={{display:"flex",alignItems:"center",gap:10,padding:"13px 14px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:11,width:"100%",color:T.txt,fontSize:14,fontWeight:500,textAlign:"left"}}><ShieldIcon/><div style={{flex:1}}><div>Blocked Users</div><div style={{fontSize:11,color:T.mu,marginTop:1}}>Manage people you have blocked</div></div><span style={{color:T.mu,fontSize:18}}>›</span></button>
@@ -2480,16 +2556,25 @@ function ScoreCardModal({profile,T,onClose}){
     }
 
     if(isBiz){
-      drawShell("🏢 Business Review");
+      const bizTypeLabel=BIZ_TYPES.find(b=>b.id===(profile.biz_type||"general"))?.label||"Business";
+      const bizTypeEmoji=BIZ_TYPES.find(b=>b.id===(profile.biz_type||"general"))?.emoji||"🏢";
+      drawShell(`${bizTypeEmoji} ${bizTypeLabel}`);
       drawAvatar(W/2,252,78);
       drawName(378,410);
+      // Sub-category badge below name
+      const subLabel=`${bizTypeEmoji} ${bizTypeLabel}`;
+      ctx.textAlign="center";ctx.font="500 16px Inter,Arial,sans-serif";
+      const slW=ctx.measureText(subLabel).width+28,slX=W/2-slW/2;
+      ctx.fillStyle=t.color+"12";ctx.strokeStyle=t.color+"35";ctx.lineWidth=1;
+      ctx.beginPath();ctx.roundRect(slX,416,slW,30,7);ctx.fill();ctx.stroke();
+      ctx.fillStyle=t.color;ctx.fillText(subLabel,W/2,436);
       ctx.textAlign="center";ctx.font="900 108px 'JetBrains Mono',monospace";
-      const sg=ctx.createLinearGradient(W/2-120,430,W/2+120,540);sg.addColorStop(0,t.grad[0]);sg.addColorStop(1,t.grad[1]);ctx.fillStyle=sg;ctx.fillText(sc!=null?fmtScore(sc):"—",W/2,540);
-      ctx.font="600 18px Inter,Arial,sans-serif";ctx.fillStyle="#9090b0";ctx.fillText("Overall Score",W/2,568);
-      drawTier(586);
-      drawBars(644);
-      drawUID(730,766);
-      drawFooter(796,"HighEnough.in  ·  for Business");
+      const sg=ctx.createLinearGradient(W/2-120,460,W/2+120,570);sg.addColorStop(0,t.grad[0]);sg.addColorStop(1,t.grad[1]);ctx.fillStyle=sg;ctx.fillText(sc!=null?fmtScore(sc):"—",W/2,570);
+      ctx.font="600 18px Inter,Arial,sans-serif";ctx.fillStyle="#9090b0";ctx.fillText("Overall Score",W/2,598);
+      drawTier(616);
+      drawBars(674);
+      drawUID(760,796);
+      drawFooter(826,"HighEnough.in  ·  for Business");
     } else {
       // ── Personal card: clean, no overlapping elements ──
       const W=900,H=1260;
@@ -2647,7 +2732,7 @@ function ScoreCardModal({profile,T,onClose}){
       {/* ── Tier hero banner ── */}
       <div style={{position:"relative",borderRadius:22,overflow:"hidden",marginBottom:16,background:`linear-gradient(160deg,${t.grad[0]},${t.grad[1]})`,padding:"24px 20px 20px"}}>
         <div style={{position:"absolute",top:-40,right:-40,width:200,height:200,borderRadius:"50%",background:`radial-gradient(circle,${t.color}30,transparent 70%)`,pointerEvents:"none"}}/>
-        <div style={{position:"absolute",top:16,right:16,fontSize:11,fontWeight:700,color:"rgba(255,255,255,.55)",letterSpacing:".12em",textTransform:"uppercase"}}>{isBiz?"BUSINESS":"PERSONAL"}</div>
+        <div style={{position:"absolute",top:16,right:16,fontSize:11,fontWeight:700,color:"rgba(255,255,255,.55)",letterSpacing:".12em",textTransform:"uppercase"}}>{isBiz?(BIZ_TYPES.find(b=>b.id===(profile.biz_type||"general"))?.label||"BUSINESS").toUpperCase():"PERSONAL"}</div>
 
         <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:18}}>
           <div style={{width:64,height:64,borderRadius:"50%",border:"2px solid rgba(255,255,255,.4)",background:"rgba(255,255,255,.12)",overflow:"hidden",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:22,color:"#fff"}}>
@@ -2971,6 +3056,7 @@ function App(){
   const [viewT,setViewT]=useState(null);
   const [qrT,setQRT]=useState(null);
   const [settings,setSettings]=useState(false);
+  const [editProfile,setEditProfile]=useState(false);
   const [photo,setPhoto]=useState(false);
   const [scoreCard,setScoreCard]=useState(null);
   const [reportT,setReportT]=useState(null);
@@ -3553,7 +3639,7 @@ function App(){
     // biz_type may or may not exist as a column — try with it, fallback without
     const base={
       id:updated.id,name:updated.name,handle:updated.handle,bio:updated.bio,
-      color:updated.color,age:updated.age,photo:updated.photo,interests:updated.interests,
+      color:updated.color,age:updated.age,dob:updated.dob||null,photo:updated.photo,interests:updated.interests,
       links:{...(updated.links||{}),biz_type:updated.account_type==="business"?(updated.biz_type||"general"):undefined},
       email:updated.email,short_id:updated.short_id,
       account_type:updated.account_type||"personal",
@@ -3561,11 +3647,17 @@ function App(){
       created_at:updated.created_at||new Date().toISOString()
     };
     let error;
-    ({error}=await sb.from("profiles").upsert({...base,biz_type:updated.account_type==="business"?(updated.biz_type||"general"):null}));
+    ({error}=await sb.from("profiles").upsert({...base,biz_type:updated.account_type==="business"?(updated.biz_type||"general"):null,dob:updated.dob||null}));
     if(error?.message?.includes("biz_type")){
       ({error}=await sb.from("profiles").upsert(base));
     }
-    if(!error){setProfile(updated);setProfiles(prev=>prev.map(p=>p.id===updated.id?{...p,...updated}:p));pop("Profile saved");}
+    if(!error){
+      const freshProfile=u._clearRatings?{...updated,ratings:[]}:updated;
+      if(u._clearRatings)setProfiles(prev=>prev.map(p=>p.id===updated.id?{...p,...updated,ratings:[]}:p));
+      else setProfiles(prev=>prev.map(p=>p.id===updated.id?{...p,...updated}:p));
+      setProfile(freshProfile);
+      pop(u._clearRatings?"Category changed — reviews cleared":"Profile saved");
+    }
     else{console.error("Save error:",error);pop("Could not save. Try again.");}
   }
 
@@ -3884,20 +3976,41 @@ function App(){
             ? <div>
                 <div style={{background:`linear-gradient(135deg,${AC}12,${AC}08)`,border:`1px solid ${AC}22`,borderRadius:18,padding:"24px 20px",marginBottom:16,textAlign:"center",position:"relative",overflow:"hidden"}}>
                   <div style={{position:"absolute",right:-20,top:-20,fontSize:100,opacity:.05,pointerEvents:"none"}}>◎</div>
-                  <div style={{fontSize:32,marginBottom:10}}>👻</div>
-                  <div style={{fontWeight:800,fontSize:18,color:T.txt,marginBottom:6,letterSpacing:"-.3px"}}>Your feed is empty</div>
-                  <div style={{fontSize:13,color:T.mu,marginBottom:18,lineHeight:1.6}}>Follow people to see them here — or share your profile to start getting rated.</div>
-                  {[
-                    {icon:"🔗",title:"Share your profile link",desc:"Copy it from Profile → Share and send it to someone"},
-                    {icon:"📱",title:"Show your QR code",desc:"Let someone scan it instantly to open your profile"},
-                    {icon:"⭐",title:"Get rated",desc:"They rate you across 6 categories and your score appears"},
-                  ].map((s,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 14px",background:T.card,border:`1px solid ${T.b1}`,borderRadius:12,marginBottom:7,textAlign:"left"}}>
-                    <div style={{width:36,height:36,borderRadius:"50%",background:`${AC}18`,border:`1px solid ${AC}28`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>{s.icon}</div>
-                    <div style={{flex:1}}>
-                      <div style={{fontWeight:700,fontSize:13,color:T.txt}}>{s.title}</div>
-                      <div style={{fontSize:11,color:T.mu,marginTop:1}}>{s.desc}</div>
-                    </div>
-                  </div>)}
+                  {profile.account_type==="business"
+                    ? <>
+                        <div style={{fontSize:32,marginBottom:10}}>🏢</div>
+                        <div style={{fontWeight:800,fontSize:18,color:T.txt,marginBottom:6,letterSpacing:"-.3px"}}>Your business feed is empty</div>
+                        <div style={{fontSize:13,color:T.mu,marginBottom:18,lineHeight:1.6}}>Follow other businesses or share your profile link to start receiving customer reviews.</div>
+                        {[
+                          {icon:"🔗",title:"Share your business link",desc:"Copy from Profile → Share and send to customers or post online"},
+                          {icon:"📱",title:"Display your QR code",desc:"Let customers scan it at your location to open your profile instantly"},
+                          {icon:"✍️",title:"Collect your first review",desc:"Customers review you across your specific business categories"},
+                          {icon:"📈",title:"Build your reputation",desc:"Your score and tier go live once your first review comes in"},
+                        ].map((s,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 14px",background:T.card,border:`1px solid ${T.b1}`,borderRadius:12,marginBottom:7,textAlign:"left"}}>
+                          <div style={{width:36,height:36,borderRadius:"50%",background:`${AC}18`,border:`1px solid ${AC}28`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>{s.icon}</div>
+                          <div style={{flex:1}}>
+                            <div style={{fontWeight:700,fontSize:13,color:T.txt}}>{s.title}</div>
+                            <div style={{fontSize:11,color:T.mu,marginTop:1}}>{s.desc}</div>
+                          </div>
+                        </div>)}
+                      </>
+                    : <>
+                        <div style={{fontSize:32,marginBottom:10}}>👻</div>
+                        <div style={{fontWeight:800,fontSize:18,color:T.txt,marginBottom:6,letterSpacing:"-.3px"}}>Your feed is empty</div>
+                        <div style={{fontSize:13,color:T.mu,marginBottom:18,lineHeight:1.6}}>Follow people to see them here — or share your profile to start getting rated.</div>
+                        {[
+                          {icon:"🔗",title:"Share your profile link",desc:"Copy it from Profile → Share and send it to someone"},
+                          {icon:"📱",title:"Show your QR code",desc:"Let someone scan it instantly to open your profile"},
+                          {icon:"⭐",title:"Get rated",desc:"They rate you across 6 categories and your score appears"},
+                        ].map((s,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 14px",background:T.card,border:`1px solid ${T.b1}`,borderRadius:12,marginBottom:7,textAlign:"left"}}>
+                          <div style={{width:36,height:36,borderRadius:"50%",background:`${AC}18`,border:`1px solid ${AC}28`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>{s.icon}</div>
+                          <div style={{flex:1}}>
+                            <div style={{fontWeight:700,fontSize:13,color:T.txt}}>{s.title}</div>
+                            <div style={{fontSize:11,color:T.mu,marginTop:1}}>{s.desc}</div>
+                          </div>
+                        </div>)}
+                      </>
+                  }
                 </div>
               </div>
             : <div>
@@ -3913,7 +4026,7 @@ function App(){
 
       {tab==="inbox"&&<InboxTab convs={convs.map(c=>{const other=profiles.find(p=>p.id===c.oid);return other?{...c,other}:null;}).filter(Boolean)} profiles={profiles} myProfile={profile} following={following} T={T} onOpen={(conv,other)=>setActiveChat({...conv,other})} onDeleteConv={handleDeleteConv} onViewProfile={p=>setViewT(p)} groups={groups} onOpenGroup={g=>setActiveGroup(g)} onCreateGroup={handleCreateGroup}/>}
 
-      {tab==="profile"&&<ProfileTab myProfile={profile} myP={myP} T={T} onQR={()=>setQRT(myP)} onSettings={()=>setSettings(true)} onEditPhoto={()=>setPhoto(true)} onScoreCard={()=>setScoreCard(myP)} following={following} profiles={profiles} onViewProfile={p=>setViewT(p)}/>}
+      {tab==="profile"&&<ProfileTab myProfile={profile} myP={myP} T={T} onQR={()=>setQRT(myP)} onSettings={()=>setSettings(true)} onEditProfile={()=>setEditProfile(true)} onEditPhoto={()=>setPhoto(true)} onScoreCard={()=>setScoreCard(myP)} following={following} profiles={profiles} onViewProfile={p=>setViewT(p)}/>}
     </div>
 
     {/* BOTTOM NAV */}
@@ -3932,6 +4045,7 @@ function App(){
     {viewT      &&<ProfileModal profile={viewT} myId={profile.id} following={following} profiles={profiles} T={T} onClose={()=>setViewT(null)} onRate={handleRate} onFollow={handleFollow} onUnfollow={handleUnfollow} onBlock={handleBlock} onReport={setReportT} onMsg={p=>{setViewT(null);handleMsg(p);}} onViewOther={p=>setViewT(p)}/>}
     {qrT        &&<QRModal profile={qrT} T={T} onClose={()=>setQRT(null)}/>}
     {settings   &&<SettingsModal me={profile} prefs={prefs} T={T} onClose={()=>setSettings(false)} onSave={handleSaveProfile} onSavePrefs={handleSavePrefs} onEditPhoto={()=>{setSettings(false);setPhoto(true);}} onShowBlocked={()=>{setSettings(false);setShowBlocked(true);}} onLogout={handleLogout} onDelete={handleDeleteAccount} onQR={()=>{setSettings(false);setTimeout(()=>setQRT(myP),80);}}/>}
+    {editProfile&&<EditProfileModal me={profile} prefs={prefs} T={T} onClose={()=>setEditProfile(false)} onSave={handleSaveProfile} onEditPhoto={()=>{setEditProfile(false);setPhoto(true);}} onQR={()=>{setEditProfile(false);setTimeout(()=>setQRT(myP),80);}}/>}
     {photo      &&<PhotoModal profile={profile} T={T} onClose={()=>setPhoto(false)} onSave={handleSavePhoto}/>}
     {scoreCard  &&<ScoreCardModal profile={scoreCard} T={T} onClose={()=>setScoreCard(null)}/>}
     {reportT    &&<ReportModal target={reportT} T={T} onClose={()=>setReportT(null)} onSubmit={handleReport}/>}
