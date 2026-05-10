@@ -2382,11 +2382,6 @@ function SettingsModal({me,prefs,T,onClose,onSave,onSavePrefs,onEditPhoto,onShow
     </div>
     {tab==="appearance"&&<div>
       <SRow label="🌙 Dark Mode" val={prefs.dark} onChange={v=>onSavePrefs({...prefs,dark:v})} T={T}/>
-      <div style={{height:1,background:T.b1,margin:"14px 0"}}/>
-      <button onClick={()=>{onClose();setTimeout(()=>onQR&&onQR(),80);}} style={{width:"100%",padding:"11px 0",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:11,color:T.txt,fontWeight:600,fontSize:13,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="3" height="3"/><rect x="19" y="14" width="2" height="2"/><rect x="14" y="19" width="2" height="2"/><rect x="18" y="18" width="3" height="3" rx=".5"/></svg>
-        My QR Code
-      </button>
     </div>}
     {tab==="privacy"&&<div style={{display:"flex",flexDirection:"column",gap:10}}>
       <button onClick={()=>{onClose();onShowBlocked();}} style={{display:"flex",alignItems:"center",gap:10,padding:"13px 14px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:11,width:"100%",color:T.txt,fontSize:14,fontWeight:500,textAlign:"left"}}><ShieldIcon/><div style={{flex:1}}><div>Blocked Users</div><div style={{fontSize:11,color:T.mu,marginTop:1}}>Manage people you have blocked</div></div><span style={{color:T.mu,fontSize:18}}>›</span></button>
@@ -3635,30 +3630,55 @@ function App(){
   }
 
   async function handleSaveProfile(u){
-    const updated={...profile,...u};
-    // biz_type may or may not exist as a column — try with it, fallback without
-    const base={
-      id:updated.id,name:updated.name,handle:updated.handle,bio:updated.bio,
-      color:updated.color,age:updated.age,dob:updated.dob||null,photo:updated.photo,interests:updated.interests,
-      links:{...(updated.links||{}),biz_type:updated.account_type==="business"?(updated.biz_type||"general"):undefined},
-      email:updated.email,short_id:updated.short_id,
+    // Strip internal-only flags — never send to DB
+    const {_clearRatings,...safeU}=u;
+    const updated={...profile,...safeU};
+
+    // Core fields that always exist in profiles table
+    const coreBase={
+      id:updated.id,
+      name:updated.name,
+      handle:updated.handle,
+      bio:updated.bio||"",
+      color:updated.color,
+      age:updated.age||null,
+      photo:updated.photo||null,
+      interests:updated.interests||[],
+      links:{...(updated.links||{})},
+      email:updated.email||"",
+      short_id:updated.short_id,
       account_type:updated.account_type||"personal",
-      followers_count:updated.followers_count,following_count:updated.following_count,
+      followers_count:updated.followers_count||0,
+      following_count:updated.following_count||0,
       created_at:updated.created_at||new Date().toISOString()
     };
-    let error;
-    ({error}=await sb.from("profiles").upsert({...base,biz_type:updated.account_type==="business"?(updated.biz_type||"general"):null,dob:updated.dob||null}));
-    if(error?.message?.includes("biz_type")){
-      ({error}=await sb.from("profiles").upsert(base));
+
+    // Try each variant from most to least featured, stopping on success
+    const variants=[
+      {...coreBase, biz_type:updated.account_type==="business"?(updated.biz_type||"general"):null, dob:updated.dob||null},
+      {...coreBase, biz_type:updated.account_type==="business"?(updated.biz_type||"general"):null},
+      {...coreBase},
+    ];
+
+    let error=null;
+    for(const v of variants){
+      ({error}=await sb.from("profiles").upsert(v,{onConflict:"id"}));
+      if(!error)break;
+      // Only retry if it's a missing-column error
+      const msg=error?.message||"";
+      if(!msg.includes("column")&&!msg.includes("biz_type")&&!msg.includes("dob"))break;
     }
+
     if(!error){
-      const freshProfile=u._clearRatings?{...updated,ratings:[]}:updated;
-      if(u._clearRatings)setProfiles(prev=>prev.map(p=>p.id===updated.id?{...p,...updated,ratings:[]}:p));
+      const freshProfile=_clearRatings?{...updated,ratings:[]}:updated;
+      if(_clearRatings)setProfiles(prev=>prev.map(p=>p.id===updated.id?{...p,...updated,ratings:[]}:p));
       else setProfiles(prev=>prev.map(p=>p.id===updated.id?{...p,...updated}:p));
       setProfile(freshProfile);
-      pop(u._clearRatings?"Category changed — reviews cleared":"Profile saved");
+      pop(_clearRatings?"Category changed — reviews cleared":"Profile saved");
+    }else{
+      console.error("Save error:",error);
+      pop("Could not save. Try again.");
     }
-    else{console.error("Save error:",error);pop("Could not save. Try again.");}
   }
 
   async function handleSavePhoto(photoData){
