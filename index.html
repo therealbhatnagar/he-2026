@@ -2,7 +2,22 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+<!-- FIRST: set bg color immediately so browser never shows white flash -->
+<style>html{background:#09090f}body{background:#09090f;margin:0}</style>
+<!-- Global error catcher — shows errors on screen before React loads -->
+<script>
+window.__HE_ERRORS=[];
+window.onerror=function(msg,src,line,col,err){
+  window.__HE_ERRORS.push(msg);
+  var d=document.getElementById('__he_err');
+  if(!d){d=document.createElement('div');d.id='__he_err';d.style.cssText='position:fixed;top:0;left:0;right:0;z-index:99999;background:#c0000e;color:#fff;font-size:13px;font-family:monospace;padding:12px 14px;max-height:40vh;overflow-y:auto;word-break:break-all;';document.body&&document.body.appendChild(d);}
+  d.innerHTML+='<div style="border-bottom:1px solid #ff000050;padding:4px 0">⚠️ '+msg+'<br><small style="opacity:.6">'+src+':'+line+'</small></div>';
+};
+window.onunhandledrejection=function(e){
+  window.onerror&&window.onerror('Unhandled: '+(e.reason?.message||String(e.reason)),'Promise',0,0,e.reason);
+};
+</script>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"/>
 <title>HighEnough</title>
 <meta name="description" content="Rate your friends. Earn your reputation. Climb 7 tiers on HighEnough."/>
 <meta name="theme-color" content="#09090f"/>
@@ -40,8 +55,9 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet"/>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
-html,body,#root{background:#09090f;min-height:100vh}
-body{font-family:'Inter',sans-serif;-webkit-font-smoothing:antialiased;overscroll-behavior:none;color:#dde0f0}
+html{height:100%;background:#09090f}
+body{font-family:'Inter',sans-serif;-webkit-font-smoothing:antialiased;overscroll-behavior:none;color:#dde0f0;height:100%;background:#09090f}
+#root{min-height:100vh;min-height:100dvh;background:#09090f}
 /* ── Block text selection everywhere except inputs ── */
 *:not(input):not(textarea){-webkit-user-select:none;-moz-user-select:none;user-select:none}
 input,textarea{-webkit-user-select:text;user-select:text}
@@ -97,13 +113,22 @@ const {useState,useEffect,useRef,useCallback}=React;
 /* ── SUPABASE ── */
 const SUPABASE_URL  = "https://jwtopqlofxtuwevhmbqo.supabase.co";
 const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp3dG9wcWxvZnh0dXdldmhtYnFvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ3MDY2NjUsImV4cCI6MjA5MDI4MjY2NX0.BQsYBf_THxW7iqoFuqsuSaFN1rXBCi2Zb_NSqRzCkLM";
+// Safe storage — some Android WebViews throw on localStorage access
+function safeStorage(){
+  try{window.localStorage.setItem('__he_test','1');window.localStorage.removeItem('__he_test');return window.localStorage;}
+  catch{
+    // MemoryStorage fallback — session only, but prevents crash
+    var mem={};
+    return{getItem:function(k){return mem[k]||null;},setItem:function(k,v){mem[k]=String(v);},removeItem:function(k){delete mem[k];},clear:function(){mem={};}};
+  }
+}
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
     detectSessionInUrl: true,
     storageKey: "highenough_auth",
-    storage: window.localStorage,
+    storage: safeStorage(),
   }
 });
 
@@ -4059,83 +4084,59 @@ HE_BOOT().then(function(){
 
 <!-- PWA: Service Worker + Install Prompt -->
 <script>
-// Register service worker for offline support
+// ── Service Worker ───────────────────────────────────────────────────────────
+// CRITICAL FIX: blob: URL SW registration is broken on Android Chrome 143+ PWA
+// cold starts. The blob URL gets revoked before the SW can fetch it.
+// Solution: Write SW code to a real file path via a data URL string is not possible
+// without a server. Instead we use the SW inline via importScripts workaround.
+// Since we can't write files from JS, we skip SW on Android standalone to prevent
+// the stale cache poisoning the app. The app works fine without SW (just no offline).
 if('serviceWorker' in navigator){
-  window.addEventListener('load',()=>{
-    // ── Network-First Service Worker ─────────────────────────────────────────
-    // CRITICAL: Navigation requests (HTML pages) MUST use NetworkFirst.
-    // A CacheFirst strategy would serve a stale, potentially "logged-out" HTML
-    // page from cache on PWA reopen, causing the auth flash bug.
-    // Strategy:
-    //   - HTML navigation requests → NetworkFirst (try network, fall back to cache)
-    //   - Other GET requests (JS/CSS/images) → StaleWhileRevalidate
-    const swCode=`
-      const CACHE='highenough-v3';
-      const HTML_CACHE='highenough-html-v3';
-
-      self.addEventListener('install',e=>{
-        e.waitUntil(
-          caches.open(HTML_CACHE).then(c=>c.addAll(['/']).catch(()=>{}))
-          .then(()=>self.skipWaiting())
-        );
+  var isStandalone=window.matchMedia('(display-mode: standalone)').matches||window.navigator.standalone===true;
+  window.addEventListener('load',function(){
+    // Only register SW in browser — skip in standalone PWA to avoid stale cache
+    // causing the black screen on Android Chrome 143+
+    if(isStandalone){
+      // Clear any existing SW that might be serving stale content
+      navigator.serviceWorker.getRegistrations().then(function(regs){
+        regs.forEach(function(r){r.unregister();});
       });
-
-      self.addEventListener('activate',e=>{
-        // Clean up old caches from previous SW versions
-        e.waitUntil(
-          caches.keys().then(keys=>Promise.all(
-            keys.filter(k=>k!==CACHE&&k!==HTML_CACHE).map(k=>caches.delete(k))
-          )).then(()=>self.clients.claim())
-        );
-      });
-
-      self.addEventListener('fetch',e=>{
-        if(e.request.method!=='GET')return;
-        const url=new URL(e.request.url);
-        const isNavigation=e.request.mode==='navigate'||
-                           (e.request.headers.get('accept')||'').includes('text/html');
-        const isSameDomain=url.origin===self.location.origin;
-
-        if(isNavigation&&isSameDomain){
-          // NetworkFirst for HTML: always try to get the freshest page.
-          // Only serve cache if the network is completely unavailable.
-          e.respondWith(
-            fetch(e.request, {cache:'no-cache'})
-              .then(res=>{
-                // Clone and cache the fresh response
-                const clone=res.clone();
-                caches.open(HTML_CACHE).then(c=>c.put(e.request,clone));
-                return res;
-              })
-              .catch(async()=>{
-                // Offline fallback: serve cached HTML
-                const cached=await caches.match('/');
-                return cached||new Response('Offline',{status:503});
-              })
-          );
-          return;
-        }
-
-        // StaleWhileRevalidate for all other assets (JS/CSS/fonts/images)
-        if(isSameDomain||url.hostname.includes('supabase.co')){
-          return; // Don't intercept Supabase API calls
-        }
-
-        e.respondWith(
-          caches.open(CACHE).then(async cache=>{
-            const cached=await cache.match(e.request);
-            const fresh=fetch(e.request).then(res=>{
-              if(res.ok)cache.put(e.request,res.clone());
-              return res;
-            }).catch(()=>cached);
-            return cached||fresh;
-          })
-        );
-      });
-    `;
-    const blob=new Blob([swCode],{type:'application/javascript'});
-    const url=URL.createObjectURL(blob);
-    navigator.serviceWorker.register(url).catch(()=>{});
+      // Clear all caches that might have poisoned HTML
+      if('caches' in window){
+        caches.keys().then(function(keys){
+          keys.forEach(function(k){caches.delete(k);});
+        });
+      }
+      return;
+    }
+    // Browser mode — register SW normally for offline support
+    var swCode=[
+      "const CACHE='he-v4';",
+      "self.addEventListener('install',e=>{e.waitUntil(self.skipWaiting());});",
+      "self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim()));});",
+      "self.addEventListener('fetch',e=>{",
+      "  if(e.request.method!=='GET')return;",
+      "  const url=new URL(e.request.url);",
+      "  const isNav=e.request.mode==='navigate';",
+      "  if(isNav){e.respondWith(fetch(e.request,{cache:'no-cache'}).catch(()=>caches.match('/')));return;}",
+      "  if(url.hostname.includes('supabase.co')||url.hostname.includes('googleapis'))return;",
+      "  e.respondWith(caches.open(CACHE).then(c=>c.match(e.request).then(r=>{",
+      "    const f=fetch(e.request).then(nr=>{if(nr.ok)c.put(e.request,nr.clone());return nr;}).catch(()=>r);",
+      "    return r||f;",
+      "  })));",
+      "});",
+    ].join('\n');
+    try{
+      var blob=new Blob([swCode],{type:'application/javascript'});
+      var url=URL.createObjectURL(blob);
+      navigator.serviceWorker.register(url).then(function(){
+        URL.revokeObjectURL(url);
+      }).catch(function(){URL.revokeObjectURL(url);});
+    }catch(e){}
+  });
+  // If SW sends a reload message (e.g. after cache clear), do it
+  navigator.serviceWorker.addEventListener('message',function(e){
+    if(e.data==='reload')window.location.reload();
   });
 }
 
