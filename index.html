@@ -3661,8 +3661,27 @@ function App(){
     // If category changed: block realtime FIRST, then delete — order matters
     if(_clearRatings){
       clearingRatingsRef.current=true;
-      try{await sb.from("ratings").delete().eq("target_id",updated.id);}
-      catch(e){console.error("Clear ratings error:",e);}
+      try{
+        // Attempt 1: RPC function (bypasses RLS)
+        const {error:rpcErr}=await sb.rpc("delete_ratings_for_target",{p_target_id:updated.id});
+        if(!rpcErr){
+          console.log("Ratings cleared via RPC");
+        }else{
+          console.warn("RPC not available, trying direct delete:",rpcErr.message);
+          // Attempt 2: direct DELETE by target_id
+          const {error:delErr}=await sb.from("ratings").delete().eq("target_id",updated.id);
+          if(delErr){
+            console.warn("Direct delete failed:",delErr.message);
+            // Attempt 3: fetch rows then delete each by primary key (rater_id+target_id)
+            const {data:rows}=await sb.from("ratings").select("rater_id").eq("target_id",updated.id);
+            if(rows&&rows.length){
+              await Promise.all(rows.map(r=>
+                sb.from("ratings").delete().eq("rater_id",r.rater_id).eq("target_id",updated.id)
+              ));
+            }
+          }
+        }
+      }catch(e){console.error("Clear ratings error:",e);}
     }
 
     // Core fields that always exist in profiles table
