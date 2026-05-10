@@ -3028,6 +3028,25 @@ function PublicProfilePage({profile,onJoin,onClose}){
 ══════════════════════════════════════ */
 const DP={dark:true};
 
+/* ── ERROR BOUNDARY — catches any render crash, shows on screen instead of black ── */
+class ErrorBoundary extends React.Component{
+  constructor(props){super(props);this.state={err:null};}
+  static getDerivedStateFromError(e){return{err:e};}
+  componentDidCatch(e,info){console.error("HighEnough crash:",e,info);}
+  render(){
+    if(this.state.err){
+      const msg=this.state.err?.message||String(this.state.err);
+      return<div style={{minHeight:"100vh",background:"#09090f",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24,fontFamily:"'JetBrains Mono',monospace"}}>
+        <div style={{fontSize:32,marginBottom:16}}>⚠️</div>
+        <div style={{fontSize:14,color:"#e0466e",fontWeight:700,marginBottom:12,textAlign:"center"}}>Something went wrong</div>
+        <div style={{fontSize:11,color:"#5a5a80",background:"#0d0d1a",border:"1px solid #1e1e30",borderRadius:10,padding:"12px 16px",maxWidth:340,wordBreak:"break-all",lineHeight:1.7}}>{msg}</div>
+        <button onClick={()=>window.location.reload()} style={{marginTop:20,padding:"10px 24px",background:"#7864dc",borderRadius:10,color:"#fff",fontWeight:700,fontSize:13,border:"none"}}>Reload App</button>
+      </div>;
+    }
+    return this.props.children;
+  }
+}
+
 function App(){
   const [authUser,setAuthUser]=useState(null);
   const [authError,setAuthError]=useState("");
@@ -3852,9 +3871,10 @@ function App(){
 
   useEffect(()=>{document.body.style.background=T.bg;document.body.style.color=T.txt;},[T.bg,T.txt]);
 
-  // Dismiss splash once auth resolved
+  // Dismiss splash once auth resolved + clear pre-fetched session (it's served its purpose)
   useEffect(()=>{
     if(!authLoading){
+      HE_PREFETCHED_SESSION=null; // clear so the guard below never traps us
       if(window.__cancelSplashTimer)window.__cancelSplashTimer();
       const s=document.getElementById('splash');
       if(s){s.style.transition='opacity .2s';s.style.opacity='0';setTimeout(()=>s.remove(),200);}
@@ -4031,7 +4051,9 @@ function App(){
 
 // ── MOUNT: React renders after getSession() resolves ──────────────────────
 HE_BOOT().then(function(){
-  ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+  ReactDOM.createRoot(document.getElementById('root')).render(
+    <ErrorBoundary><App/></ErrorBoundary>
+  );
 });
 </script>
 
