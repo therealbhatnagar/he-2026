@@ -74,6 +74,23 @@ button:active{opacity:.8;transform:scale(.96)}
 <body>
 <div id="splash" style="position:fixed;inset:0;background:#09090f;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;z-index:9999;transition:opacity .3s"><div style="font-family:'Inter',sans-serif;font-weight:800;font-size:42px;letter-spacing:-2px;color:#ffffff;line-height:1">High<span style="color:#7864dc;font-weight:700;letter-spacing:-.5px">Enough</span></div><div style="width:20px;height:20px;border:2px solid #1c1c2c;border-top-color:#7864dc;border-radius:50%;animation:spin .55s linear infinite"></div><div id="splash-status" style="font-size:11px;color:#3a3a5a;margin-top:4px;font-family:'JetBrains Mono',monospace;letter-spacing:.05em">Loading…</div></div>
 <div id="root"></div>
+
+<!-- Plain JS safety net — runs before Babel, independent of React.
+     If Babel parse + React mount takes longer than 12s (slow device/network),
+     force-show the page so user is never stuck on a black splash forever.
+     React's own splash dismissal (via setAuthLoading) is the primary path.
+     This only fires if React never mounts at all. -->
+<script>
+(function(){
+  var LIMIT=12000;
+  var t=setTimeout(function(){
+    var s=document.getElementById('splash');
+    if(s){s.style.transition='opacity .3s';s.style.opacity='0';setTimeout(function(){if(s&&s.parentNode)s.parentNode.removeChild(s);},300);}
+  },LIMIT);
+  // Cancel if React mounts and handles it properly
+  window.__cancelSplashTimer=function(){clearTimeout(t);};
+})();
+</script>
 <script type="text/babel">
 const {useState,useEffect,useRef,useCallback}=React;
 
@@ -3838,6 +3855,7 @@ function App(){
   // Dismiss splash once auth resolved
   useEffect(()=>{
     if(!authLoading){
+      if(window.__cancelSplashTimer)window.__cancelSplashTimer();
       const s=document.getElementById('splash');
       if(s){s.style.transition='opacity .2s';s.style.opacity='0';setTimeout(()=>s.remove(),200);}
     }
