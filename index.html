@@ -3425,6 +3425,12 @@ function App(){
         setConvs(Object.values(msgsByConv));
       }
 
+      // ── Unblock UI immediately — before subscriptions which may hang on free tier ──
+      setAuthLoading(false);
+      setDataReady(true);
+      profileLoadingRef.current=false;
+      bootingUserIdRef.current=null;
+
       // ── Real-time subscriptions (unique per user so re-login gets fresh channels) ──
       sb.channel(`rt_ratings_${uid}`).on("postgres_changes",{event:"*",schema:"public",table:"ratings",filter:`target_id=eq.${uid}`},async()=>{
         const {data:nr}=await sb.from("ratings").select("*").eq("target_id",uid);
@@ -3462,9 +3468,6 @@ function App(){
         if(fol)setFollowing(fol.map(r=>r.following_id));
         if(fwd)setProfile(prev=>({...prev,followers_count:fwd.length,following_count:(fol||[]).length}));
       }).subscribe();
-
-      // All data is set — now safe to hide the splash/spinner
-      setAuthLoading(false);
 
       // ── Auto-open deep-linked profile ──
       const effectiveDl=dl||(()=>{
@@ -3512,7 +3515,6 @@ function App(){
 
     }catch(e){
       console.error("loadAppData error:",e);
-    }finally{
       setAuthLoading(false);
       setDataReady(true);
       profileLoadingRef.current=false;
