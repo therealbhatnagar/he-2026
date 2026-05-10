@@ -2288,7 +2288,6 @@ function EditProfileModal({me,prefs,T,onClose,onSave,onEditPhoto,onQR}){
     if(bizTypeChanged){
       const confirmed=window.confirm("Changing your business category will clear all existing reviews and ratings so you can start fresh. Continue?");
       if(!confirmed)return;
-      try{await sb.from("ratings").delete().eq("target_id",me.id);}catch(e){console.error("Clear ratings error:",e);}
     }
     onSave({name:nm.trim()||me.name,handle:hd.trim()||me.handle,bio:bio.trim(),color:col,age:computeAge(dob),dob:dob||null,interests:ints,links,biz_type:isBizProfile?bizTypeEdit:null,_clearRatings:bizTypeChanged});
     setOk(true);setTimeout(()=>setOk(false),2000);
@@ -3073,6 +3072,7 @@ function App(){
   const showAdminRef=useRef(false);
   const showAdminLockRef=useRef(false);
   const tabRef=useRef("feed");
+  const clearingRatingsRef=useRef(false); // blocks realtime re-fetch during category clear
 
   useEffect(()=>{viewTRef.current=viewT;},[viewT]);
   useEffect(()=>{rateTRef.current=rateT;},[rateT]);
@@ -3423,8 +3423,14 @@ function App(){
 
       // ── Real-time subscriptions (unique per user so re-login gets fresh channels) ──
       sb.channel(`rt_ratings_${uid}`).on("postgres_changes",{event:"*",schema:"public",table:"ratings",filter:`target_id=eq.${uid}`},async()=>{
+        // If we are in the middle of a category clear, don't re-fetch — it would restore old ratings
+        if(clearingRatingsRef.current)return;
         const {data:nr}=await sb.from("ratings").select("*").eq("target_id",uid);
-        if(nr)setProfiles(prev=>prev.map(p=>p.id===uid?{...p,ratings:nr.map(mapRating)}:p));
+        if(nr){
+          const mapped=nr.map(mapRating);
+          setProfiles(prev=>prev.map(p=>p.id===uid?{...p,ratings:mapped}:p));
+          setProfile(prev=>prev&&prev.id===uid?{...prev,ratings:mapped}:prev);
+        }
       }).subscribe();
 
       sb.channel(`rt_notifs_${uid}`).on("postgres_changes",{event:"INSERT",schema:"public",table:"notifications",filter:`target_id=eq.${uid}`},payload=>{
@@ -3634,6 +3640,13 @@ function App(){
     const {_clearRatings,...safeU}=u;
     const updated={...profile,...safeU};
 
+    // If category changed: block realtime FIRST, then delete — order matters
+    if(_clearRatings){
+      clearingRatingsRef.current=true;
+      try{await sb.from("ratings").delete().eq("target_id",updated.id);}
+      catch(e){console.error("Clear ratings error:",e);}
+    }
+
     // Core fields that always exist in profiles table
     const coreBase={
       id:updated.id,
@@ -3664,18 +3677,26 @@ function App(){
     for(const v of variants){
       ({error}=await sb.from("profiles").upsert(v,{onConflict:"id"}));
       if(!error)break;
-      // Only retry if it's a missing-column error
       const msg=error?.message||"";
       if(!msg.includes("column")&&!msg.includes("biz_type")&&!msg.includes("dob"))break;
     }
 
     if(!error){
-      const freshProfile=_clearRatings?{...updated,ratings:[]}:updated;
-      if(_clearRatings)setProfiles(prev=>prev.map(p=>p.id===updated.id?{...p,...updated,ratings:[]}:p));
-      else setProfiles(prev=>prev.map(p=>p.id===updated.id?{...p,...updated}:p));
-      setProfile(freshProfile);
-      pop(_clearRatings?"Category changed — reviews cleared":"Profile saved");
+      if(_clearRatings){
+        const freshProfile={...updated,ratings:[]};
+        setProfiles(prev=>prev.map(p=>p.id===updated.id?{...p,...updated,ratings:[]}:p));
+        setProfile(freshProfile);
+        pop("Category changed — reviews cleared");
+        // Hold the block for 3s to absorb any lagging realtime events
+        setTimeout(()=>{clearingRatingsRef.current=false;},3000);
+      }else{
+        setProfiles(prev=>prev.map(p=>p.id===updated.id?{...p,...updated}:p));
+        setProfile(updated);
+        pop("Profile saved");
+      }
     }else{
+      // Release the block on error too
+      if(_clearRatings)clearingRatingsRef.current=false;
       console.error("Save error:",error);
       pop("Could not save. Try again.");
     }
