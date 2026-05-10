@@ -9,11 +9,12 @@
 window.__HE_ERRORS=[];
 window.onerror=function(msg,src,line,col,err){
   window.__HE_ERRORS.push(msg);
-  // Log to console only — never show a red banner to users
-  console.error("HighEnough error:", msg, src+":"+line);
+  var d=document.getElementById('__he_err');
+  if(!d){d=document.createElement('div');d.id='__he_err';d.style.cssText='position:fixed;top:0;left:0;right:0;z-index:99999;background:#c0000e;color:#fff;font-size:13px;font-family:monospace;padding:12px 14px;max-height:40vh;overflow-y:auto;word-break:break-all;';document.body&&document.body.appendChild(d);}
+  d.innerHTML+='<div style="border-bottom:1px solid #ff000050;padding:4px 0">⚠️ '+msg+'<br><small style="opacity:.6">'+src+':'+line+'</small></div>';
 };
 window.onunhandledrejection=function(e){
-  console.error("HighEnough unhandled rejection:", e.reason?.message||String(e.reason));
+  window.onerror&&window.onerror('Unhandled: '+(e.reason?.message||String(e.reason)),'Promise',0,0,e.reason);
 };
 </script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"/>
@@ -2114,7 +2115,6 @@ function ProfileTab({myProfile,myP,T,onQR,onSettings,onEditProfile,onEditPhoto,o
           {c.sub&&<div style={{fontSize:10,color:T.mu,opacity:.6,marginBottom:3}}>{c.sub}</div>}
           <div style={{height:4,background:T.faint,borderRadius:99,overflow:"hidden"}}><div style={{width:`${v}%`,height:"100%",background:v>=80?"#4ade80":v>=60?myProfile.color:T.b2,borderRadius:99,opacity:.85,transition:"width .6s"}}/></div>
         </div>;})}
-      </>:null}
       {n===0&&<div style={{borderRadius:16,overflow:"hidden",marginTop:8}}>
         {isBiz?<>
           {/* Business new user — professional */}
