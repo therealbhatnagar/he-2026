@@ -2,7 +2,22 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+<!-- FIRST: set bg color immediately so browser never shows white flash -->
+<style>html{background:#09090f}body{background:#09090f;margin:0}</style>
+<!-- Global error catcher — shows errors on screen before React loads -->
+<script>
+window.__HE_ERRORS=[];
+window.onerror=function(msg,src,line,col,err){
+  window.__HE_ERRORS.push(msg);
+  var d=document.getElementById('__he_err');
+  if(!d){d=document.createElement('div');d.id='__he_err';d.style.cssText='position:fixed;top:0;left:0;right:0;z-index:99999;background:#c0000e;color:#fff;font-size:13px;font-family:monospace;padding:12px 14px;max-height:40vh;overflow-y:auto;word-break:break-all;';document.body&&document.body.appendChild(d);}
+  d.innerHTML+='<div style="border-bottom:1px solid #ff000050;padding:4px 0">⚠️ '+msg+'<br><small style="opacity:.6">'+src+':'+line+'</small></div>';
+};
+window.onunhandledrejection=function(e){
+  window.onerror&&window.onerror('Unhandled: '+(e.reason?.message||String(e.reason)),'Promise',0,0,e.reason);
+};
+</script>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"/>
 <title>HighEnough</title>
 <meta name="description" content="Rate your friends. Earn your reputation. Climb 7 tiers on HighEnough."/>
 <meta name="theme-color" content="#09090f"/>
@@ -40,8 +55,9 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet"/>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
-html,body,#root{background:#09090f;min-height:100vh}
-body{font-family:'Inter',sans-serif;-webkit-font-smoothing:antialiased;overscroll-behavior:none;color:#dde0f0}
+html{height:100%;background:#09090f}
+body{font-family:'Inter',sans-serif;-webkit-font-smoothing:antialiased;overscroll-behavior:none;color:#dde0f0;height:100%;background:#09090f}
+#root{min-height:100vh;min-height:100dvh;background:#09090f}
 /* ── Block text selection everywhere except inputs ── */
 *:not(input):not(textarea){-webkit-user-select:none;-moz-user-select:none;user-select:none}
 input,textarea{-webkit-user-select:text;user-select:text}
@@ -72,21 +88,47 @@ button:active{opacity:.8;transform:scale(.96)}
 </style>
 </head>
 <body>
-<div id="splash" style="position:fixed;inset:0;background:#09090f;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;z-index:9999;transition:opacity .3s"><div style="font-weight:800;font-size:42px;letter-spacing:-2px;color:#dde0f0;line-height:1">High<span style="color:#7b72e9;font-weight:300;letter-spacing:.04em">Enough</span></div><div style="width:20px;height:20px;border:2px solid #1c1c2c;border-top-color:#7b72e9;border-radius:50%;animation:spin .55s linear infinite"></div><div id="splash-status" style="font-size:11px;color:#3a3a5a;margin-top:4px;font-family:'JetBrains Mono',monospace;letter-spacing:.05em">Loading…</div></div>
+<div id="splash" style="position:fixed;inset:0;background:#09090f;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;z-index:9999;transition:opacity .3s"><div style="font-family:'Inter',sans-serif;font-weight:800;font-size:42px;letter-spacing:-2px;color:#ffffff;line-height:1">High<span style="color:#7864dc;font-weight:700;letter-spacing:-.5px">Enough</span></div><div style="width:20px;height:20px;border:2px solid #1c1c2c;border-top-color:#7864dc;border-radius:50%;animation:spin .55s linear infinite"></div><div id="splash-status" style="font-size:11px;color:#3a3a5a;margin-top:4px;font-family:'JetBrains Mono',monospace;letter-spacing:.05em">Loading…</div></div>
 <div id="root"></div>
+
+<!-- Plain JS safety net — runs before Babel, independent of React.
+     If Babel parse + React mount takes longer than 12s (slow device/network),
+     force-show the page so user is never stuck on a black splash forever.
+     React's own splash dismissal (via setAuthLoading) is the primary path.
+     This only fires if React never mounts at all. -->
+<script>
+(function(){
+  var LIMIT=12000;
+  var t=setTimeout(function(){
+    var s=document.getElementById('splash');
+    if(s){s.style.transition='opacity .3s';s.style.opacity='0';setTimeout(function(){if(s&&s.parentNode)s.parentNode.removeChild(s);},300);}
+  },LIMIT);
+  // Cancel if React mounts and handles it properly
+  window.__cancelSplashTimer=function(){clearTimeout(t);};
+})();
+</script>
 <script type="text/babel">
 const {useState,useEffect,useRef,useCallback}=React;
 
 /* ── SUPABASE ── */
 const SUPABASE_URL  = "https://jwtopqlofxtuwevhmbqo.supabase.co";
 const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp3dG9wcWxvZnh0dXdldmhtYnFvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ3MDY2NjUsImV4cCI6MjA5MDI4MjY2NX0.BQsYBf_THxW7iqoFuqsuSaFN1rXBCi2Zb_NSqRzCkLM";
+// Safe storage — some Android WebViews throw on localStorage access
+function safeStorage(){
+  try{window.localStorage.setItem('__he_test','1');window.localStorage.removeItem('__he_test');return window.localStorage;}
+  catch{
+    // MemoryStorage fallback — session only, but prevents crash
+    var mem={};
+    return{getItem:function(k){return mem[k]||null;},setItem:function(k,v){mem[k]=String(v);},removeItem:function(k){delete mem[k];},clear:function(){mem={};}};
+  }
+}
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
     detectSessionInUrl: true,
     storageKey: "highenough_auth",
-    storage: window.localStorage,
+    storage: safeStorage(),
   }
 });
 
@@ -116,16 +158,102 @@ const CATS=[
   {id:"loyalty", label:"Loyalty",    emoji:"🤝", sub:"Dependability & trustworthiness"},
   {id:"drip",    label:"Style",      emoji:"👗", sub:"Fashion sense & presentation"},
 ];
-const BIZ_CATS=[
-  {id:"vibe",    label:"Customer Service", emoji:"🎧", sub:"How helpful, responsive & friendly the staff are"},
-  {id:"humor",   label:"Trustworthy",      emoji:"🤝", sub:"Honesty, reliability & integrity of the business"},
-  {id:"kindness",label:"Atmosphere",       emoji:"✨", sub:"Ambience, décor, vibe & physical environment"},
-  {id:"rizz",    label:"Experience",       emoji:"❤️", sub:"Your overall end-to-end customer experience"},
-  {id:"loyalty", label:"Quality",          emoji:"⭐", sub:"Standard of product, service or output delivered"},
-  {id:"drip",    label:"Value for Money",  emoji:"💰", sub:"Whether the price is fair for what you received"},
+const BIZ_TYPES=[
+  {id:"general",     label:"General Business",    emoji:"🏢"},
+  {id:"restaurant",  label:"Restaurant / Café",   emoji:"🍽️"},
+  {id:"retail",      label:"Retail / Shop",       emoji:"🛍️"},
+  {id:"creator",     label:"Content Creator",     emoji:"🎬"},
+  {id:"music",       label:"Music / DJ / Artist", emoji:"🎵"},
+  {id:"coach",       label:"Coach / Educator",    emoji:"🎓"},
+  {id:"service",     label:"Service Provider",    emoji:"💆"},
+  {id:"fitness",     label:"Fitness / Wellness",  emoji:"🏋️"},
+  {id:"tech",        label:"Tech / Agency",       emoji:"💻"},
+  {id:"healthcare",  label:"Healthcare / Clinic", emoji:"🏥"},
 ];
+const BIZ_CAT_MAP={
+  general:[
+    {id:"vibe",    label:"Customer Service", emoji:"🎧", sub:"How helpful, responsive & friendly the staff are"},
+    {id:"humor",   label:"Trustworthy",      emoji:"🤝", sub:"Honesty, reliability & integrity of the business"},
+    {id:"kindness",label:"Atmosphere",       emoji:"✨", sub:"Ambience, décor, vibe & physical environment"},
+    {id:"rizz",    label:"Experience",       emoji:"❤️", sub:"Your overall end-to-end customer experience"},
+    {id:"loyalty", label:"Quality",          emoji:"⭐", sub:"Standard of product, service or output delivered"},
+    {id:"drip",    label:"Value for Money",  emoji:"💰", sub:"Whether the price is fair for what you received"},
+  ],
+  restaurant:[
+    {id:"vibe",    label:"Food Quality",    emoji:"🍴", sub:"How good, fresh and well-made the food is"},
+    {id:"humor",   label:"Service",         emoji:"🎧", sub:"How attentive, friendly and prompt the staff are"},
+    {id:"kindness",label:"Ambience",        emoji:"✨", sub:"The overall feel, décor and vibe of the place"},
+    {id:"rizz",    label:"Value for Money", emoji:"💰", sub:"Whether the price is fair for what you got"},
+    {id:"loyalty", label:"Cleanliness",     emoji:"🧼", sub:"Hygiene standards of the food and space"},
+    {id:"drip",    label:"Wait Time",       emoji:"⏱️", sub:"How reasonable the wait is for food or seating"},
+  ],
+  retail:[
+    {id:"vibe",    label:"Product Quality",    emoji:"📦", sub:"How good and reliable the products are"},
+    {id:"humor",   label:"Staff Helpfulness",  emoji:"🎧", sub:"How knowledgeable and helpful the staff are"},
+    {id:"kindness",label:"Store Experience",   emoji:"✨", sub:"The overall feel and ease of shopping here"},
+    {id:"rizz",    label:"Value for Money",    emoji:"💰", sub:"Whether the prices feel fair for the quality"},
+    {id:"loyalty", label:"Trustworthy",        emoji:"🤝", sub:"How reliable, honest and safe to buy from"},
+    {id:"drip",    label:"Return Policy",      emoji:"🔄", sub:"How fair and easy their return or refund process is"},
+  ],
+  creator:[
+    {id:"vibe",    label:"Content Quality",     emoji:"🎬", sub:"How well-made, edited and polished the content is"},
+    {id:"humor",   label:"Creativity",          emoji:"💡", sub:"How original and fresh their ideas are"},
+    {id:"kindness",label:"Entertainment Value", emoji:"🎭", sub:"How enjoyable, fun and binge-worthy the content is"},
+    {id:"rizz",    label:"Informativeness",     emoji:"📚", sub:"How much value, knowledge or insight they deliver"},
+    {id:"loyalty", label:"Production Value",    emoji:"🎥", sub:"Visuals, sound design and overall presentation quality"},
+    {id:"drip",    label:"Engagement",          emoji:"💬", sub:"How well they connect with and respond to their audience"},
+  ],
+  music:[
+    {id:"vibe",    label:"Sound Quality",     emoji:"🎧", sub:"How good their music, mixes or production actually sounds"},
+    {id:"humor",   label:"Stage Presence",    emoji:"🎤", sub:"Energy and vibe they bring to a live set or performance"},
+    {id:"kindness",label:"Originality",       emoji:"🌟", sub:"How fresh and unique their sound or style is"},
+    {id:"rizz",    label:"Versatility",       emoji:"🎛️", sub:"Range across genres, moods or crowd types"},
+    {id:"loyalty", label:"Crowd Connection",  emoji:"🙌", sub:"How well they read and engage the room or audience"},
+    {id:"drip",    label:"Overall Vibe",      emoji:"✨", sub:"The feeling their music leaves you with"},
+  ],
+  coach:[
+    {id:"vibe",    label:"Knowledge",         emoji:"🧠", sub:"Depth of expertise and subject matter command"},
+    {id:"humor",   label:"Communication",     emoji:"🗣️", sub:"How clearly and engagingly they explain things"},
+    {id:"kindness",label:"Results",           emoji:"📈", sub:"Whether their coaching actually leads to improvement"},
+    {id:"rizz",    label:"Reliability",       emoji:"🤝", sub:"How consistent, punctual and dependable they are"},
+    {id:"loyalty", label:"Value for Money",   emoji:"💰", sub:"Whether the cost is justified by the outcome"},
+    {id:"drip",    label:"Approachability",   emoji:"😊", sub:"How comfortable and safe they make you feel to learn"},
+  ],
+  service:[
+    {id:"vibe",    label:"Skill Level",      emoji:"⚙️", sub:"How skilled and capable they are at what they do"},
+    {id:"humor",   label:"Punctuality",      emoji:"⏱️", sub:"Whether they show up on time and meet deadlines"},
+    {id:"kindness",label:"Communication",    emoji:"🗣️", sub:"How clearly they keep you informed throughout"},
+    {id:"rizz",    label:"Cleanliness",      emoji:"🧼", sub:"How neat and tidy their work and workspace is"},
+    {id:"loyalty", label:"Value for Money",  emoji:"💰", sub:"Whether the price feels fair for the quality of work"},
+    {id:"drip",    label:"Trustworthy",      emoji:"🤝", sub:"How honest, reliable and safe to hire they are"},
+  ],
+  fitness:[
+    {id:"vibe",    label:"Trainer Quality",  emoji:"💪", sub:"How skilled, motivating and knowledgeable the trainer is"},
+    {id:"humor",   label:"Facilities",       emoji:"🏋️", sub:"Quality and availability of equipment and space"},
+    {id:"kindness",label:"Atmosphere",       emoji:"✨", sub:"The energy, community feel and overall vibe"},
+    {id:"rizz",    label:"Value for Money",  emoji:"💰", sub:"Whether the membership or session cost feels fair"},
+    {id:"loyalty", label:"Results",          emoji:"📈", sub:"Whether training here actually delivers outcomes"},
+    {id:"drip",    label:"Approachability",  emoji:"😊", sub:"How welcoming and inclusive it feels for all levels"},
+  ],
+  tech:[
+    {id:"vibe",    label:"Delivery Quality", emoji:"💻", sub:"How good and polished the final work output is"},
+    {id:"humor",   label:"Communication",    emoji:"🗣️", sub:"How clearly and regularly they update you"},
+    {id:"kindness",label:"Deadlines",        emoji:"⏱️", sub:"Whether they deliver on time as promised"},
+    {id:"rizz",    label:"Trustworthy",      emoji:"🤝", sub:"How honest and transparent they are throughout"},
+    {id:"loyalty", label:"Value for Money",  emoji:"💰", sub:"Whether the cost matches the quality of work"},
+    {id:"drip",    label:"Support",          emoji:"🎧", sub:"How responsive and helpful they are after delivery"},
+  ],
+  healthcare:[
+    {id:"vibe",    label:"Doctor / Staff",   emoji:"👨‍⚕️", sub:"How skilled, thorough and professional the care is"},
+    {id:"humor",   label:"Wait Time",        emoji:"⏱️", sub:"How long you waited before being seen"},
+    {id:"kindness",label:"Cleanliness",      emoji:"🧼", sub:"Hygiene and cleanliness of the facility"},
+    {id:"rizz",    label:"Communication",    emoji:"🗣️", sub:"How clearly they explain your condition and treatment"},
+    {id:"loyalty", label:"Care & Empathy",   emoji:"💛", sub:"How kind, patient and understanding the staff are"},
+    {id:"drip",    label:"Value for Money",  emoji:"💰", sub:"Whether the cost feels fair for the care received"},
+  ],
+};
 const BIZ_TIERS=[
-  {label:"Unknown",   emoji:"❓",min:0,   max:0,    color:"#4c5266",grad:["#3e4257","#4c5266"],glow:"#4c526618"},
+  {label:"New",       emoji:"🌱",min:0,   max:0,    color:"#6e7a94",grad:["#505a70","#6e7a94"],glow:"#6e7a9420"},
   {label:"Starter",   emoji:"⚙️",min:1,   max:79,   color:"#7a8098",grad:["#636780","#7a8098"],glow:"#7a809820"},
   {label:"Reliable",  emoji:"🔵",min:80,  max:249,  color:"#3878b0",grad:["#2860a0","#4a90c8"],glow:"#3878b028"},
   {label:"Trusted",   emoji:"🟢",min:250, max:599,  color:"#10a37f",grad:["#0a8060","#20c09a"],glow:"#10a37f28"},
@@ -133,9 +261,14 @@ const BIZ_TIERS=[
   {label:"Elite",     emoji:"💎",min:1300,max:2799, color:"#7c56c0",grad:["#6340a8","#9470d8"],glow:"#7c56c030"},
   {label:"HighEnough",emoji:"👑",min:2800,max:Infinity,color:"#c09038",grad:["#a87828","#d8ac50"],glow:"#c0903840"},
 ];
-const getCats=p=>p?.account_type==="business"?BIZ_CATS:CATS;
+const getBizCats=p=>{const bt=p?.biz_type||(p?.links?.biz_type)||"general";return BIZ_CAT_MAP[bt]||BIZ_CAT_MAP.general;};
+const getCats=p=>p?.account_type==="business"?getBizCats(p):CATS;
 const getTiers=p=>p?.account_type==="business"?BIZ_TIERS:TIERS;
-const PALETTE=["#7b72e9","#10a37f","#e0466e","#4f80e2","#c08a2e","#2cba9a","#9b6ee8","#d95c4a"];
+// Strip leading @s (allow max one), remove spaces and invalid chars
+const cleanHandle=raw=>{
+  const stripped=raw.replace(/^@+/,"").replace(/[^a-zA-Z0-9_.]/g,"");
+  return stripped?"@"+stripped:"";
+};
 const INTERESTS=["Gaming 🎮","Music 🎵","Sports ⚽","Art 🎨","Food 🍜","Travel ✈️","Fitness 💪","Tech 💻","Fashion 👗","Books 📚","Movies 🎬","Anime 🌸","Photography 📷","Cooking 🍳","Dance 💃","Comedy 😄","Finance 💸","Crypto ₿","Entrepreneurship 🚀","Cars 🚗","Bikes 🏍️","Football 🏈","Cricket 🏏","Basketball 🏀","Badminton 🏸","Swimming 🏊","Hiking 🥾","Yoga 🧘","Poetry 📝","Drawing ✏️","Painting 🖌️","Singing 🎤","Acting 🎭","Makeup 💄","Skincare 🧴","Astrology ♈","Pets 🐾","Gardening 🌱","DIY 🔧","Interior Design 🏠","Philosophy 🤔","Psychology 🧠","History 📜","Science 🔬","Environment 🌍","Volunteering 🤲","Politics 🗳️","Memes 😭","Netflix 🍿","K-Pop 🎶","Hip-Hop 🎧","EDM 🎛️","Streetwear 👟","Sneakers 👟","Tattoos 🖊️","Poker ♠️","Chess ♟️","Board Games 🎲","Esports 🏆","VR Gaming 🥽","Podcasts 🎙️"];
 const REPORT_REASONS=[
   {id:"spam",     label:"Spam",          desc:"Fake ratings or repeated content"},
@@ -150,7 +283,7 @@ const ADMIN_CODE="HE2025";
 
 const avg=a=>a.length?a.reduce((s,v)=>s+v,0)/a.length:0;
 const ini=n=>(n||"?").split(" ").map(w=>w[0]).join("").toUpperCase().slice(0,2);
-const ago=ts=>{const d=Date.now()-ts,m=Math.floor(d/60000),h=Math.floor(d/3600000),dy=Math.floor(d/86400000);return dy>0?`${dy}d`:h>0?`${h}h`:m>0?`${m}m`:"now";};
+const ago=ts=>{const d=Date.now()-ts,s=Math.floor(d/1000),m=Math.floor(d/60000),h=Math.floor(d/3600000),dy=Math.floor(d/86400000);return dy>0?`${dy}d`:h>0?`${h}h`:m>0?`${m}m`:s>0?`${s}s`:"now";};
 const shortId=id=>id?id.toString().replace(/-/g,"").toUpperCase().slice(0,6):"------";
 /* ── SCORE FORMULA ──────────────────────────────────────────────────────────
    Score = Σ (each rater's average across all categories)
@@ -226,7 +359,7 @@ const tierPctP=p=>{const sc=pScore(p);return tierPct(sc??0,p?.account_type==="bu
 
 /* ── THEMES ── */
 const DK={bg:"#060610",surf:"#0d0d1a",card:"#10101e",b1:"#1e1e30",b2:"#28283e",txt:"#e8eaf8",mu:"#5a5a80",faint:"#0c0c1c",inp:"#0a0a18",nav:"#060610",ov:"rgba(0,0,8,.96)"};
-const LT={bg:"#f0f0f8",surf:"#ffffff",card:"#fafaff",b1:"#e0e0f0",b2:"#c8c8e0",txt:"#16162a",mu:"#6868a0",faint:"#e8e8f5",inp:"#f4f4fc",nav:"#ffffff",ov:"rgba(8,8,28,.75)"};
+const LT={bg:"#ffffff",surf:"#ffffff",card:"#fafafa",b1:"#efefef",b2:"#e0e0e8",txt:"#0d0c1a",mu:"#8c87a5",faint:"#f5f5f9",inp:"#f7f7fa",nav:"#ffffff",ov:"rgba(8,8,28,.72)"};
 
 /* ── LOCAL PREFS ── */
 const getPref=()=>{try{return JSON.parse(localStorage.getItem("he_pref"))||{};}catch{return{};}};
@@ -257,11 +390,12 @@ function TierBadge({sc,size="md",isBiz=false,showLevel=true}){
   const t=tierOf(sc??0,isBiz),isFama=t.label==="HighEnough";
   const {level}=tierLevel(sc??0,isBiz);
   const levelSuffix=(showLevel&&sc&&sc>0&&t.label!=="Ghost")?` L${level}`:"";
-  const sz={sm:{px:"3px 9px",fs:10,ef:11},md:{px:"4px 12px",fs:12,ef:13}}[size]||{px:"3px 9px",fs:10,ef:11};
+  const sz={sm:{px:"4px 10px",fs:11,ef:12,r:8},md:{px:"6px 14px",fs:13,ef:14,r:10}}[size]||{px:"4px 10px",fs:11,ef:12,r:8};
+  const bg=isFama?`linear-gradient(135deg,${t.grad[0]}40,${t.grad[1]}28)`:`linear-gradient(135deg,${t.color}28,${t.color}14)`;
   const shimmer=isFama?{background:`linear-gradient(90deg,${t.grad[0]},${t.grad[1]},${t.grad[0]})`,backgroundSize:"200% auto",animation:"sh 2.6s linear infinite",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",backgroundClip:"text"}:{color:t.color};
-  return<span style={{display:"inline-flex",alignItems:"center",gap:4,background:isFama?`linear-gradient(135deg,${t.grad[0]}28,${t.grad[1]}18)`:`${t.color}14`,border:`1px solid ${t.color}${isFama?"50":"28"}`,borderRadius:6,padding:sz.px,whiteSpace:"nowrap",boxShadow:isFama?`0 0 12px ${t.glow}`:"none"}}>
+  return<span style={{display:"inline-flex",alignItems:"center",gap:5,background:bg,border:`1.5px solid ${t.color}${isFama?"60":"35"}`,borderRadius:sz.r,padding:sz.px,whiteSpace:"nowrap",boxShadow:isFama?`0 0 14px ${t.glow},0 2px 8px ${t.color}30`:`0 1px 4px ${t.color}20`}}>
     <span style={{fontSize:sz.ef,lineHeight:1,animation:isFama?"fl 3s ease infinite":"none"}}>{t.emoji}</span>
-    <span style={{fontSize:sz.fs,fontFamily:"'JetBrains Mono',monospace",fontWeight:700,...shimmer}}>{t.label}{levelSuffix}</span>
+    <span style={{fontSize:sz.fs,fontFamily:"'JetBrains Mono',monospace",fontWeight:800,letterSpacing:"-.2px",...shimmer}}>{t.label}{levelSuffix}</span>
   </span>;
 }
 
@@ -371,14 +505,17 @@ function AuthScreen({T,onAuthed,authError,onClearAuthError}){
         const emailToUse=rawInput.includes("@")&&rawInput.includes(".")?rawInput:rawInput;
 
         // ── Check if this email belongs to a previously deleted account ──
-        // If so, we must remove them from deleted_accounts first so they can
-        // start fresh. The old Supabase auth record for that email will be
-        // reused by Supabase automatically.
+        // Remove deletion record so this email is allowed to start fresh.
+        // Also remove by auth_id (Supabase reuses same auth ID for same email).
         const {data:deletedRow}=await sb.from("deleted_accounts")
-          .select("auth_id").eq("email",emailToUse).maybeSingle();
+          .select("auth_id,email").eq("email",emailToUse).maybeSingle();
         if(deletedRow){
-          // Remove the deletion record so this email is allowed again
-          await sb.from("deleted_accounts").delete().eq("email",emailToUse);
+          await Promise.all([
+            sb.from("deleted_accounts").delete().eq("email",emailToUse),
+            sb.from("deleted_accounts").delete().eq("auth_id",deletedRow.auth_id),
+            // Also remove any leftover profile row so they get a clean ProfileSetup
+            sb.from("profiles").delete().eq("id",deletedRow.auth_id),
+          ]);
         }
 
         const {data,error}=await sb.auth.signUp({
@@ -445,7 +582,7 @@ function AuthScreen({T,onAuthed,authError,onClearAuthError}){
     <div style={{position:"absolute",bottom:-120,left:-90,width:320,height:320,borderRadius:"50%",background:`radial-gradient(circle,${AC}0b,transparent 68%)`,pointerEvents:"none"}}/>
     <div style={{width:"100%",maxWidth:380,position:"relative",animation:"ci .4s ease"}}>
       <div style={{textAlign:"center",marginBottom:40}}>
-        <div style={{fontWeight:800,fontSize:46,letterSpacing:"-2px",lineHeight:1,color:T.txt}}>High<span style={{color:AC,fontWeight:300,letterSpacing:"0.04em"}}>Enough</span></div>
+        <div style={{display:"flex",alignItems:"baseline",lineHeight:1}}><span style={{fontWeight:700,fontSize:46,letterSpacing:"-2px",color:T.txt}}>High</span><span style={{fontWeight:700,fontSize:46,letterSpacing:"-2px",color:AC}}>Enough</span></div>
         <div style={{fontSize:11,color:T.mu,marginTop:8,letterSpacing:"0.18em",textTransform:"uppercase",fontWeight:500}}>Rate · Rise · Repeat</div>
       </div>
 
@@ -497,6 +634,7 @@ function AuthScreen({T,onAuthed,authError,onClearAuthError}){
 function ProfileSetup({user,T,onDone}){
   const [step,setStep]=useState("type");
   const [acType,setAcType]=useState("personal");
+  const [bizType,setBizType]=useState("general");
   const [nm,setNm]=useState(user.user_metadata?.full_name||"");
   const [hd,setHd]=useState("");
   const [bio,setBio]=useState("");
@@ -517,9 +655,10 @@ function ProfileSetup({user,T,onDone}){
   }
 
   function onHdChange(val){
-    setHd(val);
+    const clean=cleanHandle(val);
+    setHd(clean);
     clearTimeout(hdTimer.current);
-    hdTimer.current=setTimeout(()=>checkHandle(val),600);
+    hdTimer.current=setTimeout(()=>checkHandle(clean),600);
   }
 
   function pickPhoto(){
@@ -533,6 +672,7 @@ function ProfileSetup({user,T,onDone}){
 
   async function create(){
     if(!nm.trim()) return setErr("Please enter your name");
+    if(hdStatus==="checking") return setErr("Please wait while we check that username…");
     if(hdStatus==="taken") return setErr("That username is already taken. Choose another.");
     setLoading(true);setErr("");
     const sid=shortId(user.id);
@@ -550,7 +690,7 @@ function ProfileSetup({user,T,onDone}){
       age:null,
       photo:photo||null,
       interests:[],
-      links:{},
+      links:{biz_type:acType==="business"?bizType:undefined},
       email:user.email||"",
       short_id:sid,
       account_type:acType,
@@ -559,22 +699,31 @@ function ProfileSetup({user,T,onDone}){
       created_at:new Date().toISOString()
     };
 
+    // Try with biz_type column first; if schema doesn't have it yet, store in links
+    const withBizType={...dbProfile,biz_type:acType==="business"?bizType:null};
+
     try{
-      const {error}=await sb.from("profiles").upsert(dbProfile,{onConflict:"id"});
+      let error;
+      // First attempt: with biz_type column
+      ({error}=await sb.from("profiles").upsert(withBizType,{onConflict:"id"}));
+      if(error?.message?.includes("biz_type")){
+        // Column doesn't exist yet — save without it (biz_type stored in links.biz_type)
+        ({error}=await sb.from("profiles").upsert(dbProfile,{onConflict:"id"}));
+      }
       if(error){
         console.error("Profile save error:",error);
         if(error.code==="23505")setErr("Username already taken. Try a different one.");
         else setErr("Could not save: "+error.message);
         setLoading(false);return;
       }
-      // Pass account_type in the local profile object (not saved to DB until column is added)
-      onDone({...dbProfile,account_type:acType});
+      const finalProfile={...withBizType,biz_type:acType==="business"?bizType:null};
+      onDone(finalProfile);
     }catch(e){setErr("Unexpected error: "+e.message);setLoading(false);}
   }
 
   if(step==="type") return<div style={{minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
     <div style={{width:"100%",maxWidth:380,animation:"ci .4s ease"}}>
-      <div style={{textAlign:"center",marginBottom:32}}><div style={{fontWeight:800,fontSize:36,letterSpacing:"-2px",color:T.txt}}>High<span style={{color:AC,fontWeight:300,letterSpacing:"0.04em"}}>Enough</span></div><div style={{fontSize:13,color:T.mu,marginTop:8}}>What kind of account do you want?</div></div>
+      <div style={{textAlign:"center",marginBottom:32}}><div style={{display:"flex",alignItems:"baseline",lineHeight:1}}><span style={{fontWeight:700,fontSize:32,letterSpacing:"-.3px",color:T.txt}}>High</span><span style={{fontWeight:700,fontSize:32,letterSpacing:"-.3px",color:AC}}>Enough</span><div style={{fontSize:13,color:T.mu,marginTop:8}}>What kind of account do you want?</div></div>
       <div style={{display:"flex",flexDirection:"column",gap:14,marginBottom:24}}>
         {[{id:"personal",emoji:"👤",title:"Personal",desc:"For individuals — rate friends, build your social rep & climb personal tiers"},
           {id:"business",emoji:"🏢",title:"Business / Brand",desc:"For companies, brands & services — let customers rate their experience"}].map(t=>
@@ -587,7 +736,31 @@ function ProfileSetup({user,T,onDone}){
             <div style={{fontSize:12,color:T.mu,lineHeight:1.5}}>{t.desc}</div>
           </div>)}
       </div>
-      <button onClick={()=>setStep("details")} style={{width:"100%",padding:"14px 0",background:`linear-gradient(135deg,${AC}e0,${AC}90)`,borderRadius:13,color:"#fff",fontWeight:700,fontSize:15}}>Continue →</button>
+      <button onClick={()=>setStep(acType==="business"?"biztype":"details")} style={{width:"100%",padding:"14px 0",background:`linear-gradient(135deg,${AC}e0,${AC}90)`,borderRadius:13,color:"#fff",fontWeight:700,fontSize:15}}>Continue →</button>
+    </div>
+  </div>;
+
+  if(step==="biztype") return<div style={{minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
+    <div style={{width:"100%",maxWidth:380,animation:"ci .4s ease"}}>
+      <div style={{textAlign:"center",marginBottom:28}}>
+        <div style={{display:"flex",alignItems:"baseline",lineHeight:1}}><span style={{fontWeight:700,fontSize:32,letterSpacing:"-.3px",color:T.txt}}>High</span><span style={{fontWeight:700,fontSize:32,letterSpacing:"-.3px",color:AC}}>Enough</span>
+        <div style={{fontSize:13,color:T.mu,marginTop:8}}>What best describes your business?</div>
+        <div style={{fontSize:11,color:T.mu,marginTop:4,opacity:.7}}>This determines your rating categories</div>
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:24,maxHeight:"52vh",overflowY:"auto"}}>
+        {BIZ_TYPES.map(bt=><div key={bt.id} onClick={()=>setBizType(bt.id)} style={{padding:"13px 16px",background:bizType===bt.id?`${AC}14`:T.faint,border:`1.5px solid ${bizType===bt.id?AC+"60":T.b1}`,borderRadius:13,cursor:"pointer",transition:"all .15s",display:"flex",alignItems:"center",gap:12}}>
+          <span style={{fontSize:22,flexShrink:0}}>{bt.emoji}</span>
+          <div style={{flex:1}}>
+            <div style={{fontWeight:600,fontSize:14,color:T.txt}}>{bt.label}</div>
+            <div style={{fontSize:10,color:T.mu,marginTop:2}}>{(BIZ_CAT_MAP[bt.id]||[]).map(c=>c.label).join(" · ")}</div>
+          </div>
+          {bizType===bt.id&&<div style={{width:16,height:16,borderRadius:"50%",background:AC,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><svg width="8" height="8" viewBox="0 0 10 10" fill="none"><polyline points="1.5,5 4,7.5 8.5,2.5" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg></div>}
+        </div>)}
+      </div>
+      <div style={{display:"flex",gap:8}}>
+        <button onClick={()=>setStep("type")} style={{flex:1,padding:"13px 0",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:13,color:T.mu,fontWeight:600,fontSize:14}}>← Back</button>
+        <button onClick={()=>setStep("details")} style={{flex:2,padding:"13px 0",background:`linear-gradient(135deg,${AC}e0,${AC}90)`,borderRadius:13,color:"#fff",fontWeight:700,fontSize:14}}>Continue →</button>
+      </div>
     </div>
   </div>;
 
@@ -598,7 +771,7 @@ function ProfileSetup({user,T,onDone}){
 
   return<div style={{minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
     <div style={{width:"100%",maxWidth:380,animation:"ci .4s ease"}}>
-      <div style={{textAlign:"center",marginBottom:24}}><div style={{fontWeight:800,fontSize:36,letterSpacing:"-2px",color:T.txt}}>High<span style={{color:AC,fontWeight:300,letterSpacing:"0.04em"}}>Enough</span></div><div style={{fontSize:13,color:T.mu,marginTop:8}}>{acType==="business"?"Set up your business profile":"Set up your profile"}</div></div>
+      <div style={{textAlign:"center",marginBottom:24}}><div style={{display:"flex",alignItems:"baseline",lineHeight:1}}><span style={{fontWeight:700,fontSize:32,letterSpacing:"-.3px",color:T.txt}}>High</span><span style={{fontWeight:700,fontSize:32,letterSpacing:"-.3px",color:AC}}>Enough</span><div style={{fontSize:13,color:T.mu,marginTop:8}}>{acType==="business"?"Set up your business profile":"Set up your profile"}</div></div>
 
       {/* Avatar with photo upload */}
       <div style={{display:"flex",justifyContent:"center",marginBottom:14}}>
@@ -627,8 +800,9 @@ function ProfileSetup({user,T,onDone}){
       {acType==="personal"&&<input value={bio} onChange={e=>setBio(e.target.value)} placeholder="Bio (optional)" style={{...inp,marginBottom:11}}/>}
 
       <div style={{background:`${AC}10`,border:`1px solid ${AC}25`,borderRadius:10,padding:"8px 12px",marginBottom:16,display:"flex",alignItems:"center",gap:8,fontSize:12,color:T.mu}}>
-        <span>{acType==="business"?"🏢":"👤"}</span><span>{acType==="business"?"Business account — customers score your service":"Personal account — friends score your personality"}</span>
-        <button onClick={()=>setStep("type")} style={{marginLeft:"auto",background:"none",color:AC,fontSize:11,fontWeight:600}}>Change</button>
+        <span>{acType==="business"?(BIZ_TYPES.find(b=>b.id===bizType)?.emoji||"🏢"):"👤"}</span>
+        <span>{acType==="business"?(BIZ_TYPES.find(b=>b.id===bizType)?.label||"Business")+" account":"Personal account — friends score your personality"}</span>
+        <button onClick={()=>setStep(acType==="business"?"biztype":"type")} style={{marginLeft:"auto",background:"none",color:AC,fontSize:11,fontWeight:600}}>Change</button>
       </div>
       {err&&<div style={{color:"#d06060",fontSize:13,marginBottom:12,padding:"9px 12px",background:"#a0303018",borderRadius:9,border:"1px solid #a0303030"}}>{err}</div>}
       <button disabled={loading||hdStatus==="taken"} onClick={create} style={{width:"100%",padding:"14px 0",background:(loading||hdStatus==="taken")?T.faint:`linear-gradient(135deg,${col}e0,${col}90)`,borderRadius:13,color:(loading||hdStatus==="taken")?T.mu:"#fff",fontWeight:700,fontSize:15,display:"flex",alignItems:"center",justifyContent:"center",gap:10}}>
@@ -776,46 +950,50 @@ function QRModal({profile,T,onClose}){
   }
 
   return(
-    <div onClick={e=>e.target===e.currentTarget&&onClose()} style={{position:"fixed",inset:0,zIndex:400,background:"rgba(4,3,14,.92)",backdropFilter:"blur(16px)",WebkitBackdropFilter:"blur(16px)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"16px"}}>
+    <div onClick={e=>e.target===e.currentTarget&&onClose()} style={{position:"fixed",inset:0,zIndex:400,background:"rgba(4,3,14,.94)",backdropFilter:"blur(16px)",WebkitBackdropFilter:"blur(16px)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"16px"}}>
       <canvas ref={cardRef} style={{display:"none"}}/>
       <button onClick={onClose} style={{position:"absolute",top:18,right:18,width:36,height:36,borderRadius:"50%",background:"rgba(255,255,255,.1)",border:"1px solid rgba(255,255,255,.18)",color:"rgba(255,255,255,.8)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>✕</button>
 
-      {/* Profile row */}
-      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:18,width:"100%",maxWidth:300}}>
-        <Ava p={profile} size={48} T={{nav:"#09090f"}} ring/>
-        <div style={{flex:1,minWidth:0}}>
-          <div style={{fontWeight:700,fontSize:16,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{profile.name}</div>
-          <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:"rgba(255,255,255,.4)",marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{displayUrl}</div>
-        </div>
-        <TierBadge sc={sc} size="sm" isBiz={isBiz}/>
-      </div>
-
-      {/* QR Card */}
-      <div style={{background:"#fff",borderRadius:22,padding:"18px 18px 14px",display:"flex",flexDirection:"column",alignItems:"center",boxShadow:`0 0 0 1.5px ${col}50, 0 24px 80px rgba(0,0,0,.7), 0 0 60px ${col}18`,width:"100%",maxWidth:300,position:"relative"}}>
-        {/* Corner decorators — geometric */}
-        {[["0%","0%","0","0"],["100%","0%","0","0"],["0%","100%","0","0"],["100%","100%","0","0"]].map(([r,b,tl,tr],i)=>{
-          const corners=[{top:10,left:10},{top:10,right:10},{bottom:10,left:10},{bottom:10,right:10}];
-          const borders=[{borderTop:`2px solid ${col}`,borderLeft:`2px solid ${col}`},{borderTop:`2px solid ${col}`,borderRight:`2px solid ${col}`},{borderBottom:`2px solid ${col}`,borderLeft:`2px solid ${col}`},{borderBottom:`2px solid ${col}`,borderRight:`2px solid ${col}`}];
-          return<div key={i} style={{position:"absolute",width:16,height:16,...corners[i],...borders[i],borderRadius:2}}/>;
-        })}
-
-        {/* QR canvas with big H overlay */}
-        <div style={{position:"relative",width:210,height:210,display:"flex",alignItems:"center",justifyContent:"center"}}>
-          <canvas ref={qrRef} style={{display:"block",width:210,height:210,borderRadius:4}}/>
-          {!ready&&<div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(255,255,255,.95)",borderRadius:4}}><Spinner/></div>}
-          {/* Big bold H in center */}
-          {ready&&<div style={{position:"absolute",width:40,height:40,borderRadius:"50%",background:"#0a0a14",border:`2px solid ${col}`,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:`0 0 12px ${col}60`}}>
-            <span style={{fontSize:22,fontWeight:900,color:col,fontFamily:"'Inter',sans-serif",lineHeight:1}}>H</span>
-          </div>}
+      {/* QR Card — fully centered, profile below QR */}
+      <div style={{background:"#fff",borderRadius:28,padding:"28px 28px 22px",display:"flex",flexDirection:"column",alignItems:"center",boxShadow:`0 0 0 1.5px ${col}40, 0 32px 100px rgba(0,0,0,.8), 0 0 80px ${col}18`,width:"100%",maxWidth:290,position:"relative"}}>
+        {/* Brand top */}
+        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:20}}>
+          <div style={{width:5,height:5,borderRadius:"50%",background:col}}/>
+          <span style={{fontFamily:"'Inter',sans-serif",fontWeight:900,fontSize:14,color:"#0d0c1a",letterSpacing:"-0.5px"}}>High<span style={{color:col,fontWeight:300}}>Enough</span></span>
+          <div style={{width:5,height:5,borderRadius:"50%",background:col}}/>
         </div>
 
-        {/* UID */}
-        <div style={{marginTop:12,fontFamily:"'JetBrains Mono',monospace",fontSize:14,fontWeight:700,color:"#111",letterSpacing:".1em"}}>#{uid}</div>
-        <div style={{marginTop:3,fontSize:10,color:col,fontFamily:"'JetBrains Mono',monospace",fontWeight:600,letterSpacing:".04em"}}>{displayUrl}</div>
+        {/* QR frame — centrepiece */}
+        <div style={{position:"relative",padding:12,background:"#f7f7ff",borderRadius:20,border:`1.5px solid ${col}22`,marginBottom:20}}>
+          {/* Corner brackets */}
+          {[[{top:-1,left:-1},"3px 0 0 0",{borderTop:`2.5px solid ${col}`,borderLeft:`2.5px solid ${col}`}],
+            [{top:-1,right:-1},"0 3px 0 0",{borderTop:`2.5px solid ${col}`,borderRight:`2.5px solid ${col}`}],
+            [{bottom:-1,left:-1},"0 0 0 3px",{borderBottom:`2.5px solid ${col}`,borderLeft:`2.5px solid ${col}`}],
+            [{bottom:-1,right:-1},"0 0 3px 0",{borderBottom:`2.5px solid ${col}`,borderRight:`2.5px solid ${col}`}]
+          ].map(([pos,r,border],i)=><div key={i} style={{position:"absolute",width:20,height:20,borderRadius:r,...pos,...border}}/>)}
+          {/* QR canvas */}
+          <div style={{position:"relative",width:200,height:200,display:"flex",alignItems:"center",justifyContent:"center"}}>
+            <canvas ref={qrRef} style={{display:"block",width:200,height:200,borderRadius:2}}/>
+            {!ready&&<div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(255,255,255,.95)",borderRadius:2}}><Spinner/></div>}
+            {ready&&<div style={{position:"absolute",width:38,height:38,borderRadius:9,background:"#fff",border:`2.5px solid ${col}`,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:`0 2px 12px ${col}60`}}>
+              <span style={{fontSize:20,fontWeight:900,color:col,fontFamily:"'Inter',sans-serif",lineHeight:1}}>H</span>
+            </div>}
+          </div>
+        </div>
+
+        {/* Profile info below QR */}
+        <div style={{display:"flex",alignItems:"center",gap:10,width:"100%",marginBottom:12}}>
+          <Ava p={profile} size={40} T={{nav:"#fff"}} ring/>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontWeight:700,fontSize:14,color:"#0d0c1a",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{profile.name}</div>
+            <div style={{marginTop:3}}><TierBadge sc={sc} size="sm" isBiz={isBiz}/></div>
+          </div>
+        </div>
+        <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:col,fontWeight:600,letterSpacing:".05em",textAlign:"center"}}>{displayUrl}</div>
       </div>
 
       {/* Actions */}
-      <div style={{display:"flex",gap:10,marginTop:14,width:"100%",maxWidth:300}}>
+      <div style={{display:"flex",gap:10,marginTop:16,width:"100%",maxWidth:290}}>
         <button onClick={shareProfile} style={{flex:1,padding:"13px 0",background:col,borderRadius:14,color:"#fff",fontWeight:700,fontSize:14,display:"flex",alignItems:"center",justifyContent:"center",gap:7,boxShadow:`0 4px 20px ${col}55`}}>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
           Share
@@ -863,12 +1041,23 @@ function RateModal({target,raterId,raterName,existing,T,onClose,onSubmit}){
     </div>
     {tierUp&&<div style={{background:`${tAfter.color}14`,border:`1px solid ${tAfter.color}30`,borderRadius:10,padding:"8px 12px",marginBottom:12,fontSize:12,color:tAfter.color,fontWeight:600,display:"flex",alignItems:"center",gap:6}}><span>{tAfter.emoji}</span> This will push them to {tAfter.label}!</div>}
     {isEdit&&<div style={{background:`${AC}10`,border:`1px solid ${AC}28`,borderRadius:10,padding:"8px 12px",marginBottom:12,fontSize:12,color:AC,fontWeight:600}}>✏️ Updating your previous rating</div>}
-    <div style={{display:"flex",flexDirection:"column",gap:14}}>
-      {cats.map(c=><div key={c.id}>
-        <div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}><span style={{fontSize:13,color:T.txt,fontWeight:600}}>{c.emoji} {c.label}</span><span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:13,color:T.txt,fontWeight:600}}>{vals[c.id]}</span></div>
-        {c.sub&&<div style={{fontSize:11,color:T.mu,marginBottom:5}}>{c.sub}</div>}
-        <input type="range" min={0} max={100} value={vals[c.id]} onChange={e=>setVals(v=>({...v,[c.id]:+e.target.value}))} style={{width:"100%",accentColor:isBiz?"#10a37f":target.color,cursor:"pointer"}}/>
-      </div>)}
+    <div style={{display:"flex",flexDirection:"column",gap:18}}>
+      {cats.map(c=>{
+        const v=vals[c.id];
+        const pct=v/100;
+        const col=isBiz?"#10a37f":target.color;
+        return<div key={c.id}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:3}}>
+            <span style={{fontSize:13,color:T.txt,fontWeight:600}}>{c.emoji} {c.label}</span>
+            <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:13,fontWeight:800,color:v>=80?"#4ade80":v>=50?col:T.mu,background:v>=80?"#4ade8018":v>=50?`${col}18`:T.faint,border:`1px solid ${v>=80?"#4ade8030":v>=50?col+"30":T.b1}`,borderRadius:6,padding:"2px 9px",minWidth:40,textAlign:"center",transition:"all .15s"}}>{v}</div>
+          </div>
+          {c.sub&&<div style={{fontSize:11,color:T.mu,marginBottom:6,opacity:.75}}>{c.sub}</div>}
+          <div style={{position:"relative",height:8,background:T.b1,borderRadius:99,overflow:"hidden",cursor:"pointer"}}>
+            <div style={{position:"absolute",left:0,top:0,bottom:0,width:`${pct*100}%`,background:`linear-gradient(90deg,${col}99,${col})`,borderRadius:99,transition:"width .08s"}}/>
+          </div>
+          <input type="range" min={0} max={100} value={v} onChange={e=>setVals(prev=>({...prev,[c.id]:+e.target.value}))} style={{width:"100%",accentColor:col,cursor:"pointer",marginTop:-4,opacity:0,position:"relative",zIndex:2,height:16}}/>
+        </div>;
+      })}
     </div>
     <button onClick={handleSubmit} disabled={submitting} style={{marginTop:20,width:"100%",padding:"14px 0",background:submitting?T.faint:`linear-gradient(135deg,${target.color}e0,${target.color}90)`,borderRadius:13,color:submitting?T.mu:"#fff",fontWeight:700,fontSize:15,display:"flex",alignItems:"center",justifyContent:"center",gap:10,transition:"all .2s"}}>
       {submitting?<><Spinner/>{isEdit?"Updating…":"Submitting…"}</>:isEdit?"Update Rating ✓":"Submit Rating ✓"}
@@ -934,7 +1123,7 @@ function ProfileModal({profile,myId,following,profiles,T,onClose,onRate,onFollow
   if(peopleList) return<PeopleListModal title={peopleList.title} people={peopleList.people} T={T} onClose={()=>setPeopleList(null)} onView={p=>{setPeopleList(null);if(onViewOther)onViewOther(p);else onClose();}} />;
 
   // ── Full-screen profile view ──
-  return<div style={{position:"fixed",inset:0,zIndex:350,background:T.bg,display:"flex",flexDirection:"column",animation:"slideUp .22s ease",overflowY:"auto"}}>
+  return<div style={{position:"fixed",inset:0,zIndex:500,background:T.bg,display:"flex",flexDirection:"column",animation:"slideUp .22s ease",overflowY:"auto"}}>
     {/* Sticky header bar */}
     <div style={{position:"sticky",top:0,zIndex:10,background:`${T.nav}f0`,borderBottom:`1px solid ${T.b1}`,padding:"12px 16px",paddingTop:"max(12px,env(safe-area-inset-top))",display:"flex",alignItems:"center",gap:12,backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",flexShrink:0}}>
       <button onClick={onClose} style={{background:"none",color:T.txt,padding:"4px",display:"flex",alignItems:"center",flexShrink:0}}><BackIcon/></button>
@@ -946,46 +1135,51 @@ function ProfileModal({profile,myId,following,profiles,T,onClose,onRate,onFollow
     </div>
 
     <div style={{flex:1,padding:"0 0 32px",maxWidth:560,margin:"0 auto",width:"100%"}}>
-      {/* ── Hero banner with tier gradient ── */}
-      <div style={{background:`linear-gradient(160deg,${t.grad[0]}cc,${t.grad[1]}88)`,padding:"28px 20px 24px",position:"relative",overflow:"hidden"}}>
-        <div style={{position:"absolute",inset:0,background:T.bg,opacity:.45,pointerEvents:"none"}}/>
-        <div style={{position:"relative",display:"flex",alignItems:"center",gap:18}}>
+      {/* ── Profile header — no banner, clean card style ── */}
+      <div style={{padding:"24px 20px 0",background:T.bg}}>
+        {/* Avatar + name row */}
+        <div style={{display:"flex",alignItems:"flex-start",gap:16,marginBottom:18}}>
           <div style={{position:"relative",flexShrink:0}}>
-            <Ava p={profile} size={82} T={T} ring/>
-            {isBiz&&<div style={{position:"absolute",bottom:-2,right:-2,width:24,height:24,borderRadius:"50%",background:AC,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,border:`2px solid ${T.bg}`}}>🏢</div>}
+            <div style={{width:88,height:88,borderRadius:"50%",padding:3,background:`linear-gradient(135deg,${t.color},${t.grad?.[1]||t.color}88)`,boxShadow:`0 0 0 1px ${T.bg},0 8px 24px ${t.color}40`}}>
+              <Ava p={profile} size={82} T={T}/>
+            </div>
+            {isBiz&&<div style={{position:"absolute",bottom:0,right:0,width:26,height:26,borderRadius:"50%",background:`linear-gradient(135deg,${AC},${AC}99)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,border:`2px solid ${T.bg}`,boxShadow:`0 2px 8px ${AC}40`}}>🏢</div>}
           </div>
-          <div style={{flex:1,minWidth:0}}>
-            <div style={{fontWeight:800,fontSize:22,color:T.txt,letterSpacing:"-.4px",lineHeight:1.2}}>{profile.name}</div>
-            <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:AC,marginTop:4,fontWeight:600}}>{profile.handle} <span style={{color:T.mu,fontWeight:400}}>#{profile.short_id||shortId(profile.id)}</span>{profile.age&&<span style={{color:T.mu}}> · {profile.age}</span>}</div>
-            {profile.bio&&<p style={{color:T.mu,fontSize:12.5,marginTop:8,lineHeight:1.55,margin:"8px 0 0"}}>{profile.bio}</p>}
+          <div style={{flex:1,minWidth:0,paddingTop:4}}>
+            <div style={{fontWeight:800,fontSize:21,color:T.txt,letterSpacing:"-.4px",lineHeight:1.15,marginBottom:3}}>{profile.name}</div>
+            <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap",marginBottom:6}}>
+              <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:AC,fontWeight:600}}>{profile.handle}</span>
+              <span style={{color:T.mu,fontSize:11}}>·</span>
+              <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:T.mu}}>#{profile.short_id||shortId(profile.id)}</span>
+              {profile.age&&<><span style={{color:T.mu,fontSize:11}}>·</span><span style={{fontSize:11,color:T.mu}}>{profile.age}</span></>}
+            </div>
+            {profile.bio&&<p style={{color:T.mu,fontSize:12.5,lineHeight:1.55,margin:0}}>{profile.bio}</p>}
           </div>
         </div>
-      </div>
 
-      <div style={{padding:"16px 16px 0"}}>
         {/* Stats row */}
         <div style={{display:"flex",gap:8,marginBottom:14}}>
-          <button style={{flex:1,padding:"10px 4px",borderRadius:12,background:T.faint,border:`1px solid ${T.b1}`,cursor:"pointer",textAlign:"center"}} onClick={showFollowers}>
-            <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:16,fontWeight:800,color:T.txt}}>{fmtCount(profile.followers_count||0)}</div>
+          <button style={{flex:1,padding:"12px 4px",borderRadius:14,background:T.faint,border:`1px solid ${T.b1}`,cursor:"pointer",textAlign:"center"}} onClick={showFollowers}>
+            <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:17,fontWeight:800,color:T.txt}}>{fmtCount(profile.followers_count||0)}</div>
             <div style={{fontSize:10,color:T.mu,marginTop:2}}>Followers</div>
           </button>
-          <button style={{flex:1,padding:"10px 4px",borderRadius:12,background:T.faint,border:`1px solid ${T.b1}`,cursor:"pointer",textAlign:"center"}} onClick={showFollowing}>
-            <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:16,fontWeight:800,color:T.txt}}>{fmtCount(profile.following_count||0)}</div>
+          <button style={{flex:1,padding:"12px 4px",borderRadius:14,background:T.faint,border:`1px solid ${T.b1}`,cursor:"pointer",textAlign:"center"}} onClick={showFollowing}>
+            <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:17,fontWeight:800,color:T.txt}}>{fmtCount(profile.following_count||0)}</div>
             <div style={{fontSize:10,color:T.mu,marginTop:2}}>Following</div>
           </button>
-          <button style={{flex:1,padding:"10px 4px",borderRadius:12,background:`${t.color}14`,border:`1px solid ${t.color}30`,cursor:"pointer",textAlign:"center"}} onClick={showRaters}>
-            <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:16,fontWeight:800,color:t.color}}>{sc!=null?fmtScore(sc):"—"}</div>
+          <button style={{flex:1,padding:"12px 4px",borderRadius:14,background:`linear-gradient(135deg,${t.color}20,${t.color}08)`,border:`1.5px solid ${t.color}35`,cursor:"pointer",textAlign:"center",boxShadow:`0 2px 12px ${t.color}18`}} onClick={showRaters}>
+            <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:17,fontWeight:800,color:t.color,textShadow:`0 0 12px ${t.color}60`}}>{sc!=null?fmtScore(sc):"—"}</div>
             <div style={{fontSize:10,color:t.color,opacity:.85,marginTop:2}}>{n} {isBiz?"Reviews":"Ratings"}</div>
           </button>
         </div>
 
-        {/* Tier progress */}
-        <div style={{background:T.card,border:`1px solid ${T.b1}`,borderRadius:14,padding:"12px 14px",marginBottom:14}}>
+        {/* Tier progress bar */}
+        <div style={{background:`linear-gradient(135deg,${t.color}14,${t.color}06)`,border:`1.5px solid ${t.color}28`,borderRadius:14,padding:"12px 14px",marginBottom:14,boxShadow:`0 2px 12px ${t.color}10`}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
             <TierBadge sc={sc} size="sm" isBiz={isBiz}/>
             {next?<span style={{fontSize:11,color:T.mu,fontFamily:"'JetBrains Mono',monospace"}}>{next.emoji} {next.label} at {next.min.toLocaleString()}</span>:<span style={{fontSize:11,color:t.color,fontWeight:600}}>Top tier 🔝</span>}
           </div>
-          <div style={{height:5,background:T.b1,borderRadius:99,overflow:"hidden"}}><div style={{width:`${pct*100}%`,height:"100%",background:t.color,borderRadius:99,transition:"width .9s"}}/></div>
+          <div style={{height:6,background:T.b1,borderRadius:99,overflow:"hidden"}}><div style={{width:`${pct*100}%`,height:"100%",background:`linear-gradient(90deg,${t.color}88,${t.color})`,borderRadius:99,transition:"width .9s",boxShadow:`0 0 8px ${t.color}60`}}/></div>
         </div>
 
         {(profile.interests||[]).length>0&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:14}}>{profile.interests.map(i=><Tag key={i} label={i} color={profile.color}/>)}</div>}
@@ -996,11 +1190,28 @@ function ProfileModal({profile,myId,following,profiles,T,onClose,onRate,onFollow
           {links.tiktok&&<a href={`https://tiktok.com/@${links.tiktok.replace("@","")}`} target="_blank" rel="noreferrer" style={{fontSize:11,color:T.mu,background:T.faint,border:`1px solid ${T.b1}`,borderRadius:6,padding:"3px 10px",fontWeight:600}}>🎵 {links.tiktok}</a>}
           {links.website&&<a href={links.website} target="_blank" rel="noreferrer" style={{fontSize:11,color:AC,background:`${AC}14`,border:`1px solid ${AC}28`,borderRadius:6,padding:"3px 10px",fontWeight:600}}>🔗 Site</a>}
         </div>}
+      </div>
 
+      <div style={{padding:"0 16px"}}>
         {/* Category bars */}
         <div style={{height:1,background:T.b1,marginBottom:14}}/>
-        {n>0?<div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:14}}>{cats.map(c=>{const v=cAvg(profile,c.id);return<div key={c.id}><div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{fontSize:13,color:T.mu}}>{c.emoji} {c.label}</span><span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:12,color:T.txt,fontWeight:600}}>{v}/100</span></div>{c.sub&&<div style={{fontSize:10,color:T.mu,opacity:.6,marginBottom:4}}>{c.sub}</div>}<div style={{height:5,background:T.faint,borderRadius:99,overflow:"hidden"}}><div style={{width:`${v}%`,height:"100%",background:profile.color,borderRadius:99,opacity:.9,transition:"width .7s"}}/></div></div>;})}
-        </div>:<p style={{color:T.mu,textAlign:"center",padding:"20px 0",fontSize:13,marginBottom:8}}>No ratings yet</p>}
+        {n>0?<div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:14}}>{cats.map(c=>{const v=cAvg(profile,c.id);return<div key={c.id}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+            <span style={{fontSize:13,color:T.txt,fontWeight:500}}>{c.emoji} {c.label}</span>
+            <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:12,fontWeight:800,color:v>=80?"#4ade80":v>=60?profile.color:T.mu,background:v>=80?"#4ade8014":v>=60?`${profile.color}14`:T.faint,border:`1px solid ${v>=80?"#4ade8030":v>=60?profile.color+"28":T.b1}`,borderRadius:6,padding:"2px 8px"}}>{v}/100</span>
+          </div>
+          {c.sub&&<div style={{fontSize:10,color:T.mu,opacity:.65,marginBottom:5}}>{c.sub}</div>}
+          <div style={{height:6,background:T.faint,borderRadius:99,overflow:"hidden"}}>
+            <div style={{width:`${v}%`,height:"100%",background:v>=80?`linear-gradient(90deg,#4ade8099,#4ade80)`:`linear-gradient(90deg,${profile.color}80,${profile.color})`,borderRadius:99,transition:"width .7s"}}/>
+          </div>
+        </div>;})}
+        </div>:<div style={{background:`linear-gradient(135deg,${t.grad[0]}30,${t.grad[1]}18)`,border:`1px solid ${t.color}25`,borderRadius:14,padding:"20px 16px",marginBottom:8,textAlign:"center",position:"relative",overflow:"hidden"}}>
+          <div style={{position:"absolute",right:-10,top:-10,fontSize:72,opacity:.07,pointerEvents:"none"}}>👻</div>
+          <div style={{fontSize:22,marginBottom:6}}>👻</div>
+          <div style={{fontWeight:700,fontSize:14,color:T.txt,marginBottom:4}}>Still a Ghost</div>
+          <div style={{fontSize:12,color:T.mu,lineHeight:1.6}}>{isSelf?"Share your profile to get your first rating!":"No ratings yet — be the first to rate them!"}</div>
+          {!isSelf&&<button onClick={()=>{onClose();onRate(profile,myR);}} style={{marginTop:12,padding:"9px 20px",background:`linear-gradient(135deg,${profile.color}cc,${profile.color}80)`,borderRadius:12,color:"#fff",fontWeight:700,fontSize:12,border:"none",boxShadow:`0 4px 14px ${profile.color}40`}}>{isBiz?"✍️ Be first to review":"⭐ Be first to rate"}</button>}
+        </div>}
 
         {myR&&!isSelf&&<div style={{background:T.faint,border:`1px solid ${T.b1}`,borderRadius:10,padding:"10px 13px",marginBottom:14}}><div style={{fontSize:10,color:T.mu,marginBottom:6,textTransform:"uppercase",letterSpacing:1,fontWeight:600}}>Your Rating</div><div style={{display:"flex",gap:5,flexWrap:"wrap"}}>{cats.map(c=><Tag key={c.id} label={`${c.emoji} ${myR[c.id]}`} color={T.mu}/>)}</div></div>}
 
@@ -1588,7 +1799,6 @@ function SearchTab({profiles,myId,following,T,onView,onFollow,onUnfollow,onRate,
   const [filter,setFilter]=useState("all");
   const [focused,setFocused]=useState(false);
   const [scanning,setScanning]=useState(false);
-  const [contacts,setContacts]=useState(null);
   const videoRef=useRef(null);
   const streamRef=useRef(null);
 
@@ -1620,7 +1830,6 @@ function SearchTab({profiles,myId,following,T,onView,onFollow,onUnfollow,onRate,
             const code=window.jsQR&&window.jsQR(img.data,img.width,img.height,{inversionAttempts:"dontInvert"});
             if(code?.data){
               active=false;stopScan();
-              // Navigate to the scanned URL
               const url=code.data;
               if(url.includes("highenough.in")){window.location.href=url;}
               else{alert("Not a HighEnough QR code: "+url);}
@@ -1636,28 +1845,6 @@ function SearchTab({profiles,myId,following,T,onView,onFollow,onUnfollow,onRate,
   function stopScan(){
     streamRef.current?.getTracks().forEach(t=>t.stop());
     streamRef.current=null;setScanning(false);
-  }
-
-  async function loadContacts(){
-    try{
-      if(!("contacts" in navigator&&"ContactsManager" in window)){
-        alert("Contact access not supported on this device/browser.");return;
-      }
-      const props=["name","email","tel"];
-      const ctcts=await navigator.contacts.select(props,{multiple:true});
-      setContacts(ctcts||[]);
-    }catch(e){alert("Could not access contacts.");}
-  }
-
-  function sendInvite(contact){
-    const name=contact.name?.[0]||"friend";
-    const sc=pScore(myProfile);
-    const isBiz=myProfile?.account_type==="business";
-    const tier=tierOf(sc??0,isBiz);
-    const url=`https://highenough.in/?${myProfile.short_id||shortId(myProfile.id)}`;
-    const text=`Hey ${name}! Check out my ${isBiz?"business":"profile"} on HighEnough — ${myProfile.name} (${tier.emoji} ${tier.label}${sc!=null?", "+fmtScore(sc)+" pts":""}) 👉 ${url}\n\nJoin HighEnough to rate me!`;
-    if(navigator.share){navigator.share({title:"Join me on HighEnough",text,url}).catch(()=>{});}
-    else{navigator.clipboard?.writeText(text);alert("Invite text copied!");}
   }
 
   if(scanning) return<div style={{position:"fixed",inset:0,zIndex:500,background:"#000",display:"flex",flexDirection:"column"}}>
@@ -1686,31 +1873,7 @@ function SearchTab({profiles,myId,following,T,onView,onFollow,onUnfollow,onRate,
       </div>
     </div>
 
-    {/* Contact invite section */}
-    {q.trim()===0&&<div style={{margin:"8px 14px 0",padding:"12px 14px",background:`${AC}0c`,border:`1px solid ${AC}20`,borderRadius:12,display:"flex",alignItems:"center",gap:10}}>
-      <div style={{fontSize:20}}>📱</div>
-      <div style={{flex:1}}>
-        <div style={{fontWeight:600,fontSize:13,color:T.txt}}>Invite from Contacts</div>
-        <div style={{fontSize:11,color:T.mu,marginTop:1}}>Find friends not yet on HighEnough</div>
-      </div>
-      <button onClick={contacts?()=>setContacts(null):loadContacts} style={{padding:"7px 13px",background:`linear-gradient(135deg,${AC}cc,${AC}80)`,borderRadius:9,color:"#fff",fontWeight:600,fontSize:12}}>
-        {contacts?"✕ Close":"Browse"}
-      </button>
-    </div>}
-
-    {contacts&&q.trim()===0&&<div style={{margin:"8px 14px",padding:"8px 0",maxHeight:200,overflowY:"auto"}}>
-      {contacts.length===0&&<div style={{textAlign:"center",padding:"16px",color:T.mu,fontSize:13}}>No contacts found</div>}
-      {contacts.map((c,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 4px",borderBottom:`1px solid ${T.b1}20`}}>
-        <div style={{width:36,height:36,borderRadius:"50%",background:`${AC}18`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,color:AC,fontSize:13}}>{(c.name?.[0]||"?")[0].toUpperCase()}</div>
-        <div style={{flex:1,minWidth:0}}>
-          <div style={{fontWeight:600,fontSize:13,color:T.txt}}>{c.name?.[0]||"Unknown"}</div>
-          <div style={{fontSize:11,color:T.mu}}>{c.email?.[0]||c.tel?.[0]||""}</div>
-        </div>
-        <button onClick={()=>sendInvite(c)} style={{padding:"6px 12px",background:`${AC}18`,border:`1px solid ${AC}30`,borderRadius:8,color:AC,fontWeight:600,fontSize:11}}>Invite</button>
-      </div>)}
-    </div>}
-
-    {q.trim()===0&&<>
+    {!q.trim()&&<>
       <div style={{padding:"14px 16px 8px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
         <span style={{fontSize:14,fontWeight:700,color:T.txt}}>Discover</span>
         <span style={{fontSize:11,color:T.mu}}>{suggested.length} people</span>
@@ -1769,8 +1932,10 @@ function BoardTab({profiles,myId,T,onView}){
     </div>
 
     {/* Podium */}
-    {top3.length>=3&&<div style={{display:"flex",alignItems:"flex-end",justifyContent:"center",gap:6,padding:"20px 14px 0"}}>
-      {[top3[1],top3[0],top3[2]].map((p,i)=>{const hs=[90,124,78];const meds=["🥈","🥇","🥉"];const t=tierOf(p.sc,acFilter==="business");
+    {top3.length>=1&&<div style={{display:"flex",alignItems:"flex-end",justifyContent:"center",gap:6,padding:"20px 14px 0"}}>
+      {(top3.length===1?[null,top3[0],null]:top3.length===2?[top3[1],top3[0],null]:[top3[1],top3[0],top3[2]]).map((p,i)=>{
+        if(!p)return<div key={i} style={{flex:1}}/>;
+        const hs=[90,124,78];const meds=["🥈","🥇","🥉"];const t=tierOf(p.sc,acFilter==="business");
         return<div key={p.id} onClick={()=>onView(p)} style={{flex:1,textAlign:"center",cursor:"pointer",animation:`ci .4s ease ${i*80}ms both`}}>
           <div style={{display:"flex",justifyContent:"center",marginBottom:6}}><Ava p={p} size={i===1?60:46} T={T}/></div>
           <div style={{fontSize:i===1?22:18}}>{meds[i]}</div>
@@ -1791,16 +1956,16 @@ function BoardTab({profiles,myId,T,onView}){
 
     <div style={{padding:"0 14px"}}>
       {list.length===0&&<div style={{textAlign:"center",padding:"40px 0",color:T.mu,fontSize:13}}>Nothing here yet</div>}
-      {list.slice(top3.length>0&&sub==="all"?3:0).map((p,i)=>{const isBiz2=acFilter==="business";const t=tierOf(p.sc,isBiz2),rank=i+(sub==="all"?4:1);
-        return<div key={p.id} onClick={()=>onView(p)} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 14px",background:`linear-gradient(135deg,${T.card},${T.surf})`,border:`1px solid ${T.b1}`,borderRadius:16,marginBottom:8,cursor:"pointer",transition:"all .14s",animation:`ci .28s ease ${i*35}ms both`,boxShadow:"0 2px 12px rgba(0,0,0,.12)"}}>
-          <div style={{width:28,textAlign:"center",fontFamily:"'JetBrains Mono',monospace",fontSize:12,fontWeight:700,color:T.mu}}>#{rank}</div>
-          <Ava p={p} size={42} T={T}/>
+      {list.slice(top3.length>0&&sub==="all"?3:0).map((p,i)=>{const isBiz2=acFilter==="business";const t=tierOf(p.sc,isBiz2),rank=i+(sub==="all"?4:1);const isTop=rank<=3;
+        return<div key={p.id} onClick={()=>onView(p)} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 14px",background:isTop?`linear-gradient(135deg,${t.color}18,${t.color}08)`:`linear-gradient(135deg,${T.card},${T.surf})`,border:`1px solid ${isTop?t.color+"40":T.b1}`,borderRadius:16,marginBottom:8,cursor:"pointer",transition:"all .14s",animation:`ci .28s ease ${i*35}ms both`,boxShadow:isTop?`0 4px 20px ${t.color}18`:"0 2px 12px rgba(0,0,0,.12)"}}>
+          <div style={{width:28,textAlign:"center",fontFamily:"'JetBrains Mono',monospace",fontSize:isTop?14:12,fontWeight:800,color:isTop?t.color:T.mu}}>#{rank}</div>
+          <Ava p={p} size={isTop?46:42} T={T}/>
           <div style={{flex:1,minWidth:0}}>
-            <div style={{fontWeight:700,fontSize:14,color:T.txt,marginBottom:3}}>{p.name}{p.id===myId&&<span style={{fontSize:9,marginLeft:6,background:`${AC}18`,color:AC,borderRadius:10,padding:"1px 7px",fontFamily:"'JetBrains Mono',monospace"}}>you</span>}{isBiz2&&<span style={{fontSize:9,marginLeft:4,background:`${AC}14`,color:AC,borderRadius:10,padding:"1px 7px"}}>🏢</span>}</div>
+            <div style={{fontWeight:isTop?800:700,fontSize:isTop?15:14,color:T.txt,marginBottom:3}}>{p.name}{p.id===myId&&<span style={{fontSize:9,marginLeft:6,background:`${AC}18`,color:AC,borderRadius:10,padding:"1px 7px",fontFamily:"'JetBrains Mono',monospace"}}>you</span>}{isBiz2&&<span style={{fontSize:9,marginLeft:4,background:`${AC}14`,color:AC,borderRadius:10,padding:"1px 7px"}}>🏢</span>}</div>
             <TierBadge sc={p.sc>=0?p.sc:null} size="sm" isBiz={isBiz2}/>
           </div>
           <div style={{textAlign:"right",flexShrink:0}}>
-            <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:17,fontWeight:800,color:t.color}}>{fmtScore(p.sc>=0?p.sc:null)}</div>
+            <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:isTop?19:17,fontWeight:800,color:t.color,textShadow:isTop?`0 0 12px ${t.color}50`:"none"}}>{fmtScore(p.sc>=0?p.sc:null)}</div>
             {sub==="trending"&&p.tC&&<div style={{fontSize:10,color:"#10a37f",marginTop:2}}>+{p.tC} this week</div>}
             {sub==="rising"&&p.gain&&<div style={{fontSize:10,color:"#c08a2e",marginTop:2}}>+{p.gain} pts</div>}
           </div>
@@ -1838,7 +2003,7 @@ function FeedCard({p,myId,following,T,onView,onFollow,onUnfollow,onRate,onMsg,id
 }
 
 /* ── PROFILE TAB (own) ── */
-function ProfileTab({myProfile,myP,T,onQR,onSettings,onEditPhoto,onScoreCard,following,profiles,onViewProfile}){
+function ProfileTab({myProfile,myP,T,onQR,onSettings,onEditProfile,onEditPhoto,onScoreCard,following,profiles,onViewProfile}){
   const isBiz=myProfile.account_type==="business";
   const cats=getCats(myP);
   const sc=pScore(myP),t=tierOf(sc??0,isBiz),pct=tierPct(sc??0,isBiz);
@@ -1881,55 +2046,54 @@ function ProfileTab({myProfile,myP,T,onQR,onSettings,onEditPhoto,onScoreCard,fol
   </div>;
 
   return<div>
+    {/* Header row */}
     <div style={{padding:"14px 16px 0",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
       <div>
-        <div style={{fontWeight:700,fontSize:17,color:T.txt}}>{myProfile.name}</div>
-        {/* UID shown clearly */}
-        <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:AC,marginTop:2,fontWeight:600,letterSpacing:1}}>UID #{myProfile.short_id||shortId(myProfile.id)}</div>
+        <div style={{fontWeight:800,fontSize:18,color:T.txt,letterSpacing:"-.3px"}}>{myProfile.name}</div>
+        <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:AC,marginTop:2,fontWeight:600,letterSpacing:.8}}>UID #{myProfile.short_id||shortId(myProfile.id)}</div>
       </div>
-      <button onClick={onSettings} style={{padding:"7px 14px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:9,color:T.txt,fontWeight:600,fontSize:13}}>⚙️ Settings</button>
+      <button onClick={onSettings} style={{padding:"7px 14px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:10,color:T.txt,fontWeight:600,fontSize:13}}>⚙️ Settings</button>
     </div>
     <div style={{padding:"16px 16px 0"}}>
-      {/* Avatar + stats — Instagram style */}
-      <div style={{display:"flex",alignItems:"center",gap:18,marginBottom:14}}>
-        <div style={{position:"relative",cursor:"pointer"}} onClick={onEditPhoto}>
-          <Ava p={myP} size={82} T={T} ring/>
-          <div style={{position:"absolute",bottom:-2,right:-2,width:26,height:26,borderRadius:"50%",background:`${myProfile.color}cc`,border:`2px solid ${T.bg}`,display:"flex",alignItems:"center",justifyContent:"center"}}><EditIcon/></div>
+      {/* Avatar + stats */}
+      <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:14}}>
+        <div style={{position:"relative",cursor:"pointer",flexShrink:0}} onClick={onEditPhoto}>
+          <div style={{width:88,height:88,borderRadius:"50%",padding:3,background:`linear-gradient(135deg,${t.color},${t.grad?.[1]||t.color}88)`,boxShadow:`0 0 0 1px ${T.bg},0 6px 20px ${t.color}40`}}>
+            <Ava p={myP} size={82} T={T}/>
+          </div>
+          <div style={{position:"absolute",bottom:0,right:0,width:26,height:26,borderRadius:"50%",background:`linear-gradient(135deg,${myProfile.color}dd,${myProfile.color}99)`,border:`2px solid ${T.bg}`,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:`0 2px 8px ${myProfile.color}50`}}><EditIcon/></div>
         </div>
-        {/* Stats — tappable, no blue underlines */}
+        {/* Stats */}
         <div style={{flex:1,display:"flex",gap:6}}>
-          <button onClick={()=>{sb.from("follows").select("follower_id").eq("following_id",myProfile.id).then(({data})=>{const ids=(data||[]).map(r=>r.follower_id);const list=(profiles||[]).filter(p=>ids.includes(p.id)).map(p=>({...p,score:pScore(p)}));setPeopleList({title:"Followers",people:list});});}} style={{flex:1,background:T.faint,borderRadius:12,padding:"10px 0",textAlign:"center",border:`1px solid ${T.b1}`,cursor:"pointer"}}>
-            <div style={{fontFamily:"'JetBrains Mono',monospace",fontWeight:700,fontSize:15,color:T.txt}}>{fmtCount(myProfile.followers_count||0)}</div>
+          <button onClick={()=>{sb.from("follows").select("follower_id").eq("following_id",myProfile.id).then(({data})=>{const ids=(data||[]).map(r=>r.follower_id);const list=(profiles||[]).filter(p=>ids.includes(p.id)).map(p=>({...p,score:pScore(p)}));setPeopleList({title:"Followers",people:list});});}} style={{flex:1,background:T.faint,borderRadius:13,padding:"11px 0",textAlign:"center",border:`1px solid ${T.b1}`,cursor:"pointer"}}>
+            <div style={{fontFamily:"'JetBrains Mono',monospace",fontWeight:800,fontSize:16,color:T.txt}}>{fmtCount(myProfile.followers_count||0)}</div>
             <div style={{fontSize:10,color:T.mu,marginTop:2}}>Followers</div>
           </button>
-          <button onClick={()=>{const list=(profiles||[]).filter(p=>following.includes(p.id)).map(p=>({...p,score:pScore(p)}));setPeopleList({title:"Following",people:list});}} style={{flex:1,background:T.faint,borderRadius:12,padding:"10px 0",textAlign:"center",border:`1px solid ${T.b1}`,cursor:"pointer"}}>
-            <div style={{fontFamily:"'JetBrains Mono',monospace",fontWeight:700,fontSize:15,color:T.txt}}>{fmtCount(myProfile.following_count||0)}</div>
+          <button onClick={()=>{const list=(profiles||[]).filter(p=>following.includes(p.id)).map(p=>({...p,score:pScore(p)}));setPeopleList({title:"Following",people:list});}} style={{flex:1,background:T.faint,borderRadius:13,padding:"11px 0",textAlign:"center",border:`1px solid ${T.b1}`,cursor:"pointer"}}>
+            <div style={{fontFamily:"'JetBrains Mono',monospace",fontWeight:800,fontSize:16,color:T.txt}}>{fmtCount(myProfile.following_count||0)}</div>
             <div style={{fontSize:10,color:T.mu,marginTop:2}}>Following</div>
           </button>
           <button onClick={()=>{
             const cats2=getCats(myP);
             const raters=(myP.ratings||[]).map(r=>{
               const given=Math.round(cats2.reduce((s,c)=>s+(r[c.id]||0),0)/cats2.length);
-              // Look up full profile from loaded state so name/photo/tier are correct
               const rp=(profiles||[]).find(p=>p.id===r.raterId);
-              return rp
-                ?{...rp,score:pScore(rp),ratingGiven:given}
-                :{id:r.raterId,name:r.raterName||"?",handle:"",color:AC,ratingGiven:given};
+              return rp?{...rp,score:pScore(rp),ratingGiven:given}:{id:r.raterId,name:r.raterName||"?",handle:"",color:AC,ratingGiven:given};
             });
             setPeopleList({title:"Rated by",people:raters});
-          }} style={{flex:1,background:`${t.color}14`,borderRadius:12,padding:"10px 0",textAlign:"center",border:`1px solid ${t.color}28`,cursor:"pointer"}}>
-            <div style={{fontFamily:"'JetBrains Mono',monospace",fontWeight:700,fontSize:15,color:t.color}}>{sc!=null?fmtScore(sc):"—"}</div>
+          }} style={{flex:1,background:`linear-gradient(135deg,${t.color}20,${t.color}08)`,borderRadius:13,padding:"11px 0",textAlign:"center",border:`1.5px solid ${t.color}35`,cursor:"pointer",boxShadow:`0 2px 12px ${t.color}18`}}>
+            <div style={{fontFamily:"'JetBrains Mono',monospace",fontWeight:800,fontSize:16,color:t.color,textShadow:`0 0 10px ${t.color}60`}}>{sc!=null?fmtScore(sc):"—"}</div>
             <div style={{fontSize:10,color:t.color,opacity:.8,marginTop:2}}>Score</div>
           </button>
         </div>
       </div>
-      {myProfile.bio&&<p style={{color:T.mu,fontSize:13,lineHeight:1.5,marginBottom:10}}>{myProfile.bio}</p>}
-      <div style={{marginBottom:10}}><TierBadge sc={sc} size="md" isBiz={isBiz}/></div>
+      {myProfile.bio&&<p style={{color:T.mu,fontSize:13,lineHeight:1.55,marginBottom:10}}>{myProfile.bio}</p>}
+      <div style={{marginBottom:12}}><TierBadge sc={sc} size="md" isBiz={isBiz}/></div>
       {/* Action buttons */}
       <div style={{display:"flex",gap:8,marginBottom:16}}>
-        <button onClick={onSettings} style={{flex:1,padding:"9px 0",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:10,color:T.txt,fontWeight:600,fontSize:12}}>Edit Profile</button>
-        {sc!=null&&<button onClick={onScoreCard} style={{flex:1,padding:"9px 0",background:`${AC}14`,border:`1px solid ${AC}28`,borderRadius:10,color:AC,fontWeight:600,fontSize:12}}>Score Card</button>}
-        <button onClick={shareMyProfile} style={{flex:1,padding:"9px 0",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:10,color:T.txt,fontWeight:600,fontSize:12,display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
+        <button onClick={onEditProfile} style={{flex:1,padding:"10px 0",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:11,color:T.txt,fontWeight:600,fontSize:12}}>Edit Profile</button>
+        <button onClick={onScoreCard} style={{flex:1,padding:"10px 0",background:`linear-gradient(135deg,${AC}22,${AC}0e)`,border:`1.5px solid ${AC}35`,borderRadius:11,color:AC,fontWeight:700,fontSize:12,boxShadow:`0 2px 10px ${AC}20`}}>Score Card</button>
+        <button onClick={shareMyProfile} style={{flex:1,padding:"10px 0",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:11,color:T.txt,fontWeight:600,fontSize:12,display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
           Share
         </button>
@@ -1947,15 +2111,178 @@ function ProfileTab({myProfile,myP,T,onQR,onSettings,onEditPhoto,onScoreCard,fol
           <div style={{height:5,background:T.b1,borderRadius:99,overflow:"hidden"}}><div style={{width:`${pct*100}%`,height:"100%",background:t.color,borderRadius:99,opacity:.9,transition:"width .9s"}}/></div>
         </div>
         {cats.map(c=>{const v=cAvg(myP,c.id);return<div key={c.id} style={{marginBottom:9}}>
-          <div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}><span style={{fontSize:12,color:T.mu}}>{c.emoji} {c.label}</span><span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:T.txt,fontWeight:600}}>{v}/100</span></div>
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}><span style={{fontSize:12,color:T.mu}}>{c.emoji} {c.label}</span><span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:v>0?T.txt:T.mu,fontWeight:600}}>{v}/100</span></div>
           {c.sub&&<div style={{fontSize:10,color:T.mu,opacity:.6,marginBottom:3}}>{c.sub}</div>}
-          <div style={{height:4,background:T.faint,borderRadius:99,overflow:"hidden"}}><div style={{width:`${v}%`,height:"100%",background:myProfile.color,borderRadius:99,opacity:.85}}/></div>
+          <div style={{height:4,background:T.faint,borderRadius:99,overflow:"hidden"}}><div style={{width:`${v}%`,height:"100%",background:v>=80?"#4ade80":v>=60?myProfile.color:T.b2,borderRadius:99,opacity:.85,transition:"width .6s"}}/></div>
         </div>;})}
-      </>:<div style={{textAlign:"center",padding:"20px 0",color:T.mu,fontSize:13}}>No {isBiz?"reviews":"ratings"} yet — share your QR to get {isBiz?"reviewed":"rated"}!</div>}
+      {n===0&&<div style={{borderRadius:16,overflow:"hidden",marginTop:8}}>
+        {isBiz?<>
+          {/* Business new user — professional */}
+          <div style={{background:`linear-gradient(135deg,${t.grad[0]}30,${t.grad[1]}18)`,border:`1px solid ${t.color}28`,borderRadius:16,padding:"20px 18px",marginBottom:10,position:"relative",overflow:"hidden"}}>
+            <div style={{position:"absolute",right:-14,top:-14,fontSize:72,opacity:.06,lineHeight:1,pointerEvents:"none"}}>🏢</div>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+              <TierBadge sc={null} size="sm" isBiz={true}/>
+              <span style={{fontSize:12,color:T.mu}}>No reviews yet</span>
+            </div>
+            <div style={{fontWeight:800,fontSize:18,color:T.txt,letterSpacing:"-.3px",marginBottom:6}}>Start collecting reviews</div>
+            <div style={{fontSize:12,color:T.mu,lineHeight:1.65}}>Share your profile with customers. Every review builds your public reputation and moves you up the tier ladder.</div>
+          </div>
+          {[
+            {icon:"🔗",title:"Share your profile link",desc:"Post it on your bio, WhatsApp or Instagram"},
+            {icon:"📱",title:"Show your QR code",desc:"Let customers scan and review you instantly"},
+            {icon:"📊",title:"Build your reputation",desc:"Reviews across 6 categories build your overall score"},
+          ].map((s,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",background:T.card,border:`1px solid ${T.b1}`,borderRadius:12,marginBottom:7}}>
+            <div style={{width:36,height:36,borderRadius:10,background:`${AC}14`,border:`1px solid ${AC}22`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,flexShrink:0}}>{s.icon}</div>
+            <div style={{flex:1}}><div style={{fontWeight:600,fontSize:13,color:T.txt}}>{s.title}</div><div style={{fontSize:11,color:T.mu,marginTop:1}}>{s.desc}</div></div>
+          </div>)}
+        </>:<>
+          {/* Personal new user */}
+          <div style={{background:`linear-gradient(135deg,${t.grad[0]}44,${t.grad[1]}22)`,border:`1px solid ${t.color}30`,borderRadius:16,padding:"20px 18px",marginBottom:10,position:"relative",overflow:"hidden"}}>
+            <div style={{position:"absolute",right:-14,top:-14,fontSize:80,opacity:.07,lineHeight:1,pointerEvents:"none"}}>👻</div>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+              <TierBadge sc={null} size="sm" isBiz={false}/>
+              <span style={{fontSize:12,color:T.mu}}>Starting tier</span>
+            </div>
+            <div style={{fontWeight:800,fontSize:18,color:T.txt,letterSpacing:"-.3px",marginBottom:6}}>You're a Ghost 👻</div>
+            <div style={{fontSize:12,color:T.mu,lineHeight:1.65}}>No one can see your score yet. Get your first rating to unlock your tier and start climbing.</div>
+          </div>
+          {[
+            {icon:"🔗",title:"Share your profile",desc:"Send your link or QR to someone you know"},
+            {icon:"⭐",title:"Get rated",desc:"They rate you across 6 categories above"},
+            {icon:"🏆",title:"Earn your tier",desc:"Your score goes live — climb from Ghost to HighEnough"},
+          ].map((s,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",background:T.card,border:`1px solid ${T.b1}`,borderRadius:12,marginBottom:7}}>
+            <div style={{width:36,height:36,borderRadius:10,background:`${AC}14`,border:`1px solid ${AC}22`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,flexShrink:0}}>{s.icon}</div>
+            <div style={{flex:1}}><div style={{fontWeight:600,fontSize:13,color:T.txt}}>{s.title}</div><div style={{fontSize:11,color:T.mu,marginTop:1}}>{s.desc}</div></div>
+            <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:T.mu,opacity:.4,flexShrink:0}}>0{i+1}</div>
+          </div>)}
+        </>}
+      </div>}
     </div>
   </div>;
 }
-/* ── CHANGE EMAIL & PASSWORD ── */
+/* ── EDIT PROFILE MODAL ── */
+function EditProfileModal({me,T,onClose,onSave,onEditPhoto}){
+  const [nm,setNm]=useState(me.name);
+  const [hd,setHd]=useState(me.handle||"");
+  const [bio,setBio]=useState(me.bio||"");
+  const [col,setCol]=useState(me.color);
+  const [age,setAge]=useState(me.age||"");
+  const [ints,setInts]=useState(me.interests||[]);
+  const [links,setLinks]=useState(me.links||{instagram:"",twitter:"",tiktok:"",website:""});
+  const [bizTypeEdit,setBizTypeEdit]=useState(me.biz_type||(me.links?.biz_type)||"general");
+  const [bizWarn,setBizWarn]=useState(false);
+  const [pendingBizType,setPendingBizType]=useState(null);
+  const [hdStatus,setHdStatus]=useState(null);
+  const [ok,setOk]=useState(false);
+  const [tab,setTab]=useState("profile");
+  const hdTimer=useRef(null);
+  const isBiz=me.account_type==="business";
+  const inp={width:"100%",padding:"12px 14px",background:T.inp,border:`1px solid ${T.b1}`,borderRadius:13,color:T.txt,fontSize:14,outline:"none",boxSizing:"border-box",marginBottom:12,fontFamily:"'Inter',sans-serif"};
+
+  async function checkHandle(val){
+    const clean=val.trim().replace(/^@/,"").toLowerCase();
+    if(!clean||clean===(me.handle||"").replace(/^@/,"")){setHdStatus(null);return;}
+    setHdStatus("checking");
+    const {data}=await sb.from("profiles").select("id").eq("handle","@"+clean).neq("id",me.id).maybeSingle();
+    setHdStatus(data?"taken":"ok");
+  }
+  function onHdChange(val){const clean=cleanHandle(val);setHd(clean);clearTimeout(hdTimer.current);hdTimer.current=setTimeout(()=>checkHandle(clean),600);}
+  function togInt(i){setInts(prev=>prev.includes(i)?prev.filter(x=>x!==i):[...prev,i].slice(0,6));}
+  function onBizTypeClick(id){
+    if(id===bizTypeEdit)return;
+    if(me.biz_type&&me.biz_type!==id){setPendingBizType(id);setBizWarn(true);}
+    else{setBizTypeEdit(id);}
+  }
+  function confirmBizChange(){setBizTypeEdit(pendingBizType);setPendingBizType(null);setBizWarn(false);}
+  function sv(){
+    if(hdStatus==="taken"||hdStatus==="checking")return;
+    onSave({name:nm.trim()||me.name,handle:hd.trim()||me.handle,bio:bio.trim(),color:col,age:age?parseInt(age):null,interests:ints,links:{...links,biz_type:isBiz?bizTypeEdit:undefined},biz_type:isBiz?bizTypeEdit:null});
+    setOk(true);setTimeout(()=>setOk(false),2000);
+  }
+  const hdClean=hd.trim().replace(/^@/,"");
+  const TABS=isBiz?["profile","category","links"]:["profile","interests","links"];
+
+  return<Overlay onBg={onClose} T={T} wide>
+    {/* Warn modal for biz type change */}
+    {bizWarn&&<div style={{position:"absolute",inset:0,zIndex:10,background:"rgba(0,0,0,.6)",display:"flex",alignItems:"center",justifyContent:"center",padding:24,borderRadius:"inherit"}}>
+      <div style={{background:T.surf,borderRadius:18,padding:"24px 20px",maxWidth:320,width:"100%",boxShadow:`0 24px 60px rgba(0,0,0,.5)`}}>
+        <div style={{fontSize:28,textAlign:"center",marginBottom:10}}>⚠️</div>
+        <div style={{fontWeight:700,fontSize:16,color:T.txt,textAlign:"center",marginBottom:8}}>Change business category?</div>
+        <div style={{fontSize:13,color:T.mu,textAlign:"center",lineHeight:1.6,marginBottom:18}}>Changing your category will update your rating criteria. <strong style={{color:T.txt}}>All existing ratings and score gains will be cleared.</strong> This cannot be undone.</div>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={()=>{setPendingBizType(null);setBizWarn(false);}} style={{flex:1,padding:"11px 0",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:11,color:T.mu,fontWeight:600,fontSize:13}}>Cancel</button>
+          <button onClick={confirmBizChange} style={{flex:1,padding:"11px 0",background:"#e0466e",borderRadius:11,color:"#fff",fontWeight:700,fontSize:13}}>Yes, Change</button>
+        </div>
+      </div>
+    </div>}
+
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+      <div style={{fontWeight:700,fontSize:18,color:T.txt}}>Edit Profile</div>
+      <button onClick={onClose} style={{background:"none",color:T.mu,fontSize:20,padding:4}}>✕</button>
+    </div>
+
+    {/* Tab bar */}
+    <div style={{display:"flex",gap:2,marginBottom:20,background:T.faint,borderRadius:12,padding:3}}>
+      {TABS.map(t=><button key={t} onClick={()=>setTab(t)} style={{flex:1,padding:"8px 0",borderRadius:9,background:tab===t?T.surf:"transparent",border:tab===t?`1px solid ${T.b1}`:"1px solid transparent",color:tab===t?T.txt:T.mu,fontWeight:tab===t?700:500,fontSize:12,textTransform:"capitalize",transition:"all .12s",boxShadow:tab===t?"0 1px 4px rgba(0,0,0,.1)":"none"}}>{t}</button>)}
+    </div>
+
+    {tab==="profile"&&<div>
+      {/* Avatar */}
+      <div style={{display:"flex",justifyContent:"center",marginBottom:14}}>
+        <div style={{position:"relative"}}>
+          <div style={{width:86,height:86,borderRadius:"50%",padding:3,background:`linear-gradient(135deg,${col},${col}88)`}}>
+            <div style={{width:80,height:80,borderRadius:"50%",overflow:"hidden",background:T.faint,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:26,color:col}}>
+              {me.photo?<img src={me.photo} style={{width:"100%",height:"100%",objectFit:"cover"}} alt=""/>:ini(nm)}
+            </div>
+          </div>
+          <button onClick={onEditPhoto} style={{position:"absolute",bottom:0,right:0,width:28,height:28,borderRadius:"50%",background:`linear-gradient(135deg,${AC},${AC}88)`,border:`2px solid ${T.surf}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,boxShadow:`0 2px 8px ${AC}40`}}>📷</button>
+        </div>
+      </div>
+      {/* Color palette */}
+      <div style={{display:"flex",gap:7,justifyContent:"center",marginBottom:18}}>{PALETTE.map(c=><div key={c} onClick={()=>setCol(c)} style={{width:24,height:24,borderRadius:"50%",background:c,cursor:"pointer",outline:col===c?`2.5px solid ${T.txt}`:"2.5px solid transparent",outlineOffset:2,transform:col===c?"scale(1.25)":"scale(1)",transition:"transform .12s"}}/>)}</div>
+      <input value={nm} onChange={e=>setNm(e.target.value)} placeholder="Display Name" style={inp}/>
+      <div style={{position:"relative",marginBottom:12}}>
+        <input value={hd} onChange={e=>onHdChange(e.target.value)} placeholder="@username" style={{...inp,marginBottom:0,border:`1px solid ${hdStatus==="taken"?"#e0466e":hdStatus==="ok"?"#2cba9a":T.b1}`,paddingRight:36}}/>
+        {hdStatus&&<span style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",fontSize:14,fontWeight:700,color:hdStatus==="taken"?"#e0466e":hdStatus==="ok"?"#2cba9a":T.mu}}>{hdStatus==="taken"?"✕":hdStatus==="ok"?"✓":"…"}</span>}
+      </div>
+      {hdStatus==="taken"&&<div style={{fontSize:11,color:"#e0466e",marginBottom:8}}>@{hdClean} is already taken</div>}
+      <textarea value={bio} onChange={e=>setBio(e.target.value)} placeholder={isBiz?"Describe your business…":"Write something about yourself…"} rows={3} style={{...inp,resize:"none",lineHeight:1.55}}/>
+      {!isBiz&&<input value={age||""} onChange={e=>setAge(e.target.value)} placeholder="Age (optional)" type="number" style={inp}/>}
+    </div>}
+
+    {tab==="interests"&&!isBiz&&<div>
+      <div style={{fontSize:12,color:T.mu,marginBottom:12}}>Pick up to 6 interests</div>
+      <div style={{display:"flex",flexWrap:"wrap",gap:7}}>
+        {INTERESTS.map(i=>{const sel=ints.includes(i);return<div key={i} onClick={()=>togInt(i)} style={{padding:"6px 12px",borderRadius:20,fontSize:12,fontWeight:sel?600:400,background:sel?`${AC}18`:"transparent",border:`1.5px solid ${sel?AC+"60":T.b1}`,color:sel?AC:T.mu,cursor:"pointer",transition:"all .12s"}}>{i}</div>;})}
+      </div>
+    </div>}
+
+    {tab==="category"&&isBiz&&<div>
+      <div style={{fontSize:12,color:T.mu,marginBottom:12,lineHeight:1.6}}>This determines which 6 categories customers use to rate you.</div>
+      <div style={{display:"flex",flexDirection:"column",gap:7}}>
+        {BIZ_TYPES.map(bt=><div key={bt.id} onClick={()=>onBizTypeClick(bt.id)} style={{padding:"12px 14px",background:bizTypeEdit===bt.id?`${AC}12`:T.faint,border:`1.5px solid ${bizTypeEdit===bt.id?AC+"55":T.b1}`,borderRadius:13,cursor:"pointer",display:"flex",alignItems:"center",gap:11,transition:"all .13s"}}>
+          <span style={{fontSize:20,flexShrink:0}}>{bt.emoji}</span>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontWeight:600,fontSize:13,color:T.txt}}>{bt.label}</div>
+            <div style={{fontSize:10,color:T.mu,marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{(BIZ_CAT_MAP[bt.id]||[]).map(c=>c.label).join(" · ")}</div>
+          </div>
+          {bizTypeEdit===bt.id&&<div style={{width:18,height:18,borderRadius:"50%",background:AC,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}><svg width="9" height="9" viewBox="0 0 10 10" fill="none"><polyline points="1.5,5 4,7.5 8.5,2.5" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg></div>}
+        </div>)}
+      </div>
+    </div>}
+
+    {tab==="links"&&<div>
+      {[["instagram","📸 Instagram","@handle"],["twitter","𝕏 Twitter / X","@handle"],["tiktok","🎵 TikTok","@handle"],["website","🔗 Website","https://..."]].map(([key,label,ph])=><div key={key}>
+        <div style={{fontSize:11,color:T.mu,marginBottom:4,fontWeight:600}}>{label}</div>
+        <input value={links[key]||""} onChange={e=>setLinks(prev=>({...prev,[key]:e.target.value}))} placeholder={ph} style={inp}/>
+      </div>)}
+    </div>}
+
+    <button onClick={sv} disabled={hdStatus==="taken"||hdStatus==="checking"} style={{width:"100%",padding:"13px 0",background:ok?"#2cba9a":`linear-gradient(135deg,${AC}e0,${AC}90)`,borderRadius:13,color:"#fff",fontWeight:700,fontSize:14,marginTop:8,transition:"background .2s"}}>{ok?"✓ Saved!":"Save Changes"}</button>
+  </Overlay>;
+}
+
+
 function ChangeEmailSection({T,inp}){
   const [open,setOpen]=useState(false);
   const [newEmail,setNewEmail]=useState("");
@@ -2086,77 +2413,19 @@ function SettingsProfileUrl({me,T}){
 }
 
 function SettingsModal({me,prefs,T,onClose,onSave,onSavePrefs,onEditPhoto,onShowBlocked,onLogout,onDelete,onQR}){
-  const [tab,setTab]=useState("profile");
-  const [nm,setNm]=useState(me.name);const[hd,setHd]=useState(me.handle);const[bio,setBio]=useState(me.bio||"");const[col,setCol]=useState(me.color);
-  const [age,setAge]=useState(me.age||"");const[ints,setInts]=useState(me.interests||[]);
-  const [links,setLinks]=useState(me.links||{instagram:"",twitter:"",tiktok:"",website:""});
-  const [ok,setOk]=useState(false);const[logQ,setLogQ]=useState(false);
+  const [tab,setTab]=useState("privacy");
+  const [logQ,setLogQ]=useState(false);
   const [delStep,setDelStep]=useState(0);const[delReason,setDelReason]=useState("");
-  const [hdStatus,setHdStatus]=useState(null);const[showPrivacy,setShowPrivacy]=useState(false);
-  const hdTimer=useRef(null);
-
-  async function checkHandle(val){
-    const clean=val.trim().replace(/^@/,"").toLowerCase();
-    if(!clean||clean===(me.handle||"").replace(/^@/,"")){setHdStatus(null);return;}
-    setHdStatus("checking");
-    const {data}=await sb.from("profiles").select("id").eq("handle","@"+clean).neq("id",me.id).maybeSingle();
-    setHdStatus(data?"taken":"ok");
-  }
-
-  function onHdChange(val){setHd(val);clearTimeout(hdTimer.current);hdTimer.current=setTimeout(()=>checkHandle(val),600);}
-
-  function sv(){onSave({name:nm.trim()||me.name,handle:hd.trim()||me.handle,bio:bio.trim(),color:col,age:age?parseInt(age):null,interests:ints,links});setOk(true);setTimeout(()=>setOk(false),2000);}
-  function togInt(i){setInts(prev=>prev.includes(i)?prev.filter(x=>x!==i):[...prev,i].slice(0,6));}
-  const isBizProfile=me.account_type==="business";
+  const [showPrivacy,setShowPrivacy]=useState(false);
   const inp={width:"100%",padding:"11px 13px",background:T.inp,border:`1px solid ${T.b1}`,borderRadius:11,color:T.txt,fontSize:13,outline:"none",boxSizing:"border-box",marginBottom:11};
-  const TABS=[{id:"profile",label:"Profile"},{id:"more",label:"Details"},{id:"privacy",label:"Privacy"},{id:"account",label:"Account"}];
-  const hdClean=hd.trim().replace(/^@/,"");
-  const hdBorderColor=hdStatus==="taken"?"#e0466e":hdStatus==="ok"?"#2cba9a":T.b1;
-
+  const TABS=[{id:"privacy",label:"Privacy"},{id:"account",label:"Account"}];
   const DEL_REASONS=["I don't use it anymore","Privacy concerns","Too many notifications","I found a better app","I want to start fresh","Other"];
 
   return<Overlay onBg={onClose} T={T} wide>
     <div style={{fontWeight:700,fontSize:18,color:T.txt,marginBottom:14}}>Settings</div>
-    <div style={{display:"flex",gap:2,marginBottom:18,overflowX:"auto",paddingBottom:2}}>
-      {TABS.map(t=><button key={t.id} onClick={()=>setTab(t.id)} style={{padding:"7px 13px",borderRadius:8,border:tab===t.id?`1px solid ${T.b1}`:"1px solid transparent",background:tab===t.id?T.faint:"transparent",color:tab===t.id?T.txt:T.mu,fontWeight:tab===t.id?600:400,fontSize:12,whiteSpace:"nowrap",transition:"all .12s"}}>{t.label}</button>)}
+    <div style={{display:"flex",gap:2,marginBottom:18,background:T.faint,borderRadius:12,padding:3}}>
+      {TABS.map(t=><button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,padding:"8px 0",borderRadius:9,background:tab===t.id?T.surf:"transparent",border:tab===t.id?`1px solid ${T.b1}`:"1px solid transparent",color:tab===t.id?T.txt:T.mu,fontWeight:tab===t.id?700:500,fontSize:13,transition:"all .12s",boxShadow:tab===t.id?"0 1px 4px rgba(0,0,0,.1)":"none"}}>{t.label}</button>)}
     </div>
-    {tab==="profile"&&<div>
-      <div style={{display:"flex",justifyContent:"center",marginBottom:12}}><div style={{position:"relative"}}><Ava p={{...me,color:col}} size={76} T={T}/><button onClick={onEditPhoto} style={{position:"absolute",bottom:-3,right:-3,width:24,height:24,borderRadius:"50%",background:`${col}cc`,border:`2px solid ${T.card}`,display:"flex",alignItems:"center",justifyContent:"center"}}><EditIcon/></button></div></div>
-      <div style={{display:"flex",gap:7,justifyContent:"center",marginBottom:18}}>{PALETTE.map(c=><div key={c} onClick={()=>setCol(c)} style={{width:22,height:22,borderRadius:"50%",background:c,cursor:"pointer",outline:col===c?`2.5px solid ${T.txt}`:"2.5px solid transparent",outlineOffset:2,transform:col===c?"scale(1.25)":"scale(1)",transition:"transform .12s"}}/>)}</div>
-      <input value={nm} onChange={e=>setNm(e.target.value)} placeholder="Display Name" style={inp}/>
-      {/* Username with live check */}
-      <div style={{position:"relative",marginBottom:11}}>
-        <input value={hd} onChange={e=>onHdChange(e.target.value)} placeholder="@username" style={{...inp,marginBottom:0,border:`1px solid ${hdBorderColor}`,paddingRight:32}}/>
-        {hdStatus&&<span style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",fontSize:14,fontWeight:700,color:hdStatus==="taken"?"#e0466e":hdStatus==="ok"?"#2cba9a":T.mu}}>{hdStatus==="taken"?"✕":hdStatus==="ok"?"✓":"…"}</span>}
-      </div>
-      {hdStatus==="taken"&&<div style={{fontSize:11,color:"#e0466e",marginBottom:8}}>@{hdClean} is already taken</div>}
-      {hdStatus==="ok"&&<div style={{fontSize:11,color:"#2cba9a",marginBottom:8}}>@{hdClean} is available ✓</div>}
-      <input value={bio} onChange={e=>setBio(e.target.value)} placeholder="Bio" style={inp}/>
-      {/* UID displayed prominently */}
-      <div style={{padding:"11px 13px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:11,marginBottom:11}}>
-        <div style={{fontSize:11,color:T.mu,marginBottom:4,textTransform:"uppercase",letterSpacing:.8,fontWeight:600}}>Your Unique ID</div>
-        <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:16,fontWeight:700,color:AC,letterSpacing:2}}>#{me.short_id||shortId(me.id)}</div>
-        <div style={{fontSize:11,color:T.mu,marginTop:3}}>📧 {me.email||"No email set"}</div>
-      </div>
-      {/* Profile URL — safe component, no hook inside render */}
-      <SettingsProfileUrl me={me} T={T}/>
-      <button disabled={hdStatus==="taken"} onClick={sv} style={{width:"100%",padding:"12px 0",background:hdStatus==="taken"?T.faint:`linear-gradient(135deg,${col}e0,${col}90)`,borderRadius:11,color:hdStatus==="taken"?T.mu:"#fff",fontWeight:700,fontSize:14,marginBottom:10}}>{ok?"Saved ✓":"Save Changes"}</button>
-      {/* QR Code button */}
-      <button onClick={()=>{onClose();setTimeout(()=>onQR&&onQR(),80);}} style={{width:"100%",padding:"11px 0",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:11,color:T.txt,fontWeight:600,fontSize:13,display:"flex",alignItems:"center",justifyContent:"center",gap:8,marginBottom:14}}>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="3" height="3"/><rect x="19" y="14" width="2" height="2"/><rect x="14" y="19" width="2" height="2"/><rect x="18" y="18" width="3" height="3" rx=".5"/></svg>
-        My QR Code
-      </button>
-      <div style={{height:1,background:T.b1,marginBottom:14}}/>
-      <SRow label="🌙 Dark Mode" val={prefs.dark} onChange={v=>onSavePrefs({...prefs,dark:v})} T={T}/>
-    </div>}
-    {tab==="more"&&<div>
-      {!isBizProfile&&<><input type="number" value={age} onChange={e=>setAge(e.target.value)} placeholder="Age" min={13} max={99} style={inp}/>
-      <div style={{fontSize:11,color:T.mu,textTransform:"uppercase",letterSpacing:.8,marginBottom:8,fontWeight:600}}>Interests ({ints.length}/6)</div>
-      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:16,maxHeight:200,overflowY:"auto"}}>{INTERESTS.map(i=><div key={i} onClick={()=>togInt(i)} style={{padding:"5px 12px",borderRadius:6,cursor:"pointer",fontSize:12,fontWeight:500,background:ints.includes(i)?`${AC}1a`:T.faint,border:`1px solid ${ints.includes(i)?AC+"44":T.b1}`,color:ints.includes(i)?AC:T.mu,transition:"all .12s"}}>{i}</div>)}</div></>}
-      <div style={{fontSize:11,color:T.mu,textTransform:"uppercase",letterSpacing:.8,marginBottom:8,fontWeight:600}}>Social Links</div>
-      {[{k:"instagram",ph:"@username"},{k:"twitter",ph:"@username"},{k:"tiktok",ph:"@username"},{k:"website",ph:"https://…"}].map(f=><input key={f.k} value={links[f.k]||""} onChange={e=>setLinks(l=>({...l,[f.k]:e.target.value}))} placeholder={`${f.k} ${f.ph}`} style={inp}/>)}
-      <button onClick={sv} style={{width:"100%",padding:"12px 0",background:`linear-gradient(135deg,${AC}e0,${AC}90)`,borderRadius:11,color:"#fff",fontWeight:700,fontSize:14}}>{ok?"Saved ✓":"Save Details"}</button>
-    </div>}
     {tab==="privacy"&&<div style={{display:"flex",flexDirection:"column",gap:10}}>
       <button onClick={()=>{onClose();onShowBlocked();}} style={{display:"flex",alignItems:"center",gap:10,padding:"13px 14px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:11,width:"100%",color:T.txt,fontSize:14,fontWeight:500,textAlign:"left"}}><ShieldIcon/><div style={{flex:1}}><div>Blocked Users</div><div style={{fontSize:11,color:T.mu,marginTop:1}}>Manage people you have blocked</div></div><span style={{color:T.mu,fontSize:18}}>›</span></button>
       <button onClick={()=>setShowPrivacy(true)} style={{display:"flex",alignItems:"center",gap:10,padding:"13px 14px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:11,width:"100%",color:T.txt,fontSize:14,fontWeight:500,textAlign:"left"}}>
@@ -2164,22 +2433,17 @@ function SettingsModal({me,prefs,T,onClose,onSave,onSavePrefs,onEditPhoto,onShow
         <div style={{flex:1}}><div>Privacy Policy</div><div style={{fontSize:11,color:T.mu,marginTop:1}}>How we handle your data</div></div>
         <span style={{color:T.mu,fontSize:18}}>›</span>
       </button>
+      <SRow label="🌙 Dark Mode" val={prefs.dark} onChange={v=>onSavePrefs({...prefs,dark:v})} T={T}/>
       {showPrivacy&&<PrivacyPolicy T={T} onClose={()=>setShowPrivacy(false)}/>}
     </div>}
     {tab==="account"&&<div>
       <div style={{padding:"10px 13px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:9,marginBottom:8,fontSize:12,color:T.mu}}>Email: <strong style={{color:T.txt}}>{me.email}</strong></div>
       <div style={{padding:"10px 13px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:9,marginBottom:14,fontSize:12,color:T.mu}}>Member since <strong style={{color:T.txt}}>{new Date(me.created_at||Date.now()).toLocaleDateString()}</strong></div>
-
-      {/* Change Email */}
       <ChangeEmailSection T={T} inp={inp}/>
-      {/* Change Password */}
       <ChangePasswordSection T={T} inp={inp}/>
-
       <div style={{height:1,background:T.b1,marginBottom:14,marginTop:6}}/>
       {!logQ?<button onClick={()=>setLogQ(true)} style={{width:"100%",padding:"12px 0",background:"transparent",border:`1px solid ${T.b1}`,borderRadius:11,color:T.mu,fontWeight:600,fontSize:13,marginBottom:8}}>Log Out</button>
         :<div style={{background:T.faint,border:`1px solid ${T.b1}`,borderRadius:11,padding:"13px 14px",marginBottom:8}}><p style={{color:T.txt,fontSize:13,marginBottom:11}}>Log out of your account?</p><div style={{display:"flex",gap:7}}><button onClick={()=>{onClose();onLogout();}} style={{flex:1,padding:"9px 0",background:AC,borderRadius:9,color:"#fff",fontWeight:700,fontSize:13}}>Log Out</button><button onClick={()=>setLogQ(false)} style={{flex:1,padding:"9px 0",background:"transparent",border:`1px solid ${T.b1}`,borderRadius:9,color:T.mu,fontSize:13}}>Cancel</button></div></div>}
-
-      {/* 3-step delete */}
       {delStep===0&&<button onClick={()=>setDelStep(1)} style={{width:"100%",padding:"12px 0",background:"transparent",border:"1px solid #7a303040",borderRadius:11,color:"#c06060",fontWeight:600,fontSize:13}}>Delete Account</button>}
       {delStep===1&&<div style={{background:"#7a303010",border:"1px solid #7a303030",borderRadius:11,padding:"14px"}}>
         <div style={{fontWeight:700,fontSize:14,color:"#c06060",marginBottom:4}}>Why are you leaving?</div>
@@ -2733,18 +2997,26 @@ function PublicProfilePage({profile,onJoin,onClose}){
       </div>
 
       {/* Score card */}
-      <div style={{background:`linear-gradient(135deg,${t.color}18,${t.color}08)`,border:`1.5px solid ${t.color}40`,borderRadius:20,padding:"20px 18px",marginBottom:20,textAlign:"center",boxShadow:`0 0 40px ${t.glow}`}}>
-        <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:64,fontWeight:900,color:t.color,lineHeight:1}}>{sc!=null?fmtScore(sc):"—"}</div>
-        <div style={{marginTop:8,marginBottom:4}}><TierBadge sc={sc} isBiz={isBiz}/></div>
-        <div style={{fontSize:12,color:DK.mu,marginTop:6}}>{n} {isBiz?"review":"rating"}{n!==1?"s":""}</div>
+      <div style={{background:`linear-gradient(135deg,${t.color}20,${t.color}08)`,border:`1.5px solid ${t.color}45`,borderRadius:22,padding:"26px 18px",marginBottom:20,textAlign:"center",boxShadow:`0 0 48px ${t.glow},0 4px 24px ${t.color}20`,position:"relative",overflow:"hidden"}}>
+        <div style={{position:"absolute",inset:0,background:`radial-gradient(ellipse at 50% 0%,${t.color}18,transparent 70%)`,pointerEvents:"none"}}/>
+        <div style={{fontSize:11,fontFamily:"'JetBrains Mono',monospace",color:t.color,letterSpacing:".12em",textTransform:"uppercase",marginBottom:8,opacity:.8}}>Total Score</div>
+        <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:72,fontWeight:900,color:t.color,lineHeight:1,textShadow:`0 0 32px ${t.color}60`,letterSpacing:"-3px"}}>{sc!=null?fmtScore(sc):"—"}</div>
+        <div style={{fontSize:11,color:DK.mu,marginTop:4,marginBottom:12,fontFamily:"'JetBrains Mono',monospace"}}>points</div>
+        <div style={{display:"flex",justifyContent:"center"}}><TierBadge sc={sc} isBiz={isBiz} size="md"/></div>
+        <div style={{fontSize:12,color:DK.mu,marginTop:10}}>{n} {isBiz?"review":"rating"}{n!==1?"s":""}</div>
       </div>
 
       {/* Category bars */}
-      {n>0&&<div style={{background:DK.card,border:`1px solid ${DK.b1}`,borderRadius:16,padding:"16px",marginBottom:20}}>
-        <div style={{fontWeight:600,fontSize:13,color:DK.txt,marginBottom:14}}>{isBiz?"Review Breakdown":"Rating Breakdown"}</div>
-        {cats.map(c=>{const v=cAvg(profile,c.id);return<div key={c.id} style={{marginBottom:10}}>
-          <div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}><span style={{fontSize:12,color:DK.mu}}>{c.emoji} {c.label}</span><span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,fontWeight:600,color:DK.txt}}>{v}/100</span></div>
-          <div style={{height:5,background:DK.faint,borderRadius:99,overflow:"hidden"}}><div style={{width:`${v}%`,height:"100%",background:profile.color,borderRadius:99,transition:"width .8s"}}/></div>
+      {n>0&&<div style={{background:DK.card,border:`1px solid ${DK.b1}`,borderRadius:18,padding:"18px",marginBottom:20}}>
+        <div style={{fontWeight:700,fontSize:13,color:DK.txt,marginBottom:16,letterSpacing:"-.2px"}}>{isBiz?"Review Breakdown":"Rating Breakdown"} <span style={{color:DK.mu,fontWeight:400}}>· {n} {isBiz?"reviews":"ratings"}</span></div>
+        {cats.map(c=>{const v=cAvg(profile,c.id);return<div key={c.id} style={{marginBottom:13}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}}>
+            <span style={{fontSize:12,color:DK.mu,fontWeight:500}}>{c.emoji} {c.label}</span>
+            <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:12,fontWeight:800,color:v>=80?"#4ade80":v>=60?profile.color:DK.mu}}>{v}/100</span>
+          </div>
+          <div style={{height:7,background:DK.faint,borderRadius:99,overflow:"hidden"}}>
+            <div style={{width:`${v}%`,height:"100%",background:v>=80?`linear-gradient(90deg,#4ade8099,#4ade80)`:`linear-gradient(90deg,${profile.color}80,${profile.color})`,borderRadius:99,transition:"width .8s"}}/>
+          </div>
         </div>;})}
       </div>}
 
@@ -2781,13 +3053,32 @@ function PublicProfilePage({profile,onJoin,onClose}){
 ══════════════════════════════════════ */
 const DP={dark:true};
 
+/* ── ERROR BOUNDARY — catches any render crash, shows on screen instead of black ── */
+class ErrorBoundary extends React.Component{
+  constructor(props){super(props);this.state={err:null};}
+  static getDerivedStateFromError(e){return{err:e};}
+  componentDidCatch(e,info){console.error("HighEnough crash:",e,info);}
+  render(){
+    if(this.state.err){
+      const msg=this.state.err?.message||String(this.state.err);
+      return<div style={{minHeight:"100vh",background:"#09090f",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24,fontFamily:"'JetBrains Mono',monospace"}}>
+        <div style={{fontSize:32,marginBottom:16}}>⚠️</div>
+        <div style={{fontSize:14,color:"#e0466e",fontWeight:700,marginBottom:12,textAlign:"center"}}>Something went wrong</div>
+        <div style={{fontSize:11,color:"#5a5a80",background:"#0d0d1a",border:"1px solid #1e1e30",borderRadius:10,padding:"12px 16px",maxWidth:340,wordBreak:"break-all",lineHeight:1.7}}>{msg}</div>
+        <button onClick={()=>window.location.reload()} style={{marginTop:20,padding:"10px 24px",background:"#7864dc",borderRadius:10,color:"#fff",fontWeight:700,fontSize:13,border:"none"}}>Reload App</button>
+      </div>;
+    }
+    return this.props.children;
+  }
+}
+
 function App(){
   const [authUser,setAuthUser]=useState(null);
   const [authError,setAuthError]=useState("");
   const [profile,setProfile]=useState(null);
   const [profileFetched,setProfileFetched]=useState(false);
   // authLoading: false because HE_BOOT() already resolved before React mounted.
-  // We only need the splash while onAuthStateChange confirms + loads profile.
+  // Only true if HE_BOOT found a session (we need to wait for INITIAL_SESSION + profile load).
   const [authLoading,setAuthLoading]=useState(!HE_BOOT_READY||!!HE_PREFETCHED_SESSION);
   const [dataReady,setDataReady]=useState(false); // true after loadAppData completes
   const [profiles,setProfiles]=useState([]);
@@ -2808,6 +3099,7 @@ function App(){
   const [viewT,setViewT]=useState(null);
   const [qrT,setQRT]=useState(null);
   const [settings,setSettings]=useState(false);
+  const [editProfile,setEditProfile]=useState(false);
   const [photo,setPhoto]=useState(false);
   const [scoreCard,setScoreCard]=useState(null);
   const [reportT,setReportT]=useState(null);
@@ -2819,25 +3111,45 @@ function App(){
   const [toast,setToast]=useState(null);
   const adminTimer=useRef(null);
 
-  // ── Android / browser back button handler (Instagram-style in-app navigation) ──
+  // ── Refs for popstate handler — avoids stale closure on all modal states ──
+  const viewTRef=useRef(null);
+  const rateTRef=useRef(null);
+  const activeChatRef=useRef(null);
+  const activeGroupRef=useRef(null);
+  const settingsRef=useRef(false);
+  const showNotifsRef=useRef(false);
+  const showAdminRef=useRef(false);
+  const showAdminLockRef=useRef(false);
+  const tabRef=useRef("feed");
+
+  useEffect(()=>{viewTRef.current=viewT;},[viewT]);
+  useEffect(()=>{rateTRef.current=rateT;},[rateT]);
+  useEffect(()=>{activeChatRef.current=activeChat;},[activeChat]);
+  useEffect(()=>{activeGroupRef.current=activeGroup;},[activeGroup]);
+  useEffect(()=>{settingsRef.current=settings;},[settings]);
+  useEffect(()=>{showNotifsRef.current=showNotifs;},[showNotifs]);
+  useEffect(()=>{showAdminRef.current=showAdmin;},[showAdmin]);
+  useEffect(()=>{showAdminLockRef.current=showAdminLock;},[showAdminLock]);
+  useEffect(()=>{tabRef.current=tab;},[tab]);
+
+  // ── Android / browser back button handler — reads from refs, never stale ──
   useEffect(()=>{
     window.history.pushState({he:"app"},"");
     function onPop(){
-      // Priority: innermost layer closes first
-      if(activeGroup){setActiveGroup(null);window.history.pushState({he:"app"},"");return;}
-      if(activeChat){setActiveChat(null);window.history.pushState({he:"app"},"");return;}
-      if(viewT){setViewT(null);window.history.pushState({he:"app"},"");return;}
-      if(rateT){setRateT(null);window.history.pushState({he:"app"},"");return;}
-      if(settings){setSettings(false);window.history.pushState({he:"app"},"");return;}
-      if(showNotifs){setShowNotifs(false);window.history.pushState({he:"app"},"");return;}
-      if(showAdmin){setShowAdmin(false);window.history.pushState({he:"app"},"");return;}
-      if(showAdminLock){setShowAdminLock(false);window.history.pushState({he:"app"},"");return;}
-      if(tab!=="feed"){setTab("feed");window.history.pushState({he:"app"},"");return;}
-      // At root — let browser handle (shows "Leave site?" on Android)
+      if(activeGroupRef.current){setActiveGroup(null);window.history.pushState({he:"app"},"");return;}
+      if(activeChatRef.current&&viewTRef.current){setViewT(null);window.history.pushState({he:"app"},"");return;}
+      if(activeChatRef.current){setActiveChat(null);window.history.pushState({he:"app"},"");return;}
+      if(viewTRef.current){setViewT(null);window.history.pushState({he:"app"},"");return;}
+      if(rateTRef.current){setRateT(null);window.history.pushState({he:"app"},"");return;}
+      if(settingsRef.current){setSettings(false);window.history.pushState({he:"app"},"");return;}
+      if(showNotifsRef.current){setShowNotifs(false);window.history.pushState({he:"app"},"");return;}
+      if(showAdminRef.current){setShowAdmin(false);window.history.pushState({he:"app"},"");return;}
+      if(showAdminLockRef.current){setShowAdminLock(false);window.history.pushState({he:"app"},"");return;}
+      if(tabRef.current!=="feed"){setTab("feed");window.history.pushState({he:"app"},"");return;}
     }
     window.addEventListener("popstate",onPop);
     return()=>window.removeEventListener("popstate",onPop);
-  },[activeGroup,activeChat,viewT,rateT,settings,showNotifs,showAdmin,showAdminLock,tab]);
+  },[]);// eslint-disable-line react-hooks/exhaustive-deps
   const T=prefs.dark?DK:LT;
   const pop=msg=>{setToast(msg);setTimeout(()=>setToast(null),2500);};
 
@@ -2880,6 +3192,7 @@ function App(){
         if(deleted){
           const {data:existing}=await sb.from("profiles").select("id").eq("id",user.id).maybeSingle();
           if(existing){
+            // Old profile still exists — truly blocked
             setAuthError("This account has been permanently deleted.");
             await sb.auth.signOut();
             profileLoadingRef.current=false;
@@ -2887,6 +3200,8 @@ function App(){
             setAuthLoading(false);
             return;
           }else{
+            // Profile row gone — user signed up fresh with same email
+            // Clean up the stale deleted_accounts row and let them through
             await sb.from("deleted_accounts").delete().eq("auth_id",user.id);
           }
         }
@@ -3067,7 +3382,12 @@ function App(){
       }
 
       if(data){
-        const fullProfile={...data,account_type:data.account_type||"personal"};
+        // Auto-fix any double-@ handle that may have been saved before the fix
+        const fixedHandle=data.handle?data.handle.replace(/^@+/,"@"):data.handle;
+        if(fixedHandle!==data.handle){
+          sb.from("profiles").update({handle:fixedHandle}).eq("id",data.id).then(()=>{});
+        }
+        const fullProfile={...data,handle:fixedHandle,account_type:data.account_type||"personal"};
         setProfile(fullProfile);setProfileFetched(true);
         setGroups(loadGroups(fullProfile.id));
         loadAppData(fullProfile,dl);
@@ -3148,9 +3468,9 @@ function App(){
       }
 
       // ── Real-time subscriptions (unique per user so re-login gets fresh channels) ──
-      sb.channel(`rt_ratings_${uid}`).on("postgres_changes",{event:"*",schema:"public",table:"ratings"},async()=>{
-        const {data:nr}=await sb.from("ratings").select("*");
-        if(nr)setProfiles(prev=>prev.map(p=>({...p,ratings:nr.filter(r=>r.target_id===p.id).map(mapRating)})));
+      sb.channel(`rt_ratings_${uid}`).on("postgres_changes",{event:"*",schema:"public",table:"ratings",filter:`target_id=eq.${uid}`},async()=>{
+        const {data:nr}=await sb.from("ratings").select("*").eq("target_id",uid);
+        if(nr)setProfiles(prev=>prev.map(p=>p.id===uid?{...p,ratings:nr.map(mapRating)}:p));
       }).subscribe();
 
       sb.channel(`rt_notifs_${uid}`).on("postgres_changes",{event:"INSERT",schema:"public",table:"notifications",filter:`target_id=eq.${uid}`},payload=>{
@@ -3299,7 +3619,7 @@ function App(){
   }
   async function handleLogout(){
     localStorage.setItem("he_intent_signout","true");
-    await sb.auth.signOut();
+    try{await sb.auth.signOut();}catch{}
   }
 
   function handleCreateGroup(group){
@@ -3332,9 +3652,7 @@ function App(){
     const userEmail=profile.email||authUser?.email||"";
     pop("Deleting account…");
     try{
-      // 1. Mark as deleted in our table (blocks re-login with same auth ID)
       await sb.from("deleted_accounts").insert({auth_id:uid,email:userEmail,deleted_at:new Date().toISOString()});
-      // 2. Delete all app data in parallel
       await Promise.all([
         sb.from("ratings").delete().eq("rater_id",uid),
         sb.from("ratings").delete().eq("target_id",uid),
@@ -3348,22 +3666,30 @@ function App(){
         sb.from("blocks").delete().eq("blocked_id",uid),
         sb.from("reports").delete().eq("reporter_id",uid),
       ]);
-      // 3. Delete the profile row
       await sb.from("profiles").delete().eq("id",uid);
-      // 4. Also store deleted email so re-signup with same email is allowed
-      //    by removing them from deleted_accounts and letting them start fresh.
-      //    We store the email separately so the signup flow can clean up first.
     }catch(e){console.error("Delete cleanup error:",e);}
-    // 5. Sign out — triggers SIGNED_OUT → clears all React state
+    // Mark intentional — lets SIGNED_OUT → clearSession redirect to login cleanly
     localStorage.setItem("he_intent_signout","true");
-    await sb.auth.signOut();
+    try{await sb.auth.signOut();}catch{}
   }
 
   async function handleSaveProfile(u){
     const updated={...profile,...u};
-    // Strip _pref fields (those are local prefs not DB fields)
-    const dbFields={id:updated.id,name:updated.name,handle:updated.handle,bio:updated.bio,color:updated.color,age:updated.age,photo:updated.photo,interests:updated.interests,links:updated.links,email:updated.email,short_id:updated.short_id,account_type:updated.account_type||"personal",followers_count:updated.followers_count,following_count:updated.following_count,created_at:updated.created_at||new Date().toISOString()};
-    const {error}=await sb.from("profiles").upsert(dbFields);
+    // biz_type may or may not exist as a column — try with it, fallback without
+    const base={
+      id:updated.id,name:updated.name,handle:updated.handle,bio:updated.bio,
+      color:updated.color,age:updated.age,photo:updated.photo,interests:updated.interests,
+      links:{...(updated.links||{}),biz_type:updated.account_type==="business"?(updated.biz_type||"general"):undefined},
+      email:updated.email,short_id:updated.short_id,
+      account_type:updated.account_type||"personal",
+      followers_count:updated.followers_count,following_count:updated.following_count,
+      created_at:updated.created_at||new Date().toISOString()
+    };
+    let error;
+    ({error}=await sb.from("profiles").upsert({...base,biz_type:updated.account_type==="business"?(updated.biz_type||"general"):null}));
+    if(error?.message?.includes("biz_type")){
+      ({error}=await sb.from("profiles").upsert(base));
+    }
     if(!error){setProfile(updated);setProfiles(prev=>prev.map(p=>p.id===updated.id?{...p,...updated}:p));pop("Profile saved");}
     else{console.error("Save error:",error);pop("Could not save. Try again.");}
   }
@@ -3437,15 +3763,12 @@ function App(){
 
   async function handleFollow(uid){
     if(following.includes(uid))return;
-    setFollowing(prev=>[...prev,uid]);
-    // Update local counts immediately
-    setProfiles(prev=>prev.map(p=>p.id===uid?{...p,followers_count:(p.followers_count||0)+1}:p));
-    setProfile(prev=>({...prev,following_count:(prev.following_count||0)+1}));
-    // Save to DB
-    await sb.from("follows").upsert({follower_id:profile.id,following_id:uid});
-    // Update follower/following counts in DB
     const targetCount=(profiles.find(p=>p.id===uid)?.followers_count||0)+1;
     const myCount=(profile.following_count||0)+1;
+    setFollowing(prev=>[...prev,uid]);
+    setProfiles(prev=>prev.map(p=>p.id===uid?{...p,followers_count:targetCount}:p));
+    setProfile(prev=>({...prev,following_count:myCount}));
+    await sb.from("follows").upsert({follower_id:profile.id,following_id:uid});
     await Promise.all([
       sb.from("profiles").update({followers_count:targetCount}).eq("id",uid),
       sb.from("profiles").update({following_count:myCount}).eq("id",profile.id),
@@ -3454,12 +3777,12 @@ function App(){
   }
 
   async function handleUnfollow(uid){
-    setFollowing(prev=>prev.filter(x=>x!==uid));
-    setProfiles(prev=>prev.map(p=>p.id===uid?{...p,followers_count:Math.max(0,(p.followers_count||0)-1)}:p));
-    setProfile(prev=>({...prev,following_count:Math.max(0,(prev.following_count||0)-1)}));
-    await sb.from("follows").delete().eq("follower_id",profile.id).eq("following_id",uid);
     const targetCount=Math.max(0,(profiles.find(p=>p.id===uid)?.followers_count||1)-1);
     const myCount=Math.max(0,(profile.following_count||1)-1);
+    setFollowing(prev=>prev.filter(x=>x!==uid));
+    setProfiles(prev=>prev.map(p=>p.id===uid?{...p,followers_count:targetCount}:p));
+    setProfile(prev=>({...prev,following_count:myCount}));
+    await sb.from("follows").delete().eq("follower_id",profile.id).eq("following_id",uid);
     await Promise.all([
       sb.from("profiles").update({followers_count:targetCount}).eq("id",uid),
       sb.from("profiles").update({following_count:myCount}).eq("id",profile.id),
@@ -3473,7 +3796,7 @@ function App(){
   }
 
   async function handleSend(cid,txt){
-    const otherId=cid.split("_").find(x=>x!==profile.id);
+    const otherId=convs.find(c=>c.id===cid)?.oid||activeChat?.oid;
     const tempId=`temp_${Date.now()}`;
     const msg={sid:profile.id,txt,ts:Date.now(),read:false,status:"sent",dbId:tempId};
     setActiveChat(prev=>({...prev,messages:[...(prev.messages||[]),msg]}));
@@ -3488,11 +3811,19 @@ function App(){
   }
 
   async function handleMarkRead(cid,otherId){
-    if(!otherId||!cid)return;
-    // Mark incoming messages as read in DB
-    await sb.from("messages").update({read:true,status:"seen"}).eq("sender_id",otherId).eq("receiver_id",profile.id).eq("read",false);
-    // Update local state
-    setConvs(prev=>prev.map(c=>c.id===cid?{...c,messages:c.messages.map(m=>m.sid!==profile.id&&!m.read?{...m,read:true,status:"seen"}:m)}:c));
+    if(!cid)return;
+    // Force all incoming messages to read:true in local state immediately
+    // This fixes "stuck badge" where DB already has read:true but local state disagrees
+    const markRead=msgs=>msgs.map(m=>m.sid===profile.id?m:{...m,read:true,status:"seen"});
+    setConvs(prev=>prev.map(c=>c.id===cid?{...c,messages:markRead(c.messages||[])}:c));
+    setActiveChat(prev=>prev&&prev.id===cid?{...prev,messages:markRead(prev.messages||[])}:prev);
+    if(!otherId)return;
+    // Fire DB update for any that aren't yet marked in backend
+    await sb.from("messages")
+      .update({read:true,status:"seen"})
+      .eq("sender_id",otherId)
+      .eq("receiver_id",profile.id)
+      .eq("read",false);
   }
 
   async function handleBlock(uid){setBlocked(prev=>[...prev,uid]);await sb.from("blocks").upsert({blocker_id:profile.id,blocked_id:uid});pop("User blocked");}
@@ -3565,9 +3896,11 @@ function App(){
 
   useEffect(()=>{document.body.style.background=T.bg;document.body.style.color=T.txt;},[T.bg,T.txt]);
 
-  // Dismiss splash once auth resolved
+  // Dismiss splash once auth resolved + clear pre-fetched session (it's served its purpose)
   useEffect(()=>{
     if(!authLoading){
+      HE_PREFETCHED_SESSION=null; // clear so the guard below never traps us
+      if(window.__cancelSplashTimer)window.__cancelSplashTimer();
       const s=document.getElementById('splash');
       if(s){s.style.transition='opacity .2s';s.style.opacity='0';setTimeout(()=>s.remove(),200);}
     }
@@ -3581,11 +3914,14 @@ function App(){
   },[authUser,profileFetched,profile]);
 
   // ── RENDER ROUTING ────────────────────────────────────────────────────────
-  // 1. Auth still resolving — splash is visible, render nothing underneath
-  if(authLoading)return null;
+  // 1. Auth still resolving — splash is visible on top, show spinner underneath
+  // so if splash gets removed (by plain JS timer), user sees spinner not black screen
+  if(authLoading)return<div style={{minHeight:"100vh",background:"#09090f",display:"flex",alignItems:"center",justifyContent:"center"}}>
+    <div style={{width:22,height:22,border:"2.5px solid #1c1c2c",borderTopColor:"#7b72e9",borderRadius:"50%",animation:"spin .55s linear infinite"}}/>
+  </div>;
 
   // 2. Pre-boot found a valid session but onAuthStateChange hasn't fired yet.
-  // Show spinner (behind splash) instead of flashing the login screen.
+  // Only show spinner if session is genuinely still pending (not cleared by logout).
   if(!authUser&&HE_PREFETCHED_SESSION){
     return<div style={{minHeight:"100vh",background:"#09090f",display:"flex",alignItems:"center",justifyContent:"center"}}>
       <div style={{width:22,height:22,border:"2.5px solid #1c1c2c",borderTopColor:"#7b72e9",borderRadius:"50%",animation:"spin .55s linear infinite"}}/>
@@ -3643,8 +3979,8 @@ function App(){
     <div style={{minHeight:"100vh",background:T.bg,color:T.txt,paddingBottom:68}}>
       {/* HEADER */}
       <div style={{background:`${T.nav}e8`,borderBottom:`1px solid ${T.b1}`,padding:"14px 18px",position:"sticky",top:0,zIndex:100,display:"flex",alignItems:"center",justifyContent:"space-between",backdropFilter:"blur(24px)",WebkitBackdropFilter:"blur(24px)"}}>
-        <div style={{fontWeight:900,fontSize:24,letterSpacing:"-2px",color:T.txt,cursor:"pointer",userSelect:"none",lineHeight:1}} onClick={handleAdminTap}>
-          High<span style={{color:AC,fontWeight:300,letterSpacing:"0.04em"}}>Enough</span>
+        <div style={{display:"flex",alignItems:"baseline",cursor:"pointer",userSelect:"none",lineHeight:1}} onClick={handleAdminTap}>
+          <span style={{fontWeight:700,fontSize:22,letterSpacing:"-.3px",color:T.txt}}>High</span><span style={{fontWeight:700,fontSize:22,letterSpacing:"-.3px",color:AC}}>Enough</span>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           {canInstall&&<button onClick={handleInstall} style={{padding:"7px 14px",background:`linear-gradient(135deg,${AC}cc,${AC}80)`,border:"none",borderRadius:20,color:"#fff",fontWeight:700,fontSize:12,display:"flex",alignItems:"center",gap:5,boxShadow:`0 4px 14px ${AC}40`,flexShrink:0}}>
@@ -3676,18 +4012,27 @@ function App(){
             </div>
           : followedFeed.length===0
             ? <div>
-                <div style={{textAlign:"center",padding:"28px 20px 16px",color:T.mu}}>
-                  <div style={{fontSize:36,marginBottom:10,opacity:.4}}>◎</div>
-                  <div style={{fontWeight:700,fontSize:16,color:T.txt,marginBottom:6}}>Your feed is empty</div>
-                  <div style={{fontSize:13,opacity:.7,lineHeight:1.5}}>Follow people & businesses to see them here.</div>
+                <div style={{background:`linear-gradient(135deg,${AC}12,${AC}08)`,border:`1px solid ${AC}22`,borderRadius:18,padding:"24px 20px",marginBottom:16,textAlign:"center",position:"relative",overflow:"hidden"}}>
+                  <div style={{position:"absolute",right:-20,top:-20,fontSize:100,opacity:.05,pointerEvents:"none"}}>◎</div>
+                  <div style={{fontSize:32,marginBottom:10}}>👻</div>
+                  <div style={{fontWeight:800,fontSize:18,color:T.txt,marginBottom:6,letterSpacing:"-.3px"}}>Your feed is empty</div>
+                  <div style={{fontSize:13,color:T.mu,marginBottom:18,lineHeight:1.6}}>Follow people to see them here — or share your profile to start getting rated.</div>
+                  {[
+                    {icon:"🔗",title:"Share your profile link",desc:"Copy it from Profile → Share and send it to someone"},
+                    {icon:"📱",title:"Show your QR code",desc:"Let someone scan it instantly to open your profile"},
+                    {icon:"⭐",title:"Get rated",desc:"They rate you across 6 categories and your score appears"},
+                  ].map((s,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 14px",background:T.card,border:`1px solid ${T.b1}`,borderRadius:12,marginBottom:7,textAlign:"left"}}>
+                    <div style={{width:36,height:36,borderRadius:"50%",background:`${AC}18`,border:`1px solid ${AC}28`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>{s.icon}</div>
+                    <div style={{flex:1}}>
+                      <div style={{fontWeight:700,fontSize:13,color:T.txt}}>{s.title}</div>
+                      <div style={{fontSize:11,color:T.mu,marginTop:1}}>{s.desc}</div>
+                    </div>
+                  </div>)}
                 </div>
-                {suggestedPersonal.length>0&&<><div style={{fontWeight:700,fontSize:14,color:T.txt,padding:"8px 0 10px",letterSpacing:"-.2px"}}>👤 Suggested People</div><div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:18}}>{suggestedPersonal.map((p,i)=><FeedCard key={p.id} p={p} myId={profile.id} following={following} T={T} onView={setViewT} onFollow={handleFollow} onUnfollow={handleUnfollow} onRate={handleRate} onMsg={handleMsg} idx={i}/>)}</div></>}
-                {suggestedBiz.length>0&&<><div style={{fontWeight:700,fontSize:14,color:T.txt,padding:"8px 0 10px",letterSpacing:"-.2px"}}>🏢 Businesses to Review</div><div style={{display:"flex",flexDirection:"column",gap:10}}>{suggestedBiz.map((p,i)=><FeedCard key={p.id} p={p} myId={profile.id} following={following} T={T} onView={setViewT} onFollow={handleFollow} onUnfollow={handleUnfollow} onRate={handleRate} onMsg={handleMsg} idx={i}/>)}</div></>}
               </div>
             : <div>
                 {followedPersonal.length>0&&<><div style={{fontWeight:700,fontSize:13,color:T.mu,padding:"4px 0 10px",letterSpacing:".04em",textTransform:"uppercase"}}>👤 People</div><div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:18}}>{followedPersonal.map((p,i)=><FeedCard key={p.id} p={p} myId={profile.id} following={following} T={T} onView={setViewT} onFollow={handleFollow} onUnfollow={handleUnfollow} onRate={handleRate} onMsg={handleMsg} idx={i}/>)}</div></>}
                 {followedBiz.length>0&&<><div style={{fontWeight:700,fontSize:13,color:T.mu,padding:"4px 0 10px",letterSpacing:".04em",textTransform:"uppercase"}}>🏢 Businesses</div><div style={{display:"flex",flexDirection:"column",gap:12}}>{followedBiz.map((p,i)=><FeedCard key={p.id} p={p} myId={profile.id} following={following} T={T} onView={setViewT} onFollow={handleFollow} onUnfollow={handleUnfollow} onRate={handleRate} onMsg={handleMsg} idx={i}/>)}</div></>}
-                {suggestedPersonal.length>0&&<><div style={{fontWeight:700,fontSize:13,color:T.mu,padding:"18px 0 10px",letterSpacing:".04em",textTransform:"uppercase"}}>✨ Suggested</div><div style={{display:"flex",flexDirection:"column",gap:10}}>{suggestedPersonal.slice(0,3).map((p,i)=><FeedCard key={p.id} p={p} myId={profile.id} following={following} T={T} onView={setViewT} onFollow={handleFollow} onUnfollow={handleUnfollow} onRate={handleRate} onMsg={handleMsg} idx={i}/>)}</div></>}
               </div>
         }
       </div>}
@@ -3698,7 +4043,7 @@ function App(){
 
       {tab==="inbox"&&<InboxTab convs={convs.map(c=>{const other=profiles.find(p=>p.id===c.oid);return other?{...c,other}:null;}).filter(Boolean)} profiles={profiles} myProfile={profile} following={following} T={T} onOpen={(conv,other)=>setActiveChat({...conv,other})} onDeleteConv={handleDeleteConv} onViewProfile={p=>setViewT(p)} groups={groups} onOpenGroup={g=>setActiveGroup(g)} onCreateGroup={handleCreateGroup}/>}
 
-      {tab==="profile"&&<ProfileTab myProfile={profile} myP={myP} T={T} onQR={()=>setQRT(myP)} onSettings={()=>setSettings(true)} onEditPhoto={()=>setPhoto(true)} onScoreCard={()=>setScoreCard(myP)} following={following} profiles={profiles} onViewProfile={p=>setViewT(p)}/>}
+      {tab==="profile"&&<ProfileTab myProfile={profile} myP={myP} T={T} onQR={()=>setQRT(myP)} onSettings={()=>setSettings(true)} onEditProfile={()=>setEditProfile(true)} onEditPhoto={()=>setPhoto(true)} onScoreCard={()=>setScoreCard(myP)} following={following} profiles={profiles} onViewProfile={p=>setViewT(p)}/>}
     </div>
 
     {/* BOTTOM NAV */}
@@ -3716,6 +4061,7 @@ function App(){
     {rateT      &&<RateModal target={rateT.profile} raterId={profile.id} existing={rateT.existing} T={T} onClose={()=>setRateT(null)} onSubmit={handleSubmit}/>}
     {viewT      &&<ProfileModal profile={viewT} myId={profile.id} following={following} profiles={profiles} T={T} onClose={()=>setViewT(null)} onRate={handleRate} onFollow={handleFollow} onUnfollow={handleUnfollow} onBlock={handleBlock} onReport={setReportT} onMsg={p=>{setViewT(null);handleMsg(p);}} onViewOther={p=>setViewT(p)}/>}
     {qrT        &&<QRModal profile={qrT} T={T} onClose={()=>setQRT(null)}/>}
+    {editProfile&&<EditProfileModal me={profile} T={T} onClose={()=>setEditProfile(false)} onSave={handleSaveProfile} onEditPhoto={()=>{setEditProfile(false);setPhoto(true);}}/>}
     {settings   &&<SettingsModal me={profile} prefs={prefs} T={T} onClose={()=>setSettings(false)} onSave={handleSaveProfile} onSavePrefs={handleSavePrefs} onEditPhoto={()=>{setSettings(false);setPhoto(true);}} onShowBlocked={()=>{setSettings(false);setShowBlocked(true);}} onLogout={handleLogout} onDelete={handleDeleteAccount} onQR={()=>{setSettings(false);setTimeout(()=>setQRT(myP),80);}}/>}
     {photo      &&<PhotoModal profile={profile} T={T} onClose={()=>setPhoto(false)} onSave={handleSavePhoto}/>}
     {scoreCard  &&<ScoreCardModal profile={scoreCard} T={T} onClose={()=>setScoreCard(null)}/>}
@@ -3728,95 +4074,69 @@ function App(){
   </>;
 }
 
-// ── DEFERRED MOUNT: React only renders after getSession() resolves ──────────
-// This is what prevents the login flash. By the time App() runs for the first
-// time, HE_PREFETCHED_SESSION is already populated (or null = not logged in).
-// authLoading starts as false when we have a definitive answer, true only if
-// the pre-boot somehow failed (safety fallback).
-HE_BOOT().then(()=>{
-  ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+// ── MOUNT: React renders after getSession() resolves ──────────────────────
+HE_BOOT().then(function(){
+  ReactDOM.createRoot(document.getElementById('root')).render(
+    <ErrorBoundary><App/></ErrorBoundary>
+  );
 });
 </script>
 
 <!-- PWA: Service Worker + Install Prompt -->
 <script>
-// Register service worker for offline support
+// ── Service Worker ───────────────────────────────────────────────────────────
+// CRITICAL FIX: blob: URL SW registration is broken on Android Chrome 143+ PWA
+// cold starts. The blob URL gets revoked before the SW can fetch it.
+// Solution: Write SW code to a real file path via a data URL string is not possible
+// without a server. Instead we use the SW inline via importScripts workaround.
+// Since we can't write files from JS, we skip SW on Android standalone to prevent
+// the stale cache poisoning the app. The app works fine without SW (just no offline).
 if('serviceWorker' in navigator){
-  window.addEventListener('load',()=>{
-    // ── Network-First Service Worker ─────────────────────────────────────────
-    // CRITICAL: Navigation requests (HTML pages) MUST use NetworkFirst.
-    // A CacheFirst strategy would serve a stale, potentially "logged-out" HTML
-    // page from cache on PWA reopen, causing the auth flash bug.
-    // Strategy:
-    //   - HTML navigation requests → NetworkFirst (try network, fall back to cache)
-    //   - Other GET requests (JS/CSS/images) → StaleWhileRevalidate
-    const swCode=`
-      const CACHE='highenough-v3';
-      const HTML_CACHE='highenough-html-v3';
-
-      self.addEventListener('install',e=>{
-        e.waitUntil(
-          caches.open(HTML_CACHE).then(c=>c.addAll(['/']).catch(()=>{}))
-          .then(()=>self.skipWaiting())
-        );
+  var isStandalone=window.matchMedia('(display-mode: standalone)').matches||window.navigator.standalone===true;
+  window.addEventListener('load',function(){
+    // Only register SW in browser — skip in standalone PWA to avoid stale cache
+    // causing the black screen on Android Chrome 143+
+    if(isStandalone){
+      // Clear any existing SW that might be serving stale content
+      navigator.serviceWorker.getRegistrations().then(function(regs){
+        regs.forEach(function(r){r.unregister();});
       });
-
-      self.addEventListener('activate',e=>{
-        // Clean up old caches from previous SW versions
-        e.waitUntil(
-          caches.keys().then(keys=>Promise.all(
-            keys.filter(k=>k!==CACHE&&k!==HTML_CACHE).map(k=>caches.delete(k))
-          )).then(()=>self.clients.claim())
-        );
-      });
-
-      self.addEventListener('fetch',e=>{
-        if(e.request.method!=='GET')return;
-        const url=new URL(e.request.url);
-        const isNavigation=e.request.mode==='navigate'||
-                           (e.request.headers.get('accept')||'').includes('text/html');
-        const isSameDomain=url.origin===self.location.origin;
-
-        if(isNavigation&&isSameDomain){
-          // NetworkFirst for HTML: always try to get the freshest page.
-          // Only serve cache if the network is completely unavailable.
-          e.respondWith(
-            fetch(e.request, {cache:'no-cache'})
-              .then(res=>{
-                // Clone and cache the fresh response
-                const clone=res.clone();
-                caches.open(HTML_CACHE).then(c=>c.put(e.request,clone));
-                return res;
-              })
-              .catch(async()=>{
-                // Offline fallback: serve cached HTML
-                const cached=await caches.match('/');
-                return cached||new Response('Offline',{status:503});
-              })
-          );
-          return;
-        }
-
-        // StaleWhileRevalidate for all other assets (JS/CSS/fonts/images)
-        if(isSameDomain||url.hostname.includes('supabase.co')){
-          return; // Don't intercept Supabase API calls
-        }
-
-        e.respondWith(
-          caches.open(CACHE).then(async cache=>{
-            const cached=await cache.match(e.request);
-            const fresh=fetch(e.request).then(res=>{
-              if(res.ok)cache.put(e.request,res.clone());
-              return res;
-            }).catch(()=>cached);
-            return cached||fresh;
-          })
-        );
-      });
-    `;
-    const blob=new Blob([swCode],{type:'application/javascript'});
-    const url=URL.createObjectURL(blob);
-    navigator.serviceWorker.register(url).catch(()=>{});
+      // Clear all caches that might have poisoned HTML
+      if('caches' in window){
+        caches.keys().then(function(keys){
+          keys.forEach(function(k){caches.delete(k);});
+        });
+      }
+      return;
+    }
+    // Browser mode — register SW normally for offline support
+    var swCode=[
+      "const CACHE='he-v4';",
+      "self.addEventListener('install',e=>{e.waitUntil(self.skipWaiting());});",
+      "self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim()));});",
+      "self.addEventListener('fetch',e=>{",
+      "  if(e.request.method!=='GET')return;",
+      "  const url=new URL(e.request.url);",
+      "  const isNav=e.request.mode==='navigate';",
+      "  if(isNav){e.respondWith(fetch(e.request,{cache:'no-cache'}).catch(()=>caches.match('/')));return;}",
+      "  if(url.hostname.includes('supabase.co')||url.hostname.includes('googleapis'))return;",
+      "  e.respondWith(caches.open(CACHE).then(c=>c.match(e.request).then(r=>{",
+      "    const f=fetch(e.request).then(nr=>{if(nr.ok)c.put(e.request,nr.clone());return nr;}).catch(()=>r);",
+      "    return r||f;",
+      "  })));",
+      "});",
+    ].join('\n');
+    try{
+      var blob=new Blob([swCode],{type:'application/javascript'});
+      var url=URL.createObjectURL(blob);
+      navigator.serviceWorker.register(url).then(function(){
+        URL.revokeObjectURL(url);
+      }).catch(function(){URL.revokeObjectURL(url);});
+    }catch(e){}
+  });
+  // If SW sends a reload message (e.g. after cache clear), do it
+  navigator.serviceWorker.addEventListener('message',function(e){
+    if(e.data==='reload')window.location.reload();
   });
 }
 
@@ -3904,7 +4224,7 @@ if(!HE_IS_STANDALONE){
       function doDismiss(){
         banner.remove();
         sessionStorage.setItem('he-install-dismissed','1');
-        window.dispatchEvent(new Event('he-installed')); // hide header btn too
+        // Do NOT fire he-installed — user dismissed, not installed
       }
 
       document.getElementById('he-install-btn').onclick=doInstall;
