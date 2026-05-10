@@ -74,13 +74,6 @@ button:active{opacity:.8;transform:scale(.96)}
 <body>
 <div id="splash" style="position:fixed;inset:0;background:#09090f;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;z-index:9999;transition:opacity .3s"><div style="font-family:'Inter',sans-serif;font-weight:800;font-size:42px;letter-spacing:-2px;color:#ffffff;line-height:1">High<span style="color:#7864dc;font-weight:700;letter-spacing:-.5px">Enough</span></div><div style="width:20px;height:20px;border:2px solid #1c1c2c;border-top-color:#7864dc;border-radius:50%;animation:spin .55s linear infinite"></div><div id="splash-status" style="font-size:11px;color:#3a3a5a;margin-top:4px;font-family:'JetBrains Mono',monospace;letter-spacing:.05em">Loading…</div></div>
 <div id="root"></div>
-<script>
-  // Hard failsafe — force-remove splash after 6s no matter what
-  setTimeout(function(){
-    var s=document.getElementById('splash');
-    if(s){s.style.opacity='0';s.style.pointerEvents='none';setTimeout(function(){if(s&&s.parentNode)s.parentNode.removeChild(s);},400);}
-  },6000);
-</script>
 <script type="text/babel">
 const {useState,useEffect,useRef,useCallback}=React;
 
@@ -3164,8 +3157,6 @@ function App(){
       sb.removeAllChannels();
       profileLoadingRef.current=false;
       bootingUserIdRef.current=null;
-      // Clear the pre-fetched session so the spinner guard doesn't re-trigger
-      try{window.HE_PREFETCHED_SESSION=null;}catch{}
       setDataReady(false);
       setAuthUser(null);
       setProfile(null);
@@ -3176,20 +3167,11 @@ function App(){
       setBlocked([]);
       setConvs([]);
       setDeepLinkProfile(null);
-      setActiveChat(null);
-      setActiveGroup(null);
-      setViewT(null);
-      setRateT(null);
-      setSettings(false);
       setAuthLoading(false);
     }
 
-    // Safety net: if INITIAL_SESSION never fires (network issue, offline, etc.)
-    // unblock after 6s so the user sees the login screen instead of hanging forever
-    const splashTimer=setTimeout(()=>{
-      setAuthLoading(false);
-      setDataReady(false);
-    }, 6000);
+    // Safety net: if INITIAL_SESSION never fires (rare), unblock after 8s
+    const splashTimer=setTimeout(()=>setAuthLoading(false), 8000);
 
     const {data:{subscription}}=sb.auth.onAuthStateChange(async(event,session)=>{
 
@@ -3576,7 +3558,6 @@ function App(){
   }
   async function handleLogout(){
     localStorage.setItem("he_intent_signout","true");
-    try{window.HE_PREFETCHED_SESSION=null;}catch{}
     try{await sb.auth.signOut();}catch{}
   }
 
@@ -3628,7 +3609,6 @@ function App(){
     }catch(e){console.error("Delete cleanup error:",e);}
     // Mark intentional — lets SIGNED_OUT → clearSession redirect to login cleanly
     localStorage.setItem("he_intent_signout","true");
-    try{window.HE_PREFETCHED_SESSION=null;}catch{}
     try{await sb.auth.signOut();}catch{}
   }
 
