@@ -3398,7 +3398,7 @@ function App(){
       // Helper: map a raw ratings row to the app shape
       const mapRating=r=>({raterId:r.rater_id,raterName:r.rater_name||"",vibe:r.vibe,humor:r.humor,kindness:r.kindness,rizz:r.rizz,loyalty:r.loyalty,drip:r.drip,ts:new Date(r.updated_at).getTime()});
 
-      if(profRes.data){
+      if(profRes.data&&!clearingRatingsRef.current){
         setProfiles(profRes.data
           .filter(p=>!deletedIds.has(p.id))
           .map(p=>({...p,account_type:p.account_type||"personal",ratings:allRatings.filter(r=>r.target_id===p.id).map(mapRating)}))
@@ -3498,17 +3498,25 @@ function App(){
       if(pollRef.current)clearInterval(pollRef.current);
       pollRef.current=setInterval(async()=>{
         if(document.visibilityState!=="visible")return;
+        if(clearingRatingsRef.current)return; // skip poll during category clear
         const [pr,rr,dr]=await Promise.all([
           sb.from("profiles").select("*"),
           sb.from("ratings").select("*"),
           sb.from("deleted_accounts").select("auth_id"),
         ]);
         if(pr.data&&rr.data){
+          if(clearingRatingsRef.current)return; // re-check after await
           const delSet=new Set((dr.data||[]).map(d=>d.auth_id));
-          setProfiles(pr.data
+          const updatedProfiles=pr.data
             .filter(p=>!delSet.has(p.id))
-            .map(p=>({...p,account_type:p.account_type||"personal",ratings:rr.data.filter(r=>r.target_id===p.id).map(mapRating)}))
-          );
+            .map(p=>({...p,account_type:p.account_type||"personal",ratings:rr.data.filter(r=>r.target_id===p.id).map(mapRating)}));
+          setProfiles(updatedProfiles);
+          // Keep profile in sync with poll data
+          setProfile(prev=>{
+            if(!prev)return prev;
+            const fresh=updatedProfiles.find(p=>p.id===prev.id);
+            return fresh?{...fresh,followers_count:prev.followers_count,following_count:prev.following_count}:prev;
+          });
         }
       },30000);
 
@@ -3527,6 +3535,7 @@ function App(){
   const [refreshing,setRefreshing]=useState(false);
   async function handleRefresh(){
     if(!profile||refreshing)return;
+    if(clearingRatingsRef.current)return; // don't refresh during category clear
     setRefreshing(true);
     try{
       const mapR=r=>({raterId:r.rater_id,raterName:r.rater_name||"",vibe:r.vibe,humor:r.humor,kindness:r.kindness,rizz:r.rizz,loyalty:r.loyalty,drip:r.drip,ts:new Date(r.updated_at).getTime()});
@@ -3539,15 +3548,24 @@ function App(){
         sb.from("notifications").select("*").eq("target_id",profile.id).order("created_at",{ascending:false}).limit(60),
         sb.from("deleted_accounts").select("auth_id"),
       ]);
+      if(clearingRatingsRef.current){setRefreshing(false);return;} // re-check after awaits
       const delSet=new Set((delRes.data||[]).map(d=>d.auth_id));
       const allRatings=ratRes.data||[];
       if(profRes.data){
-        setProfiles(profRes.data.filter(p=>!delSet.has(p.id)).map(p=>({...p,account_type:p.account_type||"personal",ratings:allRatings.filter(r=>r.target_id===p.id).map(mapR)})));
+        const updatedProfiles=profRes.data.filter(p=>!delSet.has(p.id)).map(p=>({...p,account_type:p.account_type||"personal",ratings:allRatings.filter(r=>r.target_id===p.id).map(mapR)}));
+        setProfiles(updatedProfiles);
+        // Sync profile state with fresh data (preserve follow counts)
+        const myFresh=updatedProfiles.find(p=>p.id===profile.id);
+        const followingIds=(followRes.data||[]).map(r=>r.following_id);
+        const followerIds=(myFollowersRes.data||[]).map(r=>r.follower_id);
+        if(myFresh)setProfile({...myFresh,followers_count:followerIds.length,following_count:followingIds.length});
+        setFollowing(followingIds);
+      }else{
+        const followingIds=(followRes.data||[]).map(r=>r.following_id);
+        const followerIds=(myFollowersRes.data||[]).map(r=>r.follower_id);
+        setFollowing(followingIds);
+        setProfile(prev=>({...prev,followers_count:followerIds.length,following_count:followingIds.length}));
       }
-      const followingIds=(followRes.data||[]).map(r=>r.following_id);
-      const followerIds=(myFollowersRes.data||[]).map(r=>r.follower_id);
-      setFollowing(followingIds);
-      setProfile(prev=>({...prev,followers_count:followerIds.length,following_count:followingIds.length}));
       setBlocked((blockRes.data||[]).map(r=>r.blocked_id));
       if(notifRes.data)setNotifs(notifRes.data.map(n=>({type:n.type,actorId:n.actor_id,text:n.text,ts:new Date(n.created_at).getTime(),read:n.read})));
       pop("Refreshed ✓");
@@ -3687,8 +3705,8 @@ function App(){
         setProfiles(prev=>prev.map(p=>p.id===updated.id?{...p,...updated,ratings:[]}:p));
         setProfile(freshProfile);
         pop("Category changed — reviews cleared");
-        // Hold the block for 3s to absorb any lagging realtime events
-        setTimeout(()=>{clearingRatingsRef.current=false;},3000);
+        // Hold block for 35s — longer than the 30s poll interval — to prevent any re-fetch from restoring old data
+        setTimeout(()=>{clearingRatingsRef.current=false;},35000);
       }else{
         setProfiles(prev=>prev.map(p=>p.id===updated.id?{...p,...updated}:p));
         setProfile(updated);
