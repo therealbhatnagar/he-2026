@@ -3869,8 +3869,11 @@ function App(){
   },[authUser,profileFetched,profile]);
 
   // ── RENDER ROUTING ────────────────────────────────────────────────────────
-  // 1. Auth still resolving — splash is visible, render nothing underneath
-  if(authLoading)return null;
+  // 1. Auth still resolving — splash is visible on top, show spinner underneath
+  // so if splash gets removed (by plain JS timer), user sees spinner not black screen
+  if(authLoading)return<div style={{minHeight:"100vh",background:"#09090f",display:"flex",alignItems:"center",justifyContent:"center"}}>
+    <div style={{width:22,height:22,border:"2.5px solid #1c1c2c",borderTopColor:"#7b72e9",borderRadius:"50%",animation:"spin .55s linear infinite"}}/>
+  </div>;
 
   // 2. Pre-boot found a valid session but onAuthStateChange hasn't fired yet.
   // Only show spinner if session is genuinely still pending (not cleared by logout).
