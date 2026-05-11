@@ -832,11 +832,11 @@ function QRModal({profile,T,onClose}){
       new window.QRious({
         element:qrRef.current,
         value:shareUrl,
-        size:260,
-        background:"#ffffff",
+        size:220,
+        background:"#f7f7ff",
         foreground:"#0a0a14",
-        level:"H",     // High error correction — center logo can cover ~30% safely
-        padding:16,
+        level:"H",
+        padding:12,
       });
       setReady(true);
     });
@@ -1002,8 +1002,8 @@ function QRModal({profile,T,onClose}){
           <div style={{position:"relative",width:200,height:200,display:"flex",alignItems:"center",justifyContent:"center"}}>
             <canvas ref={qrRef} style={{display:"block",width:200,height:200,borderRadius:2}}/>
             {!ready&&<div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(255,255,255,.95)",borderRadius:2}}><Spinner/></div>}
-            {ready&&<div style={{position:"absolute",width:38,height:38,borderRadius:9,background:"#fff",border:`2.5px solid ${col}`,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:`0 2px 12px ${col}60`}}>
-              <span style={{fontSize:20,fontWeight:900,color:col,fontFamily:"'Inter',sans-serif",lineHeight:1}}>H</span>
+            {ready&&<div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",width:40,height:40,borderRadius:10,background:"#fff",border:`2.5px solid ${col}`,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:`0 2px 12px ${col}60`}}>
+              <span style={{fontSize:21,fontWeight:900,color:col,fontFamily:"'Inter',sans-serif",lineHeight:1}}>H</span>
             </div>}
           </div>
         </div>
@@ -1837,11 +1837,14 @@ function SearchTab({profiles,myId,following,T,onView,onFollow,onUnfollow,onRate,
 
   const allSorted=[...profiles].sort((a,b)=>a.name.localeCompare(b.name));
   const filtered=filter==="all"?allSorted:allSorted.filter(p=>(p.account_type||"personal")===filter);
+  // Search all profiles (including followed ones) — just exclude self
   const results=q.trim().length>0?filtered.filter(p=>p.id!==myId&&(
     p.name.toLowerCase().includes(q.toLowerCase())||
-    (p.handle||"").toLowerCase().includes(q.toLowerCase())||
-    (p.short_id||shortId(p.id)).toLowerCase().includes(q.toLowerCase())
+    (p.handle||"").toLowerCase().replace(/^@/,"").includes(q.toLowerCase().replace(/^@/,""))||
+    (p.short_id||shortId(p.id)).toLowerCase().includes(q.toLowerCase().replace(/^#/,""))||
+    (p.bio||"").toLowerCase().includes(q.toLowerCase())
   )):[];
+  // Suggested = people you haven't followed yet
   const suggested=filtered.filter(p=>p.id!==myId&&!following.includes(p.id)).slice(0,20);
 
   async function startScan(){
@@ -1957,12 +1960,21 @@ function BoardTab({profiles,myId,T,onView}){
     return true;
   });
 
-  const allR=[...filteredByType].map(p=>({...p,sc:pScore(p)??-1})).sort((a,b)=>b.sc-a.sc);
-  const trending=[...filteredByType].map(p=>{const rc=(p.ratings||[]).filter(r=>r.ts&&now-r.ts<week);return{...p,sc:pScore(p)??-1,tC:rc.length};}).sort((a,b)=>b.tC-a.tC).filter(p=>p.tC>0);
+  // Scored profiles sorted descending, then unscored at bottom
+  const allR=[...filteredByType].map(p=>({...p,sc:pScore(p)??-1})).sort((a,b)=>{
+    if(a.sc>=0&&b.sc>=0)return b.sc-a.sc;
+    if(a.sc>=0)return -1;
+    if(b.sc>=0)return 1;
+    return a.name.localeCompare(b.name);
+  });
+  const trending=[...filteredByType].map(p=>{
+    const rc=(p.ratings||[]).filter(r=>r.ts&&now-r.ts<week);
+    return{...p,sc:pScore(p)??-1,tC:rc.length};
+  }).filter(p=>p.tC>0).sort((a,b)=>b.tC-a.tC);
   const rising=[...filteredByType].map(p=>{
     const cats2=getCats(p);
     const rc=(p.ratings||[]).filter(r=>r.ts&&now-r.ts<week);
-    const gain=Math.round(rc.reduce((s,r)=>s+cats2.reduce((cs,c)=>cs+(r[c.id]||0),0)/cats2.length,0));
+    const gain=rc.length?Math.round(rc.reduce((s,r)=>s+cats2.reduce((cs,c)=>cs+(r[c.id]||0),0)/cats2.length,0)):0;
     return{...p,sc:pScore(p)??-1,gain};
   }).filter(p=>p.gain>0).sort((a,b)=>b.gain-a.gain);
   const list=sub==="all"?allR:sub==="trending"?trending:rising;
@@ -2041,15 +2053,16 @@ function BoardTab({profiles,myId,T,onView}){
 
     <div style={{padding:"0 14px"}}>
       {list.length===0&&<div style={{textAlign:"center",padding:"40px 0",color:T.mu,fontSize:13}}>
-        {acFilter==="business"&&bizFilter!=="all"
-          ?`No ${BIZ_TYPES.find(b=>b.id===bizFilter)?.label||""} profiles with scores yet`
-          :"Nothing here yet"}
+        {sub==="trending"?"No activity this week yet":sub==="rising"?"No rising profiles this week":acFilter==="business"&&bizFilter!=="all"?`No ${BIZ_TYPES.find(b=>b.id===bizFilter)?.label||""} profiles yet`:"Nothing here yet"}
       </div>}
       {list.slice(top3.length>0&&sub==="all"?3:0).map((p,i)=>{
         const isBiz2=acFilter==="business";
-        const t=tierOf(p.sc,isBiz2),rank=i+(sub==="all"?4:1);const isTop=rank<=3;
+        const hasScore=p.sc>=0;
+        const t=tierOf(hasScore?p.sc:0,isBiz2);
+        const rank=i+(sub==="all"?(top3.length>0?4:1):1);
+        const isTop=rank<=3&&hasScore;
         const bizType=isBiz2?BIZ_TYPES.find(b=>b.id===getBizType(p)):null;
-        return<div key={p.id} onClick={()=>onView(p)} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 14px",background:isTop?`linear-gradient(135deg,${t.color}18,${t.color}08)`:`linear-gradient(135deg,${T.card},${T.surf})`,border:`1px solid ${isTop?t.color+"40":T.b1}`,borderRadius:16,marginBottom:8,cursor:"pointer",transition:"all .14s",animation:`ci .28s ease ${i*35}ms both`,boxShadow:isTop?`0 4px 20px ${t.color}18`:"0 2px 12px rgba(0,0,0,.12)"}}>
+        return<div key={p.id} onClick={()=>onView(p)} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 14px",background:isTop?`linear-gradient(135deg,${t.color}18,${t.color}08)`:`linear-gradient(135deg,${T.card},${T.surf})`,border:`1px solid ${isTop?t.color+"40":T.b1}`,borderRadius:16,marginBottom:8,cursor:"pointer",transition:"all .14s",animation:`ci .28s ease ${i*35}ms both`,boxShadow:isTop?`0 4px 20px ${t.color}18`:"0 2px 12px rgba(0,0,0,.08)",opacity:hasScore?1:.65}}>
           <div style={{width:28,textAlign:"center",fontFamily:"'JetBrains Mono',monospace",fontSize:isTop?14:12,fontWeight:800,color:isTop?t.color:T.mu}}>#{rank}</div>
           <Ava p={p} size={isTop?46:42} T={T}/>
           <div style={{flex:1,minWidth:0}}>
@@ -2058,12 +2071,12 @@ function BoardTab({profiles,myId,T,onView}){
               {p.id===myId&&<span style={{fontSize:9,marginLeft:6,background:`${AC}18`,color:AC,borderRadius:10,padding:"1px 7px",fontFamily:"'JetBrains Mono',monospace"}}>you</span>}
             </div>
             <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
-              <TierBadge sc={p.sc>=0?p.sc:null} size="sm" isBiz={isBiz2}/>
-              {bizType&&bizFilter==="all"&&<span style={{fontSize:10,color:T.mu,background:T.faint,borderRadius:8,padding:"1px 7px",border:`1px solid ${T.b1}`}}>{bizType.emoji} {bizType.label.split(" /")[0].split(" ·")[0]}</span>}
+              <TierBadge sc={hasScore?p.sc:null} size="sm" isBiz={isBiz2}/>
+              {bizType&&bizFilter==="all"&&<span style={{fontSize:10,color:T.mu,background:T.faint,borderRadius:8,padding:"1px 7px",border:`1px solid ${T.b1}`}}>{bizType.emoji} {bizType.label.split(" /")[0]}</span>}
             </div>
           </div>
           <div style={{textAlign:"right",flexShrink:0}}>
-            <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:isTop?19:17,fontWeight:800,color:t.color,textShadow:isTop?`0 0 12px ${t.color}50`:"none"}}>{fmtScore(p.sc>=0?p.sc:null)}</div>
+            <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:isTop?19:17,fontWeight:800,color:hasScore?t.color:T.mu,textShadow:isTop?`0 0 12px ${t.color}50`:"none"}}>{hasScore?fmtScore(p.sc):"—"}</div>
             {sub==="trending"&&p.tC&&<div style={{fontSize:10,color:"#10a37f",marginTop:2}}>+{p.tC} this week</div>}
             {sub==="rising"&&p.gain&&<div style={{fontSize:10,color:"#c08a2e",marginTop:2}}>+{p.gain} pts</div>}
           </div>
@@ -2588,13 +2601,86 @@ function SettingsModal({me,prefs,T,onClose,onSave,onSavePrefs,onEditPhoto,onShow
 
 /* ── PHOTO MODAL ── */
 function PhotoModal({profile,T,onClose,onSave}){
-  const [prev,setPrev]=useState(profile.photo||null);const[cam,setCam]=useState(false);const[stream,setStream]=useState(null);
+  const [prev,setPrev]=useState(profile.photo||null);
+  const [cam,setCam]=useState(false);
+  const [stream,setStream]=useState(null);
+  const [cropping,setCropping]=useState(false);
+  const [cropSrc,setCropSrc]=useState(null);
+  const [scale,setScale]=useState(1);
+  const [offset,setOffset]=useState({x:0,y:0});
+  const [dragging,setDragging]=useState(false);
+  const [dragStart,setDragStart]=useState(null);
   const vRef=useRef(null);const cRef=useRef(null);
+  const cropImgRef=useRef(null);
+  const CROP_SIZE=220;
+
   useEffect(()=>()=>stream?.getTracks().forEach(t=>t.stop()),[]);
-  function pick(){const i=document.createElement("input");i.type="file";i.accept="image/*";i.onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>setPrev(ev.target.result);r.readAsDataURL(f);};i.click();}
-  async function startCam(){try{const s=await navigator.mediaDevices.getUserMedia({video:{facingMode:"user"}});setStream(s);setCam(true);setTimeout(()=>{if(vRef.current)vRef.current.srcObject=s;},100);}catch{alert("Camera unavailable");}}
+
+  function pick(){
+    const i=document.createElement("input");i.type="file";i.accept="image/*";
+    i.onchange=e=>{
+      const f=e.target.files[0];if(!f)return;
+      const r=new FileReader();
+      r.onload=ev=>{setCropSrc(ev.target.result);setScale(1);setOffset({x:0,y:0});setCropping(true);};
+      r.readAsDataURL(f);
+    };i.click();
+  }
+
+  async function startCam(){
+    try{const s=await navigator.mediaDevices.getUserMedia({video:{facingMode:"user"}});setStream(s);setCam(true);setTimeout(()=>{if(vRef.current)vRef.current.srcObject=s;},100);}
+    catch{alert("Camera unavailable");}
+  }
   function stopCam(){stream?.getTracks().forEach(t=>t.stop());setStream(null);setCam(false);}
-  function snap(){const v=vRef.current,c=cRef.current;if(!v||!c)return;c.width=v.videoWidth;c.height=v.videoHeight;c.getContext("2d").drawImage(v,0,0);setPrev(c.toDataURL("image/jpeg",.85));stopCam();}
+  function snap(){
+    const v=vRef.current,c=cRef.current;if(!v||!c)return;
+    c.width=v.videoWidth;c.height=v.videoHeight;
+    c.getContext("2d").drawImage(v,0,0);
+    const dataUrl=c.toDataURL("image/jpeg",.85);
+    stopCam();setCropSrc(dataUrl);setScale(1);setOffset({x:0,y:0});setCropping(true);
+  }
+
+  function applyCrop(){
+    const img=cropImgRef.current;if(!img)return;
+    const out=document.createElement("canvas");
+    out.width=300;out.height=300;
+    const ctx=out.getContext("2d");
+    // Clip to circle
+    ctx.beginPath();ctx.arc(150,150,150,0,Math.PI*2);ctx.clip();
+    // Draw scaled+offset image centred in crop area
+    const s=scale;
+    const iW=img.naturalWidth*s,iH=img.naturalHeight*s;
+    const dx=150-iW/2+offset.x,dy=150-iH/2+offset.y;
+    ctx.drawImage(img,dx,dy,iW,iH);
+    setPrev(out.toDataURL("image/jpeg",.92));
+    setCropping(false);setCropSrc(null);
+  }
+
+  function onPointerDown(e){setDragging(true);setDragStart({x:e.clientX-offset.x,y:e.clientY-offset.y});}
+  function onPointerMove(e){if(!dragging||!dragStart)return;setOffset({x:e.clientX-dragStart.x,y:e.clientY-dragStart.y});}
+  function onPointerUp(){setDragging(false);}
+
+  if(cropping&&cropSrc)return<Overlay onBg={()=>{setCropping(false);setCropSrc(null);}} T={T} bottom>
+    <div style={{fontWeight:700,fontSize:17,color:T.txt,marginBottom:4}}>Adjust Photo</div>
+    <div style={{fontSize:12,color:T.mu,marginBottom:14}}>Drag to reposition · Pinch or slide to zoom</div>
+    {/* Crop preview */}
+    <div style={{display:"flex",justifyContent:"center",marginBottom:14}}>
+      <div style={{width:CROP_SIZE,height:CROP_SIZE,borderRadius:"50%",overflow:"hidden",border:`3px solid ${profile.color}`,cursor:"grab",userSelect:"none",flexShrink:0,background:T.faint}}
+        onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerLeave={onPointerUp}>
+        <img ref={cropImgRef} src={cropSrc} alt="" draggable={false} style={{width:`${scale*100}%`,height:`${scale*100}%`,objectFit:"cover",transform:`translate(${offset.x}px,${offset.y}px)`,transformOrigin:"center",pointerEvents:"none"}}/>
+      </div>
+    </div>
+    {/* Zoom slider */}
+    <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16,padding:"0 4px"}}>
+      <span style={{fontSize:13,color:T.mu}}>🔍</span>
+      <input type="range" min="0.5" max="3" step="0.01" value={scale} onChange={e=>setScale(parseFloat(e.target.value))} style={{flex:1,accentColor:profile.color}}/>
+      <span style={{fontSize:13,color:T.mu,fontFamily:"'JetBrains Mono',monospace",minWidth:36}}>{Math.round(scale*100)}%</span>
+    </div>
+    <div style={{display:"flex",gap:8}}>
+      <button onClick={applyCrop} style={{flex:1,padding:"13px 0",background:`linear-gradient(135deg,${profile.color}e0,${profile.color}90)`,borderRadius:12,color:"#fff",fontWeight:700}}>✓ Apply</button>
+      <button onClick={()=>{setCropping(false);setCropSrc(null);}} style={{flex:1,padding:"13px 0",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:12,color:T.mu,fontWeight:500}}>Cancel</button>
+    </div>
+  </Overlay>;
+
   return<Overlay onBg={()=>{stopCam();onClose();}} T={T} bottom>
     <div style={{fontWeight:700,fontSize:17,color:T.txt,marginBottom:16}}>Profile Photo</div>
     <div style={{display:"flex",justifyContent:"center",marginBottom:16}}>
@@ -2603,11 +2689,18 @@ function PhotoModal({profile,T,onClose,onSave}){
       </div>
       <canvas ref={cRef} style={{display:"none"}}/>
     </div>
-    {cam?<div style={{display:"flex",gap:8}}><button onClick={snap} style={{flex:1,padding:"12px 0",background:`${profile.color}cc`,borderRadius:12,color:"#fff",fontWeight:700}}>📸 Capture</button><button onClick={stopCam} style={{flex:1,padding:"12px 0",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:12,color:T.mu}}>Cancel</button></div>
+    {cam
+      ?<div style={{display:"flex",gap:8}}>
+        <button onClick={snap} style={{flex:1,padding:"12px 0",background:`${profile.color}cc`,borderRadius:12,color:"#fff",fontWeight:700}}>📸 Capture</button>
+        <button onClick={stopCam} style={{flex:1,padding:"12px 0",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:12,color:T.mu}}>Cancel</button>
+      </div>
       :<div style={{display:"flex",flexDirection:"column",gap:9}}>
         <button onClick={pick} style={{padding:"13px 0",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:12,color:T.txt,fontWeight:500,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}><CamIcon/>Choose from Gallery</button>
         <button onClick={startCam} style={{padding:"13px 0",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:12,color:T.txt,fontWeight:500,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}><CamIcon/>Take Photo</button>
-        {prev&&<button onClick={()=>setPrev(null)} style={{padding:"12px 0",background:"transparent",border:"1px solid #c0404040",borderRadius:12,color:"#c06060",fontWeight:500}}>Remove Photo</button>}
+        {prev&&<>
+          <button onClick={()=>{setCropSrc(prev);setScale(1);setOffset({x:0,y:0});setCropping(true);}} style={{padding:"12px 0",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:12,color:T.txt,fontWeight:500,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>✂️ Adjust / Crop</button>
+          <button onClick={()=>setPrev(null)} style={{padding:"12px 0",background:"transparent",border:"1px solid #c0404040",borderRadius:12,color:"#c06060",fontWeight:500}}>Remove Photo</button>
+        </>}
         <div style={{height:1,background:T.b1}}/>
         <button onClick={()=>onSave(prev)} style={{padding:"13px 0",background:`linear-gradient(135deg,${profile.color}e0,${profile.color}90)`,borderRadius:12,color:"#fff",fontWeight:700}}>Save Photo</button>
       </div>}
