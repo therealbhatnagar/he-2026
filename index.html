@@ -679,7 +679,7 @@ function ProfileSetup({user,T,onDone}){
       <div style={{textAlign:"center",marginBottom:32}}><div style={{fontWeight:800,fontSize:36,letterSpacing:"-2px",color:T.txt}}>High<span style={{color:AC,fontWeight:300,letterSpacing:"0.04em"}}>Enough</span></div><div style={{fontSize:13,color:T.mu,marginTop:8}}>What kind of account do you want?</div></div>
       <div style={{display:"flex",flexDirection:"column",gap:14,marginBottom:24}}>
         {[{id:"personal",emoji:"👤",title:"Personal",desc:"For individuals — rate friends, build your social rep & climb personal tiers"},
-          {id:"business",emoji:"🏢",title:"Business / Brand",desc:"For companies, brands & services — let customers rate their experience"}].map(t=>
+          {id:"business",emoji:"💼",title:"Business / Professional",desc:"For businesses, brands, freelancers & service providers — let customers rate their experience"}].map(t=>
           <div key={t.id} onClick={()=>setAcType(t.id)} style={{padding:"18px 16px",background:acType===t.id?`${AC}10`:T.faint,border:`1.5px solid ${acType===t.id?AC+"60":T.b1}`,borderRadius:16,cursor:"pointer",transition:"all .15s"}}>
             <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:6}}>
               <span style={{fontSize:28}}>{t.emoji}</span>
@@ -697,7 +697,7 @@ function ProfileSetup({user,T,onDone}){
     <div style={{width:"100%",maxWidth:380,animation:"ci .4s ease"}}>
       <div style={{textAlign:"center",marginBottom:28}}>
         <div style={{fontWeight:800,fontSize:36,letterSpacing:"-2px",color:T.txt}}>High<span style={{color:AC,fontWeight:300,letterSpacing:"0.04em"}}>Enough</span></div>
-        <div style={{fontSize:13,color:T.mu,marginTop:8}}>What best describes your business?</div>
+        <div style={{fontSize:13,color:T.mu,marginTop:8}}>What best describes your business or profession?</div>
         <div style={{fontSize:11,color:T.mu,marginTop:4,opacity:.7}}>This determines your rating categories</div>
       </div>
       <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:24,maxHeight:"52vh",overflowY:"auto"}}>
@@ -753,8 +753,8 @@ function ProfileSetup({user,T,onDone}){
       {acType==="personal"&&<input value={bio} onChange={e=>setBio(e.target.value)} placeholder="Bio (optional)" style={{...inp,marginBottom:11}}/>}
 
       <div style={{background:`${AC}10`,border:`1px solid ${AC}25`,borderRadius:10,padding:"8px 12px",marginBottom:16,display:"flex",alignItems:"center",gap:8,fontSize:12,color:T.mu}}>
-        <span>{acType==="business"?(BIZ_TYPES.find(b=>b.id===bizType)?.emoji||"🏢"):"👤"}</span>
-        <span>{acType==="business"?(BIZ_TYPES.find(b=>b.id===bizType)?.label||"Business")+" account":"Personal account — friends score your personality"}</span>
+        <span>{acType==="business"?(BIZ_TYPES.find(b=>b.id===bizType)?.emoji||"💼"):"👤"}</span>
+        <span>{acType==="business"?(BIZ_TYPES.find(b=>b.id===bizType)?.label||"Business / Professional")+" · Professional account":"Personal account — friends score your personality"}</span>
         <button onClick={()=>setStep(acType==="business"?"biztype":"type")} style={{marginLeft:"auto",background:"none",color:AC,fontSize:11,fontWeight:600}}>Change</button>
       </div>
       {err&&<div style={{color:"#d06060",fontSize:13,marginBottom:12,padding:"9px 12px",background:"#a0303018",borderRadius:9,border:"1px solid #a0303030"}}>{err}</div>}
@@ -853,52 +853,124 @@ function QRModal({profile,T,onClose}){
   function saveCard(){
     const qc=qrRef.current;if(!qc||!ready)return;
     const fc=cardRef.current;
-    const W=420,H=580;fc.width=W;fc.height=H;
+    const W=480,H=640;fc.width=W;fc.height=H;
     const ctx=fc.getContext("2d");
-    // Background
+    const cx=W/2;
+
+    // Dark background
     ctx.fillStyle="#09090f";ctx.fillRect(0,0,W,H);
-    // Gradient glow
-    const g=ctx.createRadialGradient(W/2,H*.55,20,W/2,H*.55,240);
-    g.addColorStop(0,col+"28");g.addColorStop(1,"transparent");
-    ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
-    // Top bar
-    const tb=ctx.createLinearGradient(0,0,W,0);tb.addColorStop(0,col);tb.addColorStop(1,col+"80");
-    ctx.fillStyle=tb;ctx.fillRect(0,0,W,5);
-    // Logo
-    ctx.textAlign="center";ctx.textBaseline="alphabetic";
-    ctx.font="900 20px Inter,Arial,sans-serif";ctx.fillStyle="#f0f0ff";
-    ctx.fillText("High",W/2-28,40);
-    ctx.font="300 20px Inter,Arial,sans-serif";ctx.fillStyle="#7b72e9";
-    ctx.fillText("Enough",W/2+30,40);
-    // Avatar
-    const ax=W/2,ay=92,ar=28;
-    ctx.beginPath();ctx.arc(ax,ay,ar,0,Math.PI*2);ctx.fillStyle=col+"28";ctx.fill();
+
+    // Radial glow behind QR area
+    const glow=ctx.createRadialGradient(cx,H*.46,10,cx,H*.46,220);
+    glow.addColorStop(0,col+"30");glow.addColorStop(1,"transparent");
+    ctx.fillStyle=glow;ctx.fillRect(0,0,W,H);
+
+    // Top accent bar
+    const topBar=ctx.createLinearGradient(0,0,W,0);
+    topBar.addColorStop(0,col);topBar.addColorStop(1,col+"60");
+    ctx.fillStyle=topBar;ctx.fillRect(0,0,W,5);
+
+    // ── Logo — centered ──
+    ctx.textBaseline="alphabetic";ctx.textAlign="center";
+    const hiLabel="High",enLabel="Enough";
+    ctx.font="900 22px Inter,Arial,sans-serif";
+    const hiW=ctx.measureText(hiLabel).width;
+    ctx.font="300 22px Inter,Arial,sans-serif";
+    const enW=ctx.measureText(enLabel).width;
+    const logoTotalW=hiW+enW+3;
+    const logoX=cx-logoTotalW/2;
+    ctx.textAlign="left";
+    ctx.font="900 22px Inter,Arial,sans-serif";ctx.fillStyle="#eeeeff";
+    ctx.fillText(hiLabel,logoX,46);
+    ctx.font="300 22px Inter,Arial,sans-serif";ctx.fillStyle="#7b72e9";
+    ctx.fillText(enLabel,logoX+hiW+3,46);
+
+    // ── Avatar — centered ──
+    ctx.textAlign="center";ctx.textBaseline="middle";
+    const ax=cx,ay=94,ar=30;
+    ctx.beginPath();ctx.arc(ax,ay,ar,0,Math.PI*2);
+    ctx.fillStyle=col+"28";ctx.fill();
     ctx.strokeStyle=col;ctx.lineWidth=2;ctx.stroke();
-    ctx.font=`700 ${Math.round(ar*.8)}px Inter,Arial`;ctx.fillStyle=col;ctx.textAlign="center";ctx.textBaseline="middle";
+    ctx.font=`700 ${Math.round(ar*.85)}px Inter,Arial`;ctx.fillStyle=col;
     ctx.fillText(ini(profile.name),ax,ay);
+
+    // ── Name — centered ──
     ctx.textBaseline="alphabetic";
-    ctx.font="700 17px Inter,Arial";ctx.fillStyle="#eeeeff";ctx.fillText(profile.name,W/2,138);
-    if(profile.handle){ctx.font="500 11px JetBrains Mono,monospace";ctx.fillStyle="#5a5a88";ctx.fillText(profile.handle,W/2,156);}
-    ctx.font="600 11px Inter,Arial";ctx.fillStyle=t.color;ctx.fillText(`${t.emoji} ${t.label}`,W/2,175);
-    // White QR panel
-    const QS=200,qx=(W-QS)/2,qy=188;
-    ctx.fillStyle="#fff";
-    ctx.beginPath();try{ctx.roundRect(qx-10,qy-10,QS+20,QS+20,14);}catch{ctx.rect(qx-10,qy-10,QS+20,QS+20);}ctx.fill();
+    ctx.font="700 18px Inter,Arial,sans-serif";ctx.fillStyle="#eeeeff";
+    ctx.fillText(profile.name,cx,148);
+
+    // ── Handle — centered ──
+    if(profile.handle){
+      ctx.font="500 11px JetBrains Mono,monospace";ctx.fillStyle="#4a4a78";
+      ctx.fillText(profile.handle,cx,166);
+    }
+
+    // ── Business sub-category badge or tier — centered ──
+    if(isBiz){
+      const bizT=BIZ_TYPES.find(b=>b.id===(profile.biz_type||"general"));
+      const badgeText=`${bizT?.emoji||"💼"} ${bizT?.label||"Business / Professional"}`;
+      ctx.font="600 11px Inter,Arial,sans-serif";
+      const bW=ctx.measureText(badgeText).width+22,bX=cx-bW/2;
+      ctx.fillStyle=col+"18";ctx.strokeStyle=col+"40";ctx.lineWidth=1;
+      ctx.beginPath();try{ctx.roundRect(bX,172,bW,24,6);}catch{ctx.rect(bX,172,bW,24);}
+      ctx.fill();ctx.stroke();
+      ctx.fillStyle=col;ctx.fillText(badgeText,cx,188);
+    } else {
+      ctx.font="600 11px Inter,Arial,sans-serif";ctx.fillStyle=t.color;
+      ctx.fillText(`${t.emoji} ${t.label}`,cx,185);
+    }
+
+    // ── QR white panel — perfectly centered ──
+    const QS=220,qPad=14;
+    const panelW=QS+qPad*2,panelH=QS+qPad*2;
+    const panelX=cx-panelW/2,panelY=208;
+    ctx.fillStyle="#ffffff";ctx.shadowColor="rgba(120,100,220,.25)";ctx.shadowBlur=20;
+    ctx.beginPath();try{ctx.roundRect(panelX,panelY,panelW,panelH,16);}catch{ctx.rect(panelX,panelY,panelW,panelH);}
+    ctx.fill();ctx.shadowBlur=0;
+
+    // Draw QR image centered inside panel
+    const qx=cx-QS/2,qy=panelY+qPad;
     ctx.drawImage(qc,qx,qy,QS,QS);
-    // Big H logo in centre
-    const hx=W/2,hy=qy+QS/2+4,hr=22;
-    ctx.beginPath();ctx.arc(hx,hy,hr,0,Math.PI*2);ctx.fillStyle="#09090f";ctx.fill();
+
+    // Corner brackets (violet accent)
+    const bSize=18,bOff=panelX+4;
+    [[panelX+4,panelY+4,"tl"],[panelX+panelW-4-bSize,panelY+4,"tr"],
+     [panelX+4,panelY+panelH-4-bSize,"bl"],[panelX+panelW-4-bSize,panelY+panelH-4-bSize,"br"]
+    ].forEach(([bx,by,corner])=>{
+      ctx.strokeStyle=col;ctx.lineWidth=2.5;ctx.lineCap="round";
+      ctx.beginPath();
+      if(corner==="tl"){ctx.moveTo(bx+bSize,by);ctx.lineTo(bx,by);ctx.lineTo(bx,by+bSize);}
+      if(corner==="tr"){ctx.moveTo(bx,by);ctx.lineTo(bx+bSize,by);ctx.lineTo(bx+bSize,by+bSize);}
+      if(corner==="bl"){ctx.moveTo(bx+bSize,by+bSize);ctx.lineTo(bx,by+bSize);ctx.lineTo(bx,by);}
+      if(corner==="br"){ctx.moveTo(bx,by+bSize);ctx.lineTo(bx+bSize,by+bSize);ctx.lineTo(bx+bSize,by);}
+      ctx.stroke();
+    });
+
+    // H logo — centered in QR
+    const hx=cx,hy=panelY+qPad+QS/2,hr=20;
+    ctx.beginPath();ctx.arc(hx,hy,hr,0,Math.PI*2);
+    ctx.fillStyle="#fff";ctx.fill();
     ctx.strokeStyle=col;ctx.lineWidth=2;ctx.stroke();
-    ctx.font="900 24px Inter,Arial,sans-serif";ctx.fillStyle=col;ctx.textBaseline="middle";ctx.fillText("H",hx,hy+1);
-    // UID & domain
-    ctx.textBaseline="alphabetic";
-    ctx.font="700 13px JetBrains Mono,monospace";ctx.fillStyle=col;ctx.shadowColor=col;ctx.shadowBlur=8;
-    ctx.fillText("#"+uid,W/2,qy+QS+32);ctx.shadowBlur=0;
-    ctx.font="500 10px JetBrains Mono,monospace";ctx.fillStyle="#3a3a60";ctx.fillText(displayUrl,W/2,qy+QS+50);
+    ctx.font="900 22px Inter,Arial,sans-serif";ctx.fillStyle=col;
+    ctx.textAlign="center";ctx.textBaseline="middle";
+    ctx.fillText("H",hx,hy+1);
+
+    // ── UID — centered ──
+    ctx.textBaseline="alphabetic";ctx.textAlign="center";
+    const uidY=panelY+panelH+30;
+    ctx.font="700 13px JetBrains Mono,monospace";ctx.fillStyle=col;
+    ctx.shadowColor=col;ctx.shadowBlur=10;
+    ctx.fillText("#"+uid,cx,uidY);ctx.shadowBlur=0;
+
+    // ── Profile URL — centered ──
+    ctx.font="500 10px JetBrains Mono,monospace";ctx.fillStyle="#3a3a60";
+    ctx.fillText(displayUrl,cx,uidY+18);
+
     // Bottom bar
-    ctx.fillStyle=col;ctx.fillRect(0,H-5,W,5);
+    ctx.fillStyle=col+"aa";ctx.fillRect(0,H-5,W,5);
+
     const a=document.createElement("a");
-    a.download=`${profile.name.replace(/\s+/g,"_")}_HighEnough.png`;
+    a.download=`${profile.name.replace(/\s+/g,"_")}_HighEnough_QR.png`;
     a.href=fc.toDataURL("image/png");a.click();
   }
 
@@ -1863,28 +1935,77 @@ function PersonRow({p,myId,following,T,onView,onFollow,onUnfollow,idx}){
 function BoardTab({profiles,myId,T,onView}){
   const [sub,setSub]=useState("all");
   const [acFilter,setAcFilter]=useState("personal");
+  const [bizFilter,setBizFilter]=useState("all");
   const now=Date.now(),week=7*24*60*60*1000;
-  const filteredByType=profiles.filter(p=>(p.account_type||"personal")===acFilter);
+
+  // All biz types including "all"
+  const BIZ_TABS=[{id:"all",label:"All",emoji:"🏢"},...BIZ_TYPES];
+
+  const filteredByType=profiles.filter(p=>{
+    if((p.account_type||"personal")!==acFilter)return false;
+    if(acFilter==="business"&&bizFilter!=="all"&&(p.biz_type||"general")!==bizFilter)return false;
+    return true;
+  });
+
   const allR=[...filteredByType].map(p=>({...p,sc:pScore(p)??-1})).sort((a,b)=>b.sc-a.sc);
   const trending=[...filteredByType].map(p=>{const rc=(p.ratings||[]).filter(r=>r.ts&&now-r.ts<week);return{...p,sc:pScore(p)??-1,tC:rc.length};}).sort((a,b)=>b.tC-a.tC).filter(p=>p.tC>0);
   const rising=[...filteredByType].map(p=>{
     const cats2=getCats(p);
     const rc=(p.ratings||[]).filter(r=>r.ts&&now-r.ts<week);
-    // gain = sum of per-rater avgs for ratings received this week
     const gain=Math.round(rc.reduce((s,r)=>s+cats2.reduce((cs,c)=>cs+(r[c.id]||0),0)/cats2.length,0));
     return{...p,sc:pScore(p)??-1,gain};
   }).filter(p=>p.gain>0).sort((a,b)=>b.gain-a.gain);
   const list=sub==="all"?allR:sub==="trending"?trending:rising;
   const top3=sub==="all"?allR.filter(p=>p.sc>=0).slice(0,3):[];
 
+  // Count per biz_type for badge numbers
+  const bizCounts=BIZ_TYPES.reduce((acc,bt)=>{
+    acc[bt.id]=profiles.filter(p=>p.account_type==="business"&&(p.biz_type||"general")===bt.id&&(pScore(p)??-1)>=0).length;
+    return acc;
+  },{});
+
   return<div style={{paddingBottom:8}}>
-    {/* Account type toggle - pill style */}
+
+    {/* ── Main toggle: People / Business·Professional ── */}
     <div style={{display:"flex",gap:8,padding:"14px 14px 0"}}>
-      {[["personal","👤 People"],["business","🏢 Business"]].map(([id,label])=>
-        <button key={id} onClick={()=>{setAcFilter(id);setSub("all");}} style={{flex:1,padding:"10px 0",borderRadius:22,fontSize:12,fontWeight:acFilter===id?700:500,background:acFilter===id?`linear-gradient(135deg,${AC}e0,${AC}90)`:"transparent",border:`1.5px solid ${acFilter===id?"transparent":T.b2}`,color:acFilter===id?"#fff":T.mu,transition:"all .18s",boxShadow:acFilter===id?`0 4px 16px ${AC}40`:"none"}}>{label}</button>)}
+      {[["personal","👤","People"],["business","💼","Business · Pro"]].map(([id,em,label])=>
+        <button key={id} onClick={()=>{setAcFilter(id);setSub("all");setBizFilter("all");}} style={{flex:1,padding:"11px 0",borderRadius:22,fontSize:13,fontWeight:acFilter===id?700:500,background:acFilter===id?`linear-gradient(135deg,${AC}e0,${AC}90)`:"transparent",border:`1.5px solid ${acFilter===id?"transparent":T.b2}`,color:acFilter===id?"#fff":T.mu,transition:"all .18s",boxShadow:acFilter===id?`0 4px 16px ${AC}40`:"none"}}>
+          {em} {label}
+        </button>
+      )}
     </div>
 
-    {/* Podium */}
+    {/* ── Business sub-category tabs (scrollable) ── */}
+    {acFilter==="business"&&<div style={{overflowX:"auto",paddingBottom:4,marginTop:12}}>
+      <div style={{display:"flex",gap:6,padding:"0 14px",width:"max-content"}}>
+        {BIZ_TABS.map(bt=>{
+          const count=bt.id==="all"
+            ?profiles.filter(p=>p.account_type==="business"&&(pScore(p)??-1)>=0).length
+            :bizCounts[bt.id]||0;
+          const active=bizFilter===bt.id;
+          return<button key={bt.id} onClick={()=>{setBizFilter(bt.id);setSub("all");}} style={{
+            display:"flex",alignItems:"center",gap:5,
+            padding:"7px 12px",borderRadius:20,whiteSpace:"nowrap",
+            background:active?`${AC}18`:"transparent",
+            border:`1.5px solid ${active?AC+"80":T.b2}`,
+            color:active?AC:T.mu,
+            fontWeight:active?700:400,fontSize:12,
+            transition:"all .15s",flexShrink:0
+          }}>
+            <span style={{fontSize:14}}>{bt.emoji}</span>
+            <span>{bt.id==="all"?"All":bt.label.split(" /")[0].split(" ·")[0]}</span>
+            {count>0&&<span style={{
+              background:active?AC:T.faint,color:active?"#fff":T.mu,
+              borderRadius:10,padding:"0px 6px",fontSize:10,fontWeight:700,
+              minWidth:16,textAlign:"center",
+              border:`1px solid ${active?"transparent":T.b1}`
+            }}>{count}</span>}
+          </button>;
+        })}
+      </div>
+    </div>}
+
+    {/* ── Podium ── */}
     {top3.length>=1&&<div style={{display:"flex",alignItems:"flex-end",justifyContent:"center",gap:6,padding:"20px 14px 0"}}>
       {(top3.length===1?[null,top3[0],null]:top3.length===2?[top3[1],top3[0],null]:[top3[1],top3[0],top3[2]]).map((p,i)=>{
         if(!p)return<div key={i} style={{flex:1}}/>;
@@ -1893,6 +2014,7 @@ function BoardTab({profiles,myId,T,onView}){
           <div style={{display:"flex",justifyContent:"center",marginBottom:6}}><Ava p={p} size={i===1?60:46} T={T}/></div>
           <div style={{fontSize:i===1?22:18}}>{meds[i]}</div>
           <div style={{fontSize:11,fontWeight:700,color:T.txt,marginTop:3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",padding:"0 4px"}}>{p.name.split(" ")[0]}</div>
+          {acFilter==="business"&&<div style={{fontSize:9,color:T.mu,marginTop:1}}>{BIZ_TYPES.find(b=>b.id===(p.biz_type||"general"))?.emoji}</div>}
           <div style={{height:hs[i],background:`linear-gradient(180deg,${t.color}22,${t.color}10)`,border:`1px solid ${t.color}30`,borderRadius:"12px 12px 0 0",marginTop:8,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4}}>
             <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:i===1?18:14,fontWeight:800,color:t.color}}>{fmtScore(p.sc)}</div>
             <TierBadge sc={p.sc} size="sm" isBiz={acFilter==="business"}/>
@@ -1901,28 +2023,42 @@ function BoardTab({profiles,myId,T,onView}){
       })}
     </div>}
 
-    {/* Sub-filter tabs */}
+    {/* ── Sub-filter: All Time / Trending / Rising ── */}
     <div style={{display:"flex",background:T.faint,margin:"16px 14px 12px",borderRadius:12,padding:3,border:`1px solid ${T.b1}`}}>
       {[["all","All Time"],["trending","🔥 Trending"],["rising","📈 Rising"]].map(([t,l])=>
         <button key={t} onClick={()=>setSub(t)} style={{flex:1,padding:"8px 0",borderRadius:10,border:sub===t?`1px solid ${T.b1}`:"1px solid transparent",background:sub===t?T.card:"transparent",color:sub===t?T.txt:T.mu,fontWeight:sub===t?600:400,fontSize:12,transition:"all .12s"}}>{l}</button>)}
     </div>
 
     <div style={{padding:"0 14px"}}>
-      {list.length===0&&<div style={{textAlign:"center",padding:"40px 0",color:T.mu,fontSize:13}}>Nothing here yet</div>}
-      {list.slice(top3.length>0&&sub==="all"?3:0).map((p,i)=>{const isBiz2=acFilter==="business";const t=tierOf(p.sc,isBiz2),rank=i+(sub==="all"?4:1);const isTop=rank<=3;
+      {list.length===0&&<div style={{textAlign:"center",padding:"40px 0",color:T.mu,fontSize:13}}>
+        {acFilter==="business"&&bizFilter!=="all"
+          ?`No ${BIZ_TYPES.find(b=>b.id===bizFilter)?.label||""} profiles with scores yet`
+          :"Nothing here yet"}
+      </div>}
+      {list.slice(top3.length>0&&sub==="all"?3:0).map((p,i)=>{
+        const isBiz2=acFilter==="business";
+        const t=tierOf(p.sc,isBiz2),rank=i+(sub==="all"?4:1);const isTop=rank<=3;
+        const bizType=isBiz2?BIZ_TYPES.find(b=>b.id===(p.biz_type||"general")):null;
         return<div key={p.id} onClick={()=>onView(p)} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 14px",background:isTop?`linear-gradient(135deg,${t.color}18,${t.color}08)`:`linear-gradient(135deg,${T.card},${T.surf})`,border:`1px solid ${isTop?t.color+"40":T.b1}`,borderRadius:16,marginBottom:8,cursor:"pointer",transition:"all .14s",animation:`ci .28s ease ${i*35}ms both`,boxShadow:isTop?`0 4px 20px ${t.color}18`:"0 2px 12px rgba(0,0,0,.12)"}}>
           <div style={{width:28,textAlign:"center",fontFamily:"'JetBrains Mono',monospace",fontSize:isTop?14:12,fontWeight:800,color:isTop?t.color:T.mu}}>#{rank}</div>
           <Ava p={p} size={isTop?46:42} T={T}/>
           <div style={{flex:1,minWidth:0}}>
-            <div style={{fontWeight:isTop?800:700,fontSize:isTop?15:14,color:T.txt,marginBottom:3}}>{p.name}{p.id===myId&&<span style={{fontSize:9,marginLeft:6,background:`${AC}18`,color:AC,borderRadius:10,padding:"1px 7px",fontFamily:"'JetBrains Mono',monospace"}}>you</span>}{isBiz2&&<span style={{fontSize:9,marginLeft:4,background:`${AC}14`,color:AC,borderRadius:10,padding:"1px 7px"}}>🏢</span>}</div>
-            <TierBadge sc={p.sc>=0?p.sc:null} size="sm" isBiz={isBiz2}/>
+            <div style={{fontWeight:isTop?800:700,fontSize:isTop?15:14,color:T.txt,marginBottom:3}}>
+              {p.name}
+              {p.id===myId&&<span style={{fontSize:9,marginLeft:6,background:`${AC}18`,color:AC,borderRadius:10,padding:"1px 7px",fontFamily:"'JetBrains Mono',monospace"}}>you</span>}
+            </div>
+            <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
+              <TierBadge sc={p.sc>=0?p.sc:null} size="sm" isBiz={isBiz2}/>
+              {bizType&&bizFilter==="all"&&<span style={{fontSize:10,color:T.mu,background:T.faint,borderRadius:8,padding:"1px 7px",border:`1px solid ${T.b1}`}}>{bizType.emoji} {bizType.label.split(" /")[0].split(" ·")[0]}</span>}
+            </div>
           </div>
           <div style={{textAlign:"right",flexShrink:0}}>
             <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:isTop?19:17,fontWeight:800,color:t.color,textShadow:isTop?`0 0 12px ${t.color}50`:"none"}}>{fmtScore(p.sc>=0?p.sc:null)}</div>
             {sub==="trending"&&p.tC&&<div style={{fontSize:10,color:"#10a37f",marginTop:2}}>+{p.tC} this week</div>}
             {sub==="rising"&&p.gain&&<div style={{fontSize:10,color:"#c08a2e",marginTop:2}}>+{p.gain} pts</div>}
           </div>
-        </div>;})}
+        </div>;
+      })}
     </div>
   </div>;
 }
