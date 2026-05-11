@@ -478,13 +478,9 @@ function AuthScreen({T,onAuthed,authError,onClearAuthError}){
           options:{data:{full_name:name.trim()},emailRedirectTo:"https://highenough.in"}
         });
         if(error){
-          // "User already registered" means Supabase auth still has this email.
-          // This happens when account was deleted from our app but Supabase auth
-          // record was not removed (we can't delete auth users from client-side).
-          // Solution: tell user to use login instead, or use a different email.
           if(error.message?.toLowerCase().includes("already registered")||
              error.message?.toLowerCase().includes("already exists")){
-            return setMsg({text:"This email already has an account. Try logging in instead, or reset your password.",error:true});
+            return setMsg({text:"This email already has an account. Try logging in instead.",error:true});
           }
           return setMsg({text:error.message,error:true});
         }
@@ -832,11 +828,11 @@ function QRModal({profile,T,onClose}){
       new window.QRious({
         element:qrRef.current,
         value:shareUrl,
-        size:220,
+        size:400,
         background:"#f7f7ff",
         foreground:"#0a0a14",
         level:"H",
-        padding:12,
+        padding:0,
       });
       setReady(true);
     });
@@ -990,20 +986,28 @@ function QRModal({profile,T,onClose}){
           <div style={{width:5,height:5,borderRadius:"50%",background:col}}/>
         </div>
 
-        {/* QR frame — centrepiece */}
-        <div style={{position:"relative",padding:12,background:"#f7f7ff",borderRadius:20,border:`1.5px solid ${col}22`,marginBottom:20}}>
+        {/* QR frame */}
+        <div style={{position:"relative",background:"#f7f7ff",borderRadius:20,border:`1.5px solid ${col}22`,marginBottom:18,width:"100%",padding:14,boxSizing:"border-box"}}>
           {/* Corner brackets */}
-          {[[{top:-1,left:-1},"3px 0 0 0",{borderTop:`2.5px solid ${col}`,borderLeft:`2.5px solid ${col}`}],
-            [{top:-1,right:-1},"0 3px 0 0",{borderTop:`2.5px solid ${col}`,borderRight:`2.5px solid ${col}`}],
-            [{bottom:-1,left:-1},"0 0 0 3px",{borderBottom:`2.5px solid ${col}`,borderLeft:`2.5px solid ${col}`}],
-            [{bottom:-1,right:-1},"0 0 3px 0",{borderBottom:`2.5px solid ${col}`,borderRight:`2.5px solid ${col}`}]
-          ].map(([pos,r,border],i)=><div key={i} style={{position:"absolute",width:20,height:20,borderRadius:r,...pos,...border}}/>)}
-          {/* QR canvas */}
-          <div style={{position:"relative",width:200,height:200,display:"flex",alignItems:"center",justifyContent:"center"}}>
-            <canvas ref={qrRef} style={{display:"block",width:200,height:200,borderRadius:2}}/>
-            {!ready&&<div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(255,255,255,.95)",borderRadius:2}}><Spinner/></div>}
-            {ready&&<div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",width:40,height:40,borderRadius:10,background:"#fff",border:`2.5px solid ${col}`,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:`0 2px 12px ${col}60`}}>
-              <span style={{fontSize:21,fontWeight:900,color:col,fontFamily:"'Inter',sans-serif",lineHeight:1}}>H</span>
+          {[{top:4,left:4,bt:`2.5px solid ${col}`,bl:`2.5px solid ${col}`,br:"4px 0 0 0"},
+            {top:4,right:4,bt:`2.5px solid ${col}`,br_r:`2.5px solid ${col}`,br:"0 4px 0 0"},
+            {bottom:4,left:4,bb:`2.5px solid ${col}`,bl2:`2.5px solid ${col}`,br:"0 0 0 4px"},
+            {bottom:4,right:4,bb2:`2.5px solid ${col}`,br_r2:`2.5px solid ${col}`,br:"0 0 4px 0"},
+          ].map((_,i)=>{
+            const corners=[
+              {top:4,left:4,borderTop:`2.5px solid ${col}`,borderLeft:`2.5px solid ${col}`,borderRadius:"4px 0 0 0"},
+              {top:4,right:4,borderTop:`2.5px solid ${col}`,borderRight:`2.5px solid ${col}`,borderRadius:"0 4px 0 0"},
+              {bottom:4,left:4,borderBottom:`2.5px solid ${col}`,borderLeft:`2.5px solid ${col}`,borderRadius:"0 0 0 4px"},
+              {bottom:4,right:4,borderBottom:`2.5px solid ${col}`,borderRight:`2.5px solid ${col}`,borderRadius:"0 0 4px 0"},
+            ];
+            return<div key={i} style={{position:"absolute",width:22,height:22,...corners[i]}}/>;
+          })}
+          {/* QR canvas — fills container, no wrapper div */}
+          <div style={{position:"relative",width:"100%",aspectRatio:"1/1"}}>
+            <canvas ref={qrRef} style={{display:"block",width:"100%",height:"100%",borderRadius:4}}/>
+            {!ready&&<div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(247,247,255,.95)",borderRadius:4}}><Spinner/></div>}
+            {ready&&<div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",width:42,height:42,borderRadius:10,background:"#fff",border:`2.5px solid ${col}`,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:`0 2px 14px ${col}50`}}>
+              <span style={{fontSize:22,fontWeight:900,color:col,fontFamily:"'Inter',sans-serif",lineHeight:1}}>H</span>
             </div>}
           </div>
         </div>
@@ -1978,7 +1982,6 @@ function BoardTab({profiles,myId,T,onView}){
     return{...p,sc:pScore(p)??-1,gain};
   }).filter(p=>p.gain>0).sort((a,b)=>b.gain-a.gain);
   const list=sub==="all"?allR:sub==="trending"?trending:rising;
-  const top3=sub==="all"?allR.filter(p=>p.sc>=0).slice(0,3):[];
 
   // Count per biz_type for badge numbers
   const bizCounts=BIZ_TYPES.reduce((acc,bt)=>{
@@ -2027,24 +2030,6 @@ function BoardTab({profiles,myId,T,onView}){
       </div>
     </div>}
 
-    {/* ── Podium ── */}
-    {top3.length>=1&&<div style={{display:"flex",alignItems:"flex-end",justifyContent:"center",gap:6,padding:"20px 14px 0"}}>
-      {(top3.length===1?[null,top3[0],null]:top3.length===2?[top3[1],top3[0],null]:[top3[1],top3[0],top3[2]]).map((p,i)=>{
-        if(!p)return<div key={i} style={{flex:1}}/>;
-        const hs=[90,124,78];const meds=["🥈","🥇","🥉"];const t=tierOf(p.sc,acFilter==="business");
-        return<div key={p.id} onClick={()=>onView(p)} style={{flex:1,textAlign:"center",cursor:"pointer",animation:`ci .4s ease ${i*80}ms both`}}>
-          <div style={{display:"flex",justifyContent:"center",marginBottom:6}}><Ava p={p} size={i===1?60:46} T={T}/></div>
-          <div style={{fontSize:i===1?22:18}}>{meds[i]}</div>
-          <div style={{fontSize:11,fontWeight:700,color:T.txt,marginTop:3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",padding:"0 4px"}}>{p.name.split(" ")[0]}</div>
-          {acFilter==="business"&&<div style={{fontSize:9,color:T.mu,marginTop:1}}>{BIZ_TYPES.find(b=>b.id===(p.biz_type||"general"))?.emoji}</div>}
-          <div style={{height:hs[i],background:`linear-gradient(180deg,${t.color}22,${t.color}10)`,border:`1px solid ${t.color}30`,borderRadius:"12px 12px 0 0",marginTop:8,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4}}>
-            <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:i===1?18:14,fontWeight:800,color:t.color}}>{fmtScore(p.sc)}</div>
-            <TierBadge sc={p.sc} size="sm" isBiz={acFilter==="business"}/>
-          </div>
-        </div>;
-      })}
-    </div>}
-
     {/* ── Sub-filter: All Time / Trending / Rising ── */}
     <div style={{display:"flex",background:T.faint,margin:"16px 14px 12px",borderRadius:12,padding:3,border:`1px solid ${T.b1}`}}>
       {[["all","All Time"],["trending","🔥 Trending"],["rising","📈 Rising"]].map(([t,l])=>
@@ -2055,11 +2040,11 @@ function BoardTab({profiles,myId,T,onView}){
       {list.length===0&&<div style={{textAlign:"center",padding:"40px 0",color:T.mu,fontSize:13}}>
         {sub==="trending"?"No activity this week yet":sub==="rising"?"No rising profiles this week":acFilter==="business"&&bizFilter!=="all"?`No ${BIZ_TYPES.find(b=>b.id===bizFilter)?.label||""} profiles yet`:"Nothing here yet"}
       </div>}
-      {list.slice(top3.length>0&&sub==="all"?3:0).map((p,i)=>{
+      {list.map((p,i)=>{
         const isBiz2=acFilter==="business";
         const hasScore=p.sc>=0;
         const t=tierOf(hasScore?p.sc:0,isBiz2);
-        const rank=i+(sub==="all"?(top3.length>0?4:1):1);
+        const rank=i+1;
         const isTop=rank<=3&&hasScore;
         const bizType=isBiz2?BIZ_TYPES.find(b=>b.id===getBizType(p)):null;
         return<div key={p.id} onClick={()=>onView(p)} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 14px",background:isTop?`linear-gradient(135deg,${t.color}18,${t.color}08)`:`linear-gradient(135deg,${T.card},${T.surf})`,border:`1px solid ${isTop?t.color+"40":T.b1}`,borderRadius:16,marginBottom:8,cursor:"pointer",transition:"all .14s",animation:`ci .28s ease ${i*35}ms both`,boxShadow:isTop?`0 4px 20px ${t.color}18`:"0 2px 12px rgba(0,0,0,.08)",opacity:hasScore?1:.65}}>
@@ -3382,30 +3367,29 @@ function App(){
     }
 
     // bootUser — single entry point for all auth paths.
-    // checkDeleted: only true for fresh sign-ins, never for session restores.
-    async function bootUser(user, dl, checkDeleted=false){
+    async function bootUser(user, dl){
       // Prevent concurrent boots for the same user
       if(profileLoadingRef.current && bootingUserIdRef.current===user.id)return;
       profileLoadingRef.current=true;
       bootingUserIdRef.current=user.id;
 
-      if(checkDeleted){
-        const deleted=await isDeletedAccount(user.id);
-        if(deleted){
-          const {data:existing}=await sb.from("profiles").select("id").eq("id",user.id).maybeSingle();
-          if(existing){
-            // Old profile still exists — truly blocked
-            setAuthError("This account has been permanently deleted.");
-            await sb.auth.signOut();
-            profileLoadingRef.current=false;
-            bootingUserIdRef.current=null;
-            setAuthLoading(false);
-            return;
-          }else{
-            // Profile row gone — user signed up fresh with same email
-            // Clean up the stale deleted_accounts row and let them through
-            await sb.from("deleted_accounts").delete().eq("auth_id",user.id);
-          }
+      // Always check deleted — even on session restore.
+      // A deleted user may still have a valid Supabase auth session.
+      const deleted=await isDeletedAccount(user.id);
+      if(deleted){
+        const {data:existingProfile}=await sb.from("profiles").select("id").eq("id",user.id).maybeSingle();
+        if(existingProfile){
+          // Profile still exists = truly blocked (shouldn't happen, but safety net)
+          setAuthError("This account has been permanently deleted.");
+          await sb.auth.signOut();
+          profileLoadingRef.current=false;
+          bootingUserIdRef.current=null;
+          setAuthLoading(false);
+          return;
+        }else{
+          // Profile row is gone = user signed up fresh with same email
+          // Clean up the stale deleted_accounts record and continue as new user
+          await sb.from("deleted_accounts").delete().eq("auth_id",user.id);
         }
       }
 
@@ -3454,7 +3438,7 @@ function App(){
         const effectiveSession=session||HE_PREFETCHED_SESSION;
 
         if(effectiveSession?.user){
-          await bootUser(effectiveSession.user, pendingDlRef.current, false);
+          await bootUser(effectiveSession.user, pendingDlRef.current);
         }else{
           // HE_BOOT already called getSession() before mount — if it found nothing,
           // there is genuinely no session. No need to call getSession() again.
@@ -3487,7 +3471,7 @@ function App(){
         if(bootingUserIdRef.current===uid)return;
         // New user (Google OAuth / email confirm) — run full boot with deleted check
         profileLoadingRef.current=false;
-        await bootUser(session.user, pendingDlRef.current, true);
+        await bootUser(session.user, pendingDlRef.current);
       }
 
       // ── Token silently refreshed ──────────────────────────────────────
@@ -3896,6 +3880,17 @@ function App(){
         sb.from("reports").delete().eq("reporter_id",uid),
       ]);
       await sb.from("profiles").delete().eq("id",uid);
+      // Fully delete the Supabase auth user via Edge Function
+      // so the same email can sign up fresh with no friction
+      try{
+        const {data:sessionData}=await sb.auth.getSession();
+        const token=sessionData?.session?.access_token;
+        await fetch("https://jwtopqlofxtuwevhmbqo.supabase.co/functions/v1/delete-auth-user",{
+          method:"POST",
+          headers:{"Content-Type":"application/json","Authorization":`Bearer ${token}`},
+          body:JSON.stringify({auth_id:uid})
+        });
+      }catch(e){console.warn("Edge function delete-auth-user failed (non-critical):",e);}
     }catch(e){console.error("Delete cleanup error:",e);}
     // Mark intentional — lets SIGNED_OUT → clearSession redirect to login cleanly
     localStorage.setItem("he_intent_signout","true");
