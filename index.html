@@ -237,6 +237,7 @@ const ADMIN_CODE="HE2025";
 
 const avg=a=>a.length?a.reduce((s,v)=>s+v,0)/a.length:0;
 const ini=n=>(n||"?").split(" ").map(w=>w[0]).join("").toUpperCase().slice(0,2);
+const fmtTime=ts=>{if(!ts)return"";const d=new Date(ts);return d.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit",hour12:true});};
 const ago=ts=>{const d=Date.now()-ts,s=Math.floor(d/1000),m=Math.floor(d/60000),h=Math.floor(d/3600000),dy=Math.floor(d/86400000);return dy>0?`${dy}d`:h>0?`${h}h`:m>0?`${m}m`:s>0?`${s}s`:"now";};
 const shortId=id=>id?id.toString().replace(/-/g,"").toUpperCase().slice(0,6):"------";
 /* ── SCORE FORMULA ──────────────────────────────────────────────────────────
@@ -458,11 +459,62 @@ function AuthScreen({T,onAuthed,authError,onClearAuthError}){
       if(view==="signup"){
         const emailToUse=rawInput.includes("@")&&rawInput.includes(".")?rawInput:rawInput;
 
-        // ── Block deleted emails — they cannot be reused ──
+        // ── Check if this email belongs to a previously deleted account ──
         const {data:deletedRow}=await sb.from("deleted_accounts")
-          .select("auth_id").eq("email",emailToUse).maybeSingle();
+          .select("auth_id,email").eq("email",emailToUse).maybeSingle();
+
         if(deletedRow){
-          return setMsg({text:"This email was used on a deleted account and cannot be reused. Please sign up with a different email.",error:true});
+          // Edge Function should have deleted the auth record already.
+          // Try signing up fresh — if auth record is truly gone this succeeds.
+          const {data:signUpData,error:signUpErr}=await sb.auth.signUp({
+            email:emailToUse,password:pass,
+            options:{data:{full_name:name.trim()},emailRedirectTo:"https://highenough.in"}
+          });
+          if(!signUpErr&&signUpData?.user){
+            // Wipe all traces of the old account
+            const oldId=deletedRow.auth_id;
+            await Promise.all([
+              sb.from("profiles").delete().eq("id",oldId),
+              sb.from("ratings").delete().eq("rater_id",oldId),
+              sb.from("ratings").delete().eq("target_id",oldId),
+              sb.from("follows").delete().eq("follower_id",oldId),
+              sb.from("follows").delete().eq("following_id",oldId),
+              sb.from("messages").delete().eq("sender_id",oldId),
+              sb.from("messages").delete().eq("receiver_id",oldId),
+              sb.from("notifications").delete().eq("actor_id",oldId),
+              sb.from("notifications").delete().eq("target_id",oldId),
+              sb.from("deleted_accounts").delete().eq("email",emailToUse),
+            ]);
+            // Boot as fresh new user — goes straight to ProfileSetup
+            if(signUpData.session){
+              if(onAuthed)onAuthed(signUpData.user);
+            } else {
+              setMsg({text:"✅ Account created! Check your email to confirm, then login.",error:false});
+            }
+            return;
+          }
+          // Auth record still exists (Edge Function may not have run) —
+          // Try signing in with the new password, then wipe profile so they get ProfileSetup
+          const {data:signInData,error:signInErr}=await sb.auth.signInWithPassword({email:emailToUse,password:pass});
+          if(!signInErr&&signInData?.user){
+            const oldId=signInData.user.id;
+            await Promise.all([
+              sb.from("profiles").delete().eq("id",oldId),
+              sb.from("ratings").delete().eq("rater_id",oldId),
+              sb.from("ratings").delete().eq("target_id",oldId),
+              sb.from("follows").delete().eq("follower_id",oldId),
+              sb.from("follows").delete().eq("following_id",oldId),
+              sb.from("messages").delete().eq("sender_id",oldId),
+              sb.from("messages").delete().eq("receiver_id",oldId),
+              sb.from("notifications").delete().eq("actor_id",oldId),
+              sb.from("notifications").delete().eq("target_id",oldId),
+              sb.from("deleted_accounts").delete().eq("email",emailToUse),
+            ]);
+            if(onAuthed)onAuthed(signInData.user);
+            return;
+          }
+          // Password mismatch — auth record exists but we can't sign in
+          return setMsg({text:"This email was used before. To start fresh, use the same password you had previously, or reset your password.",error:true});
         }
 
         const {data,error}=await sb.auth.signUp({
@@ -482,13 +534,6 @@ function AuthScreen({T,onAuthed,authError,onClearAuthError}){
         // ── LOGIN ──
         const {email:emailToUse,err}=await resolveEmail(rawInput);
         if(err)return setMsg({text:err,error:true});
-
-        // ── Check if this account was deleted before attempting login ──
-        const {data:deletedByEmail}=await sb.from("deleted_accounts")
-          .select("auth_id").eq("email",emailToUse).maybeSingle();
-        if(deletedByEmail){
-          return setMsg({text:"This email belongs to a deleted account and cannot be used to log in.",error:true});
-        }
 
         const {data,error}=await sb.auth.signInWithPassword({email:emailToUse,password:pass});
         if(error){
@@ -828,141 +873,160 @@ function QRModal({profile,T,onClose}){
         padding:16,
       });
       setReady(true);
-    });
+      // Pre-render the save card so Share can access it immediately
+      setTimeout(()=>{const btn=document.getElementById("he_qr_prerender");if(btn)btn.click();},200);    });
   },[shareUrl]);
 
   function copyUrl(){
     try{navigator.clipboard?.writeText(shareUrl);}catch{}
     setCopied(true);setTimeout(()=>setCopied(false),2200);
   }
-  function shareProfile(){
-    const text=`Check out ${profile.name} on HighEnough 👉 ${shareUrl}`;
-    if(navigator.share){navigator.share({title:profile.name+" on HighEnough",text,url:shareUrl}).catch(()=>copyUrl());}
+  async function shareProfile(){
+    // Always try to share the visual QR card first — most useful for scanning
+    try{
+      const qc=qrRef.current;
+      if(qc&&ready&&cardRef.current){
+        // Render the card to canvas and share as image
+        const fc=cardRef.current;
+        if(fc.width>0){
+          fc.toBlob(async blob=>{
+            if(blob&&navigator.canShare&&navigator.canShare({files:[new File([blob],"qr.jpg",{type:"image/jpeg"})]})){
+              await navigator.share({
+                title:`${profile.name} on HighEnough`,
+                text:isBiz?`Review ${profile.name} on HighEnough`:`Check out ${profile.name} on HighEnough`,
+                url:shareUrl,
+                files:[new File([blob],`${profile.name.replace(/\s+/g,"_")}_HighEnough.jpg`,{type:"image/jpeg"})]
+              });
+              return;
+            }
+            // Fallback: share just the link
+            if(navigator.share){
+              await navigator.share({title:profile.name+" on HighEnough",text:isBiz?`Review ${profile.name} on HighEnough 👉 ${shareUrl}`:`Check out ${profile.name} on HighEnough 👉 ${shareUrl}`,url:shareUrl});
+            } else copyUrl();
+          },"image/jpeg",.92);
+          return;
+        }
+      }
+    }catch(e){console.warn("Image share failed:",e);}
+    // Final fallback
+    if(navigator.share){navigator.share({title:profile.name+" on HighEnough",text:isBiz?`Review ${profile.name} on HighEnough 👉 ${shareUrl}`:`Check out ${profile.name} on HighEnough 👉 ${shareUrl}`,url:shareUrl}).catch(()=>copyUrl());}
     else copyUrl();
   }
 
-  function saveCard(){
+  // Pre-render card canvas when QR is ready so Share has it available immediately
+  useEffect(()=>{if(ready)setTimeout(()=>renderCard(),100);},[ready]);
+
+  function renderCard(){
     const qc=qrRef.current;if(!qc||!ready)return;
     const fc=cardRef.current;
-    const W=480,H=640;fc.width=W;fc.height=H;
+    const W=480,H=680;fc.width=W;fc.height=H;
     const ctx=fc.getContext("2d");
     const cx=W/2;
 
-    // Dark background
-    ctx.fillStyle="#09090f";ctx.fillRect(0,0,W,H);
-
-    // Radial glow behind QR area
-    const glow=ctx.createRadialGradient(cx,H*.46,10,cx,H*.46,220);
-    glow.addColorStop(0,col+"30");glow.addColorStop(1,"transparent");
-    ctx.fillStyle=glow;ctx.fillRect(0,0,W,H);
+    // White background (JPEG-compatible)
+    ctx.fillStyle="#ffffff";ctx.fillRect(0,0,W,H);
 
     // Top accent bar
     const topBar=ctx.createLinearGradient(0,0,W,0);
-    topBar.addColorStop(0,col);topBar.addColorStop(1,col+"60");
-    ctx.fillStyle=topBar;ctx.fillRect(0,0,W,5);
+    topBar.addColorStop(0,col);topBar.addColorStop(1,col+"80");
+    ctx.fillStyle=topBar;ctx.fillRect(0,0,W,6);
 
-    // ── Logo — centered ──
+    // Brand logo — centered
     ctx.textBaseline="alphabetic";ctx.textAlign="center";
-    const hiLabel="High",enLabel="Enough";
-    ctx.font="900 22px Inter,Arial,sans-serif";
-    const hiW=ctx.measureText(hiLabel).width;
-    ctx.font="300 22px Inter,Arial,sans-serif";
-    const enW=ctx.measureText(enLabel).width;
-    const logoTotalW=hiW+enW+3;
-    const logoX=cx-logoTotalW/2;
+    ctx.font="900 24px Inter,Arial,sans-serif";
+    const hiW=ctx.measureText("High").width;
+    ctx.font="300 24px Inter,Arial,sans-serif";
+    const enW=ctx.measureText("Enough").width;
+    const lx=cx-(hiW+enW+3)/2;
     ctx.textAlign="left";
-    ctx.font="900 22px Inter,Arial,sans-serif";ctx.fillStyle="#eeeeff";
-    ctx.fillText(hiLabel,logoX,46);
-    ctx.font="300 22px Inter,Arial,sans-serif";ctx.fillStyle="#7b72e9";
-    ctx.fillText(enLabel,logoX+hiW+3,46);
+    ctx.font="900 24px Inter,Arial,sans-serif";ctx.fillStyle="#0d0c1a";ctx.fillText("High",lx,52);
+    ctx.font="300 24px Inter,Arial,sans-serif";ctx.fillStyle=col;ctx.fillText("Enough",lx+hiW+3,52);
 
-    // ── Avatar — centered ──
-    ctx.textAlign="center";ctx.textBaseline="middle";
-    const ax=cx,ay=94,ar=30;
-    ctx.beginPath();ctx.arc(ax,ay,ar,0,Math.PI*2);
-    ctx.fillStyle=col+"28";ctx.fill();
-    ctx.strokeStyle=col;ctx.lineWidth=2;ctx.stroke();
-    ctx.font=`700 ${Math.round(ar*.85)}px Inter,Arial`;ctx.fillStyle=col;
-    ctx.fillText(ini(profile.name),ax,ay);
-
-    // ── Name — centered ──
-    ctx.textBaseline="alphabetic";
-    ctx.font="700 18px Inter,Arial,sans-serif";ctx.fillStyle="#eeeeff";
-    ctx.fillText(profile.name,cx,148);
-
-    // ── Handle — centered ──
-    if(profile.handle){
-      ctx.font="500 11px JetBrains Mono,monospace";ctx.fillStyle="#4a4a78";
-      ctx.fillText(profile.handle,cx,166);
-    }
-
-    // ── Business sub-category badge or tier — centered ──
-    if(isBiz){
-      const bizT=BIZ_TYPES.find(b=>b.id===(profile.biz_type||"general"));
-      const badgeText=`${bizT?.emoji||"💼"} ${bizT?.label||"Business / Professional"}`;
-      ctx.font="600 11px Inter,Arial,sans-serif";
-      const bW=ctx.measureText(badgeText).width+22,bX=cx-bW/2;
-      ctx.fillStyle=col+"18";ctx.strokeStyle=col+"40";ctx.lineWidth=1;
-      ctx.beginPath();try{ctx.roundRect(bX,172,bW,24,6);}catch{ctx.rect(bX,172,bW,24);}
-      ctx.fill();ctx.stroke();
-      ctx.fillStyle=col;ctx.fillText(badgeText,cx,188);
-    } else {
-      ctx.font="600 11px Inter,Arial,sans-serif";ctx.fillStyle=t.color;
-      ctx.fillText(`${t.emoji} ${t.label}`,cx,185);
-    }
-
-    // ── QR white panel — perfectly centered ──
-    const QS=220,qPad=14;
-    const panelW=QS+qPad*2,panelH=QS+qPad*2;
-    const panelX=cx-panelW/2,panelY=208;
-    ctx.fillStyle="#ffffff";ctx.shadowColor="rgba(120,100,220,.25)";ctx.shadowBlur=20;
-    ctx.beginPath();try{ctx.roundRect(panelX,panelY,panelW,panelH,16);}catch{ctx.rect(panelX,panelY,panelW,panelH);}
+    // QR white panel — centered
+    const QS=300,qPad=16;
+    const panelW=QS+qPad*2,panelX=cx-panelW/2,panelY=70;
+    ctx.fillStyle="#f5f5ff";ctx.shadowColor=col+"22";ctx.shadowBlur=16;
+    ctx.beginPath();try{ctx.roundRect(panelX,panelY,panelW,QS+qPad*2,14);}catch{ctx.rect(panelX,panelY,panelW,QS+qPad*2);}
     ctx.fill();ctx.shadowBlur=0;
 
-    // Draw QR image centered inside panel
-    const qx=cx-QS/2,qy=panelY+qPad;
-    ctx.drawImage(qc,qx,qy,QS,QS);
+    // QR image — centered in panel
+    ctx.drawImage(qc,panelX+qPad,panelY+qPad,QS,QS);
 
-    // Corner brackets (violet accent)
-    const bSize=18,bOff=panelX+4;
-    [[panelX+4,panelY+4,"tl"],[panelX+panelW-4-bSize,panelY+4,"tr"],
-     [panelX+4,panelY+panelH-4-bSize,"bl"],[panelX+panelW-4-bSize,panelY+panelH-4-bSize,"br"]
-    ].forEach(([bx,by,corner])=>{
-      ctx.strokeStyle=col;ctx.lineWidth=2.5;ctx.lineCap="round";
-      ctx.beginPath();
-      if(corner==="tl"){ctx.moveTo(bx+bSize,by);ctx.lineTo(bx,by);ctx.lineTo(bx,by+bSize);}
-      if(corner==="tr"){ctx.moveTo(bx,by);ctx.lineTo(bx+bSize,by);ctx.lineTo(bx+bSize,by+bSize);}
-      if(corner==="bl"){ctx.moveTo(bx+bSize,by+bSize);ctx.lineTo(bx,by+bSize);ctx.lineTo(bx,by);}
-      if(corner==="br"){ctx.moveTo(bx,by+bSize);ctx.lineTo(bx+bSize,by+bSize);ctx.lineTo(bx+bSize,by);}
+    // Corner brackets
+    const bs=22,bp=4;
+    [[panelX+bp,panelY+bp,"tl"],[panelX+panelW-bp-bs,panelY+bp,"tr"],
+     [panelX+bp,panelY+QS+qPad*2-bp-bs,"bl"],[panelX+panelW-bp-bs,panelY+QS+qPad*2-bp-bs,"br"]
+    ].forEach(([bx,by,c])=>{
+      ctx.strokeStyle=col;ctx.lineWidth=3;ctx.lineCap="round";ctx.beginPath();
+      if(c==="tl"){ctx.moveTo(bx+bs,by);ctx.lineTo(bx,by);ctx.lineTo(bx,by+bs);}
+      if(c==="tr"){ctx.moveTo(bx,by);ctx.lineTo(bx+bs,by);ctx.lineTo(bx+bs,by+bs);}
+      if(c==="bl"){ctx.moveTo(bx+bs,by+bs);ctx.lineTo(bx,by+bs);ctx.lineTo(bx,by);}
+      if(c==="br"){ctx.moveTo(bx,by+bs);ctx.lineTo(bx+bs,by+bs);ctx.lineTo(bx+bs,by);}
       ctx.stroke();
     });
 
-    // H logo — centered in QR
-    const hx=cx,hy=panelY+qPad+QS/2,hr=20;
-    ctx.beginPath();ctx.arc(hx,hy,hr,0,Math.PI*2);
+    // H logo centered in QR
+    const hx=cx,hy=panelY+qPad+QS/2;
+    ctx.beginPath();ctx.arc(hx,hy,24,0,Math.PI*2);
     ctx.fillStyle="#fff";ctx.fill();
-    ctx.strokeStyle=col;ctx.lineWidth=2;ctx.stroke();
-    ctx.font="900 22px Inter,Arial,sans-serif";ctx.fillStyle=col;
-    ctx.textAlign="center";ctx.textBaseline="middle";
-    ctx.fillText("H",hx,hy+1);
+    ctx.strokeStyle=col;ctx.lineWidth=2.5;ctx.stroke();
+    ctx.font="900 26px Inter,Arial,sans-serif";ctx.fillStyle=col;
+    ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText("H",hx,hy+1);
 
-    // ── UID — centered ──
+    // Scan prompt
     ctx.textBaseline="alphabetic";ctx.textAlign="center";
-    const uidY=panelY+panelH+30;
-    ctx.font="700 13px JetBrains Mono,monospace";ctx.fillStyle=col;
-    ctx.shadowColor=col;ctx.shadowBlur=10;
-    ctx.fillText("#"+uid,cx,uidY);ctx.shadowBlur=0;
+    ctx.font="700 14px Inter,Arial,sans-serif";ctx.fillStyle=col;
+    ctx.fillText(isBiz?"📱 SCAN TO REVIEW US":"📱 SCAN TO VIEW PROFILE",cx,panelY+QS+qPad*2+32);
 
-    // ── Profile URL — centered ──
-    ctx.font="500 10px JetBrains Mono,monospace";ctx.fillStyle="#3a3a60";
-    ctx.fillText(displayUrl,cx,uidY+18);
+    // Divider
+    ctx.fillStyle=col+"20";ctx.fillRect(panelX+20,panelY+QS+qPad*2+42,panelW-40,1);
+
+    // Avatar initials
+    ctx.textBaseline="middle";ctx.textAlign="center";
+    const avatarY=panelY+QS+qPad*2+72;
+    ctx.beginPath();ctx.arc(cx,avatarY,24,0,Math.PI*2);ctx.fillStyle=col+"22";ctx.fill();
+    ctx.strokeStyle=col;ctx.lineWidth=1.5;ctx.stroke();
+    ctx.font="700 18px Inter,Arial,sans-serif";ctx.fillStyle=col;ctx.fillText(ini(profile.name),cx,avatarY);
+
+    // Name
+    ctx.textBaseline="alphabetic";
+    ctx.font="700 20px Inter,Arial,sans-serif";ctx.fillStyle="#0d0c1a";
+    ctx.fillText(profile.name,cx,avatarY+44);
+
+    // Biz sub-category or tier
+    if(isBiz){
+      const bizT=BIZ_TYPES.find(b=>b.id===(profile.biz_type||"general"));
+      const bl=`${bizT?.emoji||"💼"} ${bizT?.label||"Business"}`;
+      ctx.font="600 12px Inter,Arial,sans-serif";
+      const bw=ctx.measureText(bl).width+20;
+      ctx.fillStyle=col+"14";ctx.strokeStyle=col+"40";ctx.lineWidth=1;
+      ctx.beginPath();try{ctx.roundRect(cx-bw/2,avatarY+50,bw,24,6);}catch{ctx.rect(cx-bw/2,avatarY+50,bw,24);}
+      ctx.fill();ctx.stroke();
+      ctx.fillStyle=col;ctx.fillText(bl,cx,avatarY+66);
+    } else {
+      ctx.font="600 12px Inter,Arial,sans-serif";ctx.fillStyle=t.color;
+      ctx.fillText(`${t.emoji} ${t.label}`,cx,avatarY+62);
+    }
+
+    // URL
+    ctx.font="500 11px JetBrains Mono,monospace";ctx.fillStyle="#8080a0";
+    ctx.fillText(displayUrl,cx,avatarY+88);
 
     // Bottom bar
-    ctx.fillStyle=col+"aa";ctx.fillRect(0,H-5,W,5);
+    ctx.fillStyle=col;ctx.fillRect(0,H-5,W,5);
 
+    // Save as JPEG — widely supported, smaller file
     const a=document.createElement("a");
-    a.download=`${profile.name.replace(/\s+/g,"_")}_HighEnough_QR.png`;
-    a.href=fc.toDataURL("image/png");a.click();
+    a.download=`${profile.name.replace(/\s+/g,"_")}_HighEnough.jpg`;
+    a.href=fc.toDataURL("image/jpeg",.92);a.click();
+  }
+
+  function saveCard(){
+    renderCard();
+    const fc=cardRef.current;if(!fc||fc.width===0)return;
+    const a=document.createElement("a");
+    a.download=`${profile.name.replace(/\s+/g,"_")}_HighEnough.jpg`;
+    a.href=fc.toDataURL("image/jpeg",.92);a.click();
   }
 
   return(
@@ -983,20 +1047,20 @@ function QRModal({profile,T,onClose}){
           <div style={{width:5,height:5,borderRadius:"50%",background:col}}/>
         </div>
 
-        {/* ── QR area — fixed 260×260, perfectly square, no padding tricks ── */}
-        <div style={{position:"relative",width:260,height:260,margin:"0 auto",background:"#f5f5ff",border:`1.5px solid ${col}20`,borderRadius:12,overflow:"hidden"}}>
-          {/* Canvas fills exactly 260×260 */}
-          <canvas ref={qrRef} style={{display:"block",position:"absolute",top:0,left:0,width:260,height:260}}/>
+        {/* ── QR area — fixed 260×260, perfectly square ── */}
+        <div style={{position:"relative",width:260,height:260,margin:"0 auto",background:"#f5f5ff",borderRadius:12,overflow:"hidden",flexShrink:0}}>
+          {/* Canvas: internal resolution 400×400, CSS 260×260 — ratio preserved */}
+          <canvas ref={qrRef} style={{position:"absolute",top:0,left:0,width:260,height:260,display:"block"}}/>
           {!ready&&<div style={{position:"absolute",inset:0,background:"rgba(245,245,255,.98)",display:"flex",alignItems:"center",justifyContent:"center"}}><Spinner/></div>}
-          {/* Corner brackets — absolute positioned over QR */}
+          {/* Corner brackets */}
           {ready&&[
-            {top:6,left:6,borderTop:`3px solid ${col}`,borderLeft:`3px solid ${col}`,borderRadius:"3px 0 0 0"},
-            {top:6,right:6,borderTop:`3px solid ${col}`,borderRight:`3px solid ${col}`,borderRadius:"0 3px 0 0"},
-            {bottom:6,left:6,borderBottom:`3px solid ${col}`,borderLeft:`3px solid ${col}`,borderRadius:"0 0 0 3px"},
-            {bottom:6,right:6,borderBottom:`3px solid ${col}`,borderRight:`3px solid ${col}`,borderRadius:"0 0 3px 0"},
+            {top:7,left:7,borderTop:`3px solid ${col}`,borderLeft:`3px solid ${col}`,borderRadius:"4px 0 0 0"},
+            {top:7,right:7,borderTop:`3px solid ${col}`,borderRight:`3px solid ${col}`,borderRadius:"0 4px 0 0"},
+            {bottom:7,left:7,borderBottom:`3px solid ${col}`,borderLeft:`3px solid ${col}`,borderRadius:"0 0 0 4px"},
+            {bottom:7,right:7,borderBottom:`3px solid ${col}`,borderRight:`3px solid ${col}`,borderRadius:"0 0 4px 0"},
           ].map((s,i)=><div key={i} style={{position:"absolute",width:24,height:24,...s}}/>)}
-          {/* H logo — dead center */}
-          {ready&&<div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",width:44,height:44,borderRadius:10,background:"#fff",border:`2.5px solid ${col}`,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:`0 0 0 4px #fff, 0 2px 12px ${col}40`}}>
+          {/* H logo — dead center of the 260×260 box */}
+          {ready&&<div style={{position:"absolute",width:44,height:44,top:"50%",left:"50%",transform:"translate(-50%,-50%)",borderRadius:10,background:"#fff",border:`2.5px solid ${col}`,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:`0 0 0 4px #f5f5ff, 0 2px 12px ${col}40`}}>
             <span style={{fontSize:24,fontWeight:900,color:col,fontFamily:"'Inter',sans-serif",lineHeight:1}}>H</span>
           </div>}
         </div>
@@ -1335,18 +1399,54 @@ function MsgStatus({m,myId}){
 function ChatScreen({conv,myProfile,profiles,T,onBack,onSend,onMarkRead,onClearChat,onBlockUser,onReportUser,onViewProfile}){
   const [txt,setTxt]=useState("");
   const [showMenu,setShowMenu]=useState(false);
+  const [showEmoji,setShowEmoji]=useState(false);
   const [notifMuted,setNotifMuted]=useState(false);
   const endRef=useRef(null);
+  const inputRef=useRef(null);
   const msgs=conv.messages||[];
+
+  const EMOJI_CATS=[
+    {id:"recent",label:"🕐",name:"Recent"},
+    {id:"smileys",label:"😀",name:"Smileys"},
+    {id:"people",label:"👋",name:"People"},
+    {id:"nature",label:"🐶",name:"Nature"},
+    {id:"food",label:"🍎",name:"Food"},
+    {id:"travel",label:"✈️",name:"Travel"},
+    {id:"objects",label:"💡",name:"Objects"},
+    {id:"symbols",label:"❤️",name:"Symbols"},
+    {id:"flags",label:"🏳️",name:"Flags"},
+  ];
+  const ALL_EMOJIS={
+    smileys:["😀","😃","😄","😁","😆","😅","🤣","😂","🙂","🙃","🫠","😉","😊","😇","🥰","😍","🤩","😘","😗","☺️","😚","😙","🥲","😋","😛","😜","🤪","😝","🤑","🤗","🤭","🫢","🫣","🤫","🤔","🫡","🤐","🤨","😐","😑","😶","🫥","😏","😒","🙄","😬","🤥","😌","😔","😪","🤤","😴","😷","🤒","🤕","🤢","🤮","🤧","🥵","🥶","🥴","😵","🤯","🤠","🥸","🥳","😎","🤓","🧐","😕","🫤","😟","🙁","☹️","😮","😯","😲","😳","🥺","🥹","😦","😧","😨","😰","😥","😢","😭","😱","😖","😣","😞","😓","😩","😫","🥱","😤","😡","😠","🤬","😈","👿","💀","☠️","💩","🤡","👹","👺","👻","👽","👾","🤖"],
+    people:["👋","🤚","🖐️","✋","🖖","🫱","🫲","🫳","🫴","👌","🤌","🤏","✌️","🤞","🫰","🤟","🤘","🤙","👈","👉","👆","🖕","👇","☝️","🫵","👍","👎","✊","👊","🤛","🤜","👏","🙌","🫶","👐","🤲","🤝","🙏","✍️","💅","🤳","💪","🦾","🦿","🦵","🦶","👂","🦻","👃","🫀","🫁","🧠","🦷","🦴","👀","👁️","👅","👄","🫦","💋","🧑","👶","🧒","👦","👧","🧑","👱","👨","🧔","👩","🧓","👴","👵","🙍","🙎","🙅","🙆","💁","🙋","🧏","🙇","🤦","🤷","👮","🕵️","💂","🥷","👷","🫅","🤴","👸","👳","👲","🧕","🤵","👰","🤰","🫃","🤱","👼","🎅","🤶","🧑‍🎄","🦸","🦹","🧙","🧚","🧛","🧜","🧝","🧞","🧟","🧌","💆","💇","🚶","🧍","🧎","🏃","💃","🕺","🕴️","👯","🧖","🧗","🤺","🏇","⛷️","🏂","🏌️","🏄","🚣","🧘","🤼","🤸","⛹️","🤾","🏋️","🤼","🤺"],
+    nature:["🐶","🐱","🐭","🐹","🐰","🦊","🐻","🐼","🐻‍❄️","🐨","🐯","🦁","🐮","🐷","🐸","🐵","🙈","🙉","🙊","🐔","🐧","🐦","🐤","🦆","🦅","🦉","🦇","🐺","🐗","🐴","🦄","🐝","🪱","🐛","🦋","🐌","🐞","🐜","🪲","🦟","🦗","🪳","🕷️","🦂","🐢","🦎","🐍","🦕","🦖","🦙","🐊","🦈","🐬","🦭","🐳","🐋","🦑","🐙","🦐","🦞","🦀","🐡","🐟","🐠","🐬","🐊","🐅","🐆","��","🦍","🦧","🦣","🐘","🦛","🦏","🐪","🐫","🦒","🦘","🦬","🐃","🐂","🐄","🐎","🐖","🐏","🐑","🦙","🐐","🦌","🐕","🐩","🦮","🐈","🐓","🦃","🦤","🦚","🦜","🦢","🦩","🕊️","🐇","🦝","🦨","🦡","🦫","🦦","🦥","🐿️","🦔","🌵","🎄","🌲","🌳","🌴","🪵","🌱","🌿","☘️","🍀","🎋","🎍","🪴","🌾","🌺","🌸","🌼","🌻","🌞","🌝","🌛","🌚","🌕","🌖","🌗","🌘","🌑","🌒","🌓","🌔","🌙","🌟","⭐","🌠","🌌","☀️","🌤️","⛅","🌥️","☁️","🌦️","🌧️","⛈️","🌩️","🌨️","❄️","☃️","⛄","🌬️","💨","🌀","🌈","🌂","☂️","☔","⛱️","🌊","🌫️","🌁"],
+    food:["🍎","🍐","🍊","🍋","🍌","🍉","🍇","🍓","🫐","🍈","🍒","🍑","🥭","🍍","🥥","🥝","🍅","🍆","🥑","🫑","🥦","🥬","🥒","🌶️","🫒","🧄","🧅","🥔","🍠","🫘","🌽","🫚","🍄","🧅","🥜","🍞","🥐","🥖","🫓","🥨","🧀","🥚","🍳","🧈","🥞","🧇","🥓","🥩","🍗","🍖","🌭","🍔","🍟","🍕","🫔","🌮","🌯","🥙","🧆","🥚","🍲","🫕","🥘","🍛","🍜","🍝","🍠","🍢","🍣","🍤","🍙","🍚","🍘","🍥","🥮","🍡","🧁","🍰","🎂","🍮","🍭","🍬","🍫","🍿","🍩","🍪","🌰","🥜","🍯","🧃","🥤","🧋","☕","🫖","🍵","🧉","🍶","🍺","🍻","🥂","🍷","🫗","🥃","🍸","🍹","🧊","🥄","🍴","🍽️"],
+    travel:["🚗","🚕","🚙","🚌","🚎","🏎️","🚓","🚑","🚒","🚐","🛻","🚚","🚛","🚜","🏍️","🛵","🦽","🦼","🛺","🚲","🛴","🛹","🛼","🚏","🛣️","🛤️","⛽","🚧","🚦","🚥","🗺️","🗿","🗽","🗼","🏰","🏯","🏟️","🎡","🎢","🎠","⛲","⛺","🏕️","🌁","🌃","🌄","🌅","🌆","🌇","🌉","🏙️","🌌","🌠","🎇","🎆","🎑","⛱️","🏖️","🏝️","🏜️","🏞️","🏔️","⛰️","🌋","🗻","🏠","🏡","🏢","🏣","🏤","🏥","🏦","🏨","🏩","🏪","🏫","🏭","🏗️","🧱","🪞","🪟","🪑","🚪","🛏️","🛋️","🚿","🛁","🪠","🧴","🪒","🧽","🧹","🧺","🧻","🪣","🧼","✈️","🛩️","🛫","🛬","💺","🚁","🛸","🚀","🛶","⛵","🚤","🛥️","🛳️","⛴️","🚢","🗺️","🧭","⏱️","🌍","🌎","🌏"],
+    objects:["⌚","📱","💻","🖥️","🖨️","⌨️","🖱️","🖲️","💽","💾","💿","📀","📷","📸","📹","🎥","📽️","🎞️","📞","☎️","📟","📠","📺","📻","🧭","⏱️","⏰","🕰️","⌛","⏳","📡","🔋","🪫","🔌","💡","🔦","🕯️","🪔","🧯","🛢️","💰","💴","💵","💶","💷","💸","💳","🪙","💹","📈","📉","📊","📋","📌","📍","📎","🖇️","📏","📐","✂️","🗃️","🗄️","🗑️","🔒","🔓","🔏","🔐","🔑","🗝️","🔨","🪓","⛏️","⚒️","🛠️","🗡️","⚔️","🛡️","🔧","🔩","⚙️","🗜️","⚖️","🦯","🔗","⛓️","🪝","🧲","🪜","⚗️","🧪","🧫","🧬","🔭","🔬","🕳️","💊","🩺","🩹","🩻","🩼","🩸","💉","🧬","🦠","🧫","🪤","🧲","🎁","🎀","🎊","🎉","🎈","🎏","🎐","🎑","🎃","🎄","🎋","🎍","🎎","🎗️","🎟️","🎫","🎖️","🏆","🥇","🥈","🥉","⚽","🏀","🏈","⚾","🥎","🎾","🏐","🏉","🥏","🎱","🏓","🏸","🥍","🏒","🥌","🛷","🎿","⛷️","🤺","🏹","🎣","🤿","🥊","🎽","🛹","🛼","🎯","🪃","🎮","🎲","♟️","🎭","🎨","🧵","🪡","🧶","🪢","👓","🕶️","🥽","🌂","☂️"],
+    symbols:["❤️","🧡","💛","💚","💙","💜","🖤","🤍","🤎","💔","❤️‍🔥","❤️‍🩹","❣️","💕","💞","💓","💗","💖","💘","💝","💟","☮️","✝️","☪️","🕉️","✡️","🔯","🪯","☸️","🛐","⛎","♈","♉","♊","♋","♌","♍","♎","♏","♐","♑","♒","♓","🆔","⚛️","🉑","☢️","☣️","📴","📳","🈶","🈚","🈸","🈺","🈷️","✴️","🆚","💮","🉐","㊙️","㊗️","🈴","🈵","🈹","🈲","🅰️","🅱️","🆎","🆑","🅾️","🆘","❌","⭕","🛑","⛔","📛","🚫","💯","💢","♨️","🚷","🚯","🚳","🚱","🔞","📵","🔕","🔇","🔈","🔉","🔊","📢","📣","📯","🔔","🔕","🎵","🎶","⚠️","🚸","✅","❎","🔱","⚜️","🔰","♻️","✔️","🔛","🔜","🔚","🔙","🔝","🛐","🔀","🔁","🔂","▶️","⏩","⏭️","⏯️","◀️","⏪","⏮️","🔼","⏫","🔽","⏬","⏸️","⏹️","⏺️","🎦","🔅","🔆","📶","📳","🈶","🈚","🈸","🈺","🈷️","🔣","ℹ️","🔤","🔡","🔠","🆖","🆗","🆙","🆒","🆕","🆓","0️⃣","1️⃣","2️⃣","3️⃣","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣","🔟","🔢","#️⃣","*️⃣","⏏️","▫️","◾","◽","◼️","◻️","🟥","🟧","🟨","🟩","🟦","🟪","⬛","⬜","🔶","🔷","🔸","🔹","🔺","🔻","💠","🔘","🔳","🔲"],
+    flags:["🏁","🚩","🎌","🏴","🏳️","🏳️‍🌈","🏳️‍⚧️","🏴‍☠️","🇦🇫","🇦🇱","🇩🇿","🇦🇩","🇦🇴","🇦🇬","🇦🇷","🇦🇲","🇦🇺","🇦🇹","🇦🇿","🇧🇸","🇧🇭","🇧🇩","🇧🇧","🇧🇾","🇧🇪","🇧🇿","🇧🇯","🇧🇹","🇧🇴","🇧🇦","🇧🇼","🇧🇷","🇧🇳","🇧🇬","🇧🇫","🇧🇮","🇨🇻","🇨🇲","🇨🇦","🇨🇫","🇹🇩","🇨🇱","🇨🇳","🇨🇴","🇨🇬","🇨🇷","🇭🇷","🇨🇺","🇨🇾","🇨🇿","🇩🇰","🇩🇯","🇩🇲","🇩🇴","🇪🇨","🇪🇬","🇸🇻","🇬🇶","🇪🇷","🇪🇪","🇸🇿","🇪🇹","🇫🇯","🇫🇮","🇫🇷","🇬🇦","🇬🇲","🇬🇪","🇩🇪","🇬🇭","🇬🇷","🇬🇩","🇬🇹","🇬🇳","🇬🇼","🇬🇾","🇭🇹","🇭🇳","🇭🇺","🇮🇸","🇮🇳","🇮🇩","🇮🇷","🇮🇶","🇮🇪","🇮🇱","🇮🇹","🇯🇲","🇯🇵","🇯🇴","🇰🇿","🇰🇪","🇰🇮","🇰🇼","🇰🇬","🇱🇦","🇱🇻","🇱🇧","🇱🇸","🇱🇷","🇱🇾","🇱🇮","🇱🇹","🇱🇺","🇲🇬","🇲🇼","🇲🇾","🇲🇻","🇲🇱","🇲🇹","🇲🇭","🇲🇷","🇲🇺","🇲🇽","🇫🇲","🇲🇩","🇲🇨","🇲🇳","🇲🇪","🇲🇦","🇲🇿","🇲🇲","🇳🇦","🇳🇷","🇳🇵","🇳🇱","🇳🇿","🇳🇮","🇳🇪","🇳🇬","🇲🇰","🇳🇴","🇴🇲","🇵🇰","🇵🇼","🇵🇦","🇵🇬","🇵🇾","🇵🇪","🇵🇭","🇵🇱","🇵🇹","🇶🇦","🇷🇴","🇷🇺","🇷🇼","🇰🇳","🇱🇨","🇻🇨","🇼🇸","🇸🇲","🇸🇹","🇸🇦","🇸🇳","🇷🇸","🇸🇱","🇸🇬","🇸🇰","🇸🇮","🇸🇧","🇸🇴","🇿🇦","🇸🇸","🇪🇸","🇱🇰","🇸🇩","🇸🇷","🇸🇪","🇨🇭","🇸🇾","🇹🇼","🇹🇯","🇹🇿","🇹🇭","🇹🇱","🇹🇬","🇹🇴","🇹🇹","🇹🇳","🇹🇷","🇹🇲","🇺🇬","🇺🇦","🇦🇪","🇬🇧","🇺🇸","🇺🇾","🇺🇿","🇻🇺","🇻🇪","🇻🇳","🇾🇪","🇿🇲","🇿🇼"],
+  };
+  const [emojiCat,setEmojiCat]=useState("smileys");
+  const [recentEmojis,setRecentEmojis]=useState(()=>{try{return JSON.parse(localStorage.getItem("he_recent_emojis")||"[]");}catch{return[];}});
+  function addEmoji(e){
+    setTxt(prev=>prev+e);
+    inputRef.current?.focus();
+    setRecentEmojis(prev=>{const updated=[e,...prev.filter(x=>x!==e)].slice(0,32);localStorage.setItem("he_recent_emojis",JSON.stringify(updated));return updated;});
+  }
+  const currentEmojis=emojiCat==="recent"?(recentEmojis.length?recentEmojis:ALL_EMOJIS.smileys):ALL_EMOJIS[emojiCat]||[];
 
   useEffect(()=>{
     function onVisible(){if(document.visibilityState==="visible"&&endRef.current)endRef.current.scrollIntoView();}
     document.addEventListener("visibilitychange",onVisible);
     return()=>document.removeEventListener("visibilitychange",onVisible);
   },[]);
-  useEffect(()=>{endRef.current?.scrollIntoView({behavior:"smooth"});onMarkRead(conv.id,conv.other?.id);},[msgs.length,conv.id]);
+  useEffect(()=>{
+    endRef.current?.scrollIntoView({behavior:"smooth"});
+    onMarkRead(conv.id,conv.other?.id);
+  },[msgs.length,conv.id]);
 
-  function send(){if(!txt.trim())return;onSend(conv.id,txt.trim());setTxt("");}
+  function send(){if(!txt.trim())return;onSend(conv.id,txt.trim());setTxt("");setShowEmoji(false);}
+  function addEmoji(e){setTxt(prev=>prev+e);inputRef.current?.focus();}
 
   return<div style={{position:"fixed",inset:0,zIndex:400,background:T.bg,display:"flex",flexDirection:"column"}}>
     {/* Header */}
@@ -1397,8 +1497,8 @@ function ChatScreen({conv,myProfile,profiles,T,onBack,onSend,onMarkRead,onClearC
                 onViewProfile&&onViewProfile(full);
               }}/>
             </div>
-            <div style={{display:"flex",alignItems:"center",justifyContent:mine?"flex-end":"flex-start",gap:2,marginTop:3}}>
-              <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:9,color:T.mu}}>{ago(m.ts)}</span>
+            <div style={{display:"flex",alignItems:"center",justifyContent:mine?"flex-end":"flex-start",gap:3,marginTop:3}}>
+              <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:9,color:T.mu}}>{fmtTime(m.ts)}</span>
               {mine&&<MsgStatus m={m} myId={myProfile.id}/>}
             </div>
           </div>
@@ -1409,9 +1509,22 @@ function ChatScreen({conv,myProfile,profiles,T,onBack,onSend,onMarkRead,onClearC
 
     {/* Profile share picker - REMOVED (use native share on profile pages instead) */}
 
+    {/* Emoji picker */}
+    {showEmoji&&<div style={{background:T.nav,borderTop:`1px solid ${T.b1}`,flexShrink:0}}>
+      {/* Category tabs */}
+      <div style={{display:"flex",overflowX:"auto",borderBottom:`1px solid ${T.b1}`,padding:"6px 8px 0"}}>
+        {EMOJI_CATS.map(c=><button key={c.id} onClick={()=>setEmojiCat(c.id)} style={{fontSize:18,padding:"4px 8px",borderRadius:"8px 8px 0 0",background:emojiCat===c.id?T.faint:"transparent",border:"none",borderBottom:emojiCat===c.id?`2px solid ${myProfile.color}`:"2px solid transparent",flexShrink:0,cursor:"pointer",opacity:c.id==="recent"&&recentEmojis.length===0?.4:1}}>{c.label}</button>)}
+      </div>
+      {/* Emoji grid */}
+      <div style={{display:"flex",flexWrap:"wrap",padding:"8px 10px",maxHeight:180,overflowY:"auto",gap:2}}>
+        {currentEmojis.map((e,i)=><button key={i} onClick={()=>addEmoji(e)} style={{background:"none",fontSize:24,width:38,height:38,borderRadius:8,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{e}</button>)}
+      </div>
+    </div>}
+
     {/* Input bar */}
     <div style={{padding:"10px 14px",paddingBottom:"max(14px,env(safe-area-inset-bottom))",borderTop:`1px solid ${T.b1}`,background:T.nav,display:"flex",gap:8,alignItems:"center",flexShrink:0}}>
-      <input value={txt} onChange={e=>setTxt(e.target.value)} onKeyDown={e=>e.key==="Enter"&&send()} placeholder="Message…" style={{flex:1,padding:"12px 16px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:24,color:T.txt,fontSize:14,outline:"none"}}/>
+      <button onClick={()=>setShowEmoji(v=>!v)} style={{width:38,height:38,borderRadius:"50%",background:showEmoji?`${myProfile.color}22`:T.faint,border:`1px solid ${showEmoji?myProfile.color+"50":T.b1}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>😊</button>
+      <input ref={inputRef} value={txt} onChange={e=>setTxt(e.target.value)} onKeyDown={e=>e.key==="Enter"&&send()} placeholder="Message…" style={{flex:1,padding:"12px 16px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:24,color:T.txt,fontSize:14,outline:"none"}}/>
       <button onClick={send} style={{width:42,height:42,borderRadius:"50%",background:txt.trim()?`linear-gradient(135deg,${myProfile.color}dd,${myProfile.color}99)`:T.faint,display:"flex",alignItems:"center",justifyContent:"center",color:txt.trim()?"#fff":T.mu,flexShrink:0,transition:"background .15s"}}><SendIcon/></button>
     </div>
   </div>;
@@ -3373,22 +3486,28 @@ function App(){
       profileLoadingRef.current=true;
       bootingUserIdRef.current=user.id;
 
-      // Always check deleted — even on session restore.
-      // A deleted user may still have a valid Supabase auth session.
+      // Always check deleted on ALL paths
       const deleted=await isDeletedAccount(user.id);
       if(deleted){
         const {data:existingProfile}=await sb.from("profiles").select("id").eq("id",user.id).maybeSingle();
         if(existingProfile){
-          // Profile still exists = truly blocked (shouldn't happen, but safety net)
-          setAuthError("This account has been permanently deleted.");
-          await sb.auth.signOut();
-          profileLoadingRef.current=false;
-          bootingUserIdRef.current=null;
-          setAuthLoading(false);
-          return;
+          // Profile still exists — this is a re-login on a deleted account
+          // Wipe everything and let them start fresh (same flow as re-signup)
+          await Promise.all([
+            sb.from("profiles").delete().eq("id",user.id),
+            sb.from("ratings").delete().eq("rater_id",user.id),
+            sb.from("ratings").delete().eq("target_id",user.id),
+            sb.from("follows").delete().eq("follower_id",user.id),
+            sb.from("follows").delete().eq("following_id",user.id),
+            sb.from("messages").delete().eq("sender_id",user.id),
+            sb.from("messages").delete().eq("receiver_id",user.id),
+            sb.from("notifications").delete().eq("actor_id",user.id),
+            sb.from("notifications").delete().eq("target_id",user.id),
+            sb.from("deleted_accounts").delete().eq("auth_id",user.id),
+          ]);
+          // Fall through — no profile row means ProfileSetup will show
         }else{
-          // Profile row is gone = user signed up fresh with same email
-          // Clean up the stale deleted_accounts record and continue as new user
+          // No profile row and in deleted list — clean up stale record and proceed
           await sb.from("deleted_accounts").delete().eq("auth_id",user.id);
         }
       }
@@ -4254,7 +4373,10 @@ function App(){
   const suggestedPersonal=allFeedProfiles.filter(p=>!following.includes(p.id)&&(p.account_type||"personal")==="personal").slice(0,6);
   const suggestedBiz=allFeedProfiles.filter(p=>!following.includes(p.id)&&p.account_type==="business").slice(0,4);
   const unreadN=notifs.filter(n=>!n.read).length;
-  const unreadM=convs.reduce((s,c)=>s+(c.messages?.filter(m=>m.sid!==profile.id&&!m.read).length||0),0);
+  const unreadM=convs.reduce((s,c)=>{
+    const unread=(c.messages||[]).filter(m=>m.sid&&m.sid!==profile.id&&m.read===false).length;
+    return s+unread;
+  },0);
 
   const NAV=[
     {id:"feed",    label:"Home",    Icon:HomeIcon},
