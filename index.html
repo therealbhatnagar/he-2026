@@ -238,6 +238,7 @@ const ADMIN_CODE="HE2025";
 const avg=a=>a.length?a.reduce((s,v)=>s+v,0)/a.length:0;
 const ini=n=>(n||"?").split(" ").map(w=>w[0]).join("").toUpperCase().slice(0,2);
 const fmtTime=ts=>{if(!ts)return"";const d=new Date(ts);return d.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit",hour12:true});};
+const formatDateLabel=d=>{const now=new Date();const today=new Date(now.getFullYear(),now.getMonth(),now.getDate());const yesterday=new Date(today-86400000);const msgDay=new Date(d.getFullYear(),d.getMonth(),d.getDate());if(msgDay.getTime()===today.getTime())return"Today";if(msgDay.getTime()===yesterday.getTime())return"Yesterday";const days=["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];const diff=(today-msgDay)/86400000;if(diff<7)return days[d.getDay()];return d.toLocaleDateString([],{day:"numeric",month:"short",year:d.getFullYear()!==now.getFullYear()?"numeric":undefined});};
 const ago=ts=>{const d=Date.now()-ts,s=Math.floor(d/1000),m=Math.floor(d/60000),h=Math.floor(d/3600000),dy=Math.floor(d/86400000);return dy>0?`${dy}d`:h>0?`${h}h`:m>0?`${m}m`:s>0?`${s}s`:"now";};
 const shortId=id=>id?id.toString().replace(/-/g,"").toUpperCase().slice(0,6):"------";
 /* ── SCORE FORMULA ──────────────────────────────────────────────────────────
@@ -846,7 +847,7 @@ function parseDeepLink(){
   return null;
 }
 
-/* ── QR MODAL — bold geometric design with big H ── */
+/* ── QR MODAL — WhatsApp-inspired, avatar overlapping card ── */
 function QRModal({profile,T,onClose}){
   const uid=profile.short_id||shortId(profile.id);
   const shareUrl=getProfileUrl(profile);
@@ -855,10 +856,12 @@ function QRModal({profile,T,onClose}){
   const cardRef=useRef(null);
   const [copied,setCopied]=useState(false);
   const [ready,setReady]=useState(false);
+  const [saved,setSaved]=useState(false);
   const isBiz=profile.account_type==="business";
   const sc=pScore(profile);
   const t=tierOf(sc??0,isBiz);
   const col=profile.color||AC;
+  const bizInfo=isBiz?BIZ_TYPES.find(b=>b.id===(profile.biz_type||"general")):null;
 
   useEffect(()=>{
     loadScript("https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js",()=>{
@@ -866,245 +869,224 @@ function QRModal({profile,T,onClose}){
       new window.QRious({
         element:qrRef.current,
         value:shareUrl,
-        size:400,
-        background:"#f5f5ff",
+        size:500,
+        background:"#ffffff",
         foreground:"#0a0a14",
         level:"H",
-        padding:16,
+        padding:20,
       });
       setReady(true);
-      // Pre-render the save card so Share can access it immediately
-      setTimeout(()=>{const btn=document.getElementById("he_qr_prerender");if(btn)btn.click();},200);    });
+    });
   },[shareUrl]);
+
+  // Pre-render save card when ready
+  useEffect(()=>{if(ready)setTimeout(()=>renderSaveCard(),150);},[ready]);
 
   function copyUrl(){
     try{navigator.clipboard?.writeText(shareUrl);}catch{}
     setCopied(true);setTimeout(()=>setCopied(false),2200);
   }
-  async function shareProfile(){
-    // Always try to share the visual QR card first — most useful for scanning
-    try{
-      const qc=qrRef.current;
-      if(qc&&ready&&cardRef.current){
-        // Render the card to canvas and share as image
-        const fc=cardRef.current;
-        if(fc.width>0){
-          fc.toBlob(async blob=>{
-            if(blob&&navigator.canShare&&navigator.canShare({files:[new File([blob],"qr.jpg",{type:"image/jpeg"})]})){
-              await navigator.share({
-                title:`${profile.name} on HighEnough`,
-                text:isBiz?`Review ${profile.name} on HighEnough`:`Check out ${profile.name} on HighEnough`,
-                url:shareUrl,
-                files:[new File([blob],`${profile.name.replace(/\s+/g,"_")}_HighEnough.jpg`,{type:"image/jpeg"})]
-              });
-              return;
-            }
-            // Fallback: share just the link
-            if(navigator.share){
-              await navigator.share({title:profile.name+" on HighEnough",text:isBiz?`Review ${profile.name} on HighEnough 👉 ${shareUrl}`:`Check out ${profile.name} on HighEnough 👉 ${shareUrl}`,url:shareUrl});
-            } else copyUrl();
-          },"image/jpeg",.92);
-          return;
-        }
-      }
-    }catch(e){console.warn("Image share failed:",e);}
-    // Final fallback
-    if(navigator.share){navigator.share({title:profile.name+" on HighEnough",text:isBiz?`Review ${profile.name} on HighEnough 👉 ${shareUrl}`:`Check out ${profile.name} on HighEnough 👉 ${shareUrl}`,url:shareUrl}).catch(()=>copyUrl());}
-    else copyUrl();
-  }
 
-  // Pre-render card canvas when QR is ready so Share has it available immediately
-  useEffect(()=>{if(ready)setTimeout(()=>renderCard(),100);},[ready]);
-
-  function renderCard(){
+  function renderSaveCard(){
     const qc=qrRef.current;if(!qc||!ready)return;
-    const fc=cardRef.current;
-    const W=480,H=680;fc.width=W;fc.height=H;
+    const fc=cardRef.current;if(!fc)return;
+    const W=500,H=700;fc.width=W;fc.height=H;
     const ctx=fc.getContext("2d");
     const cx=W/2;
 
-    // White background (JPEG-compatible)
+    // White background
     ctx.fillStyle="#ffffff";ctx.fillRect(0,0,W,H);
 
-    // Top accent bar
-    const topBar=ctx.createLinearGradient(0,0,W,0);
-    topBar.addColorStop(0,col);topBar.addColorStop(1,col+"80");
-    ctx.fillStyle=topBar;ctx.fillRect(0,0,W,6);
+    // Top color band
+    const band=ctx.createLinearGradient(0,0,W,0);
+    band.addColorStop(0,col);band.addColorStop(1,col+"90");
+    ctx.fillStyle=band;ctx.fillRect(0,0,W,120);
 
-    // Brand logo — centered
+    // White card body
+    ctx.fillStyle="#ffffff";ctx.shadowColor="rgba(0,0,0,.12)";ctx.shadowBlur=20;ctx.shadowOffsetY=4;
+    ctx.beginPath();try{ctx.roundRect(24,90,W-48,H-114,20);}catch{ctx.rect(24,90,W-48,H-114);}
+    ctx.fill();ctx.shadowBlur=0;ctx.shadowOffsetY=0;
+
+    // Avatar circle (overlapping band + card)
+    ctx.beginPath();ctx.arc(cx,100,50,0,Math.PI*2);
+    ctx.fillStyle=col+"22";ctx.fill();
+    ctx.strokeStyle="#ffffff";ctx.lineWidth=4;ctx.stroke();
+    ctx.strokeStyle=col;ctx.lineWidth=2;ctx.stroke();
+    ctx.font="bold 36px Inter,Arial,sans-serif";ctx.fillStyle=col;
+    ctx.textAlign="center";ctx.textBaseline="middle";
+    ctx.fillText(ini(profile.name),cx,100);
+
+    // Name
     ctx.textBaseline="alphabetic";ctx.textAlign="center";
-    ctx.font="900 24px Inter,Arial,sans-serif";
-    const hiW=ctx.measureText("High").width;
-    ctx.font="300 24px Inter,Arial,sans-serif";
-    const enW=ctx.measureText("Enough").width;
-    const lx=cx-(hiW+enW+3)/2;
-    ctx.textAlign="left";
-    ctx.font="900 24px Inter,Arial,sans-serif";ctx.fillStyle="#0d0c1a";ctx.fillText("High",lx,52);
-    ctx.font="300 24px Inter,Arial,sans-serif";ctx.fillStyle=col;ctx.fillText("Enough",lx+hiW+3,52);
+    ctx.font="700 26px Inter,Arial,sans-serif";ctx.fillStyle="#0d0c1a";
+    // Truncate long names
+    let nameText=profile.name;
+    ctx.font="700 26px Inter,Arial,sans-serif";
+    while(ctx.measureText(nameText).width>W-120&&nameText.length>4)nameText=nameText.slice(0,-1);
+    if(nameText!==profile.name)nameText+="…";
+    ctx.fillText(nameText,cx,175);
 
-    // QR white panel — centered
-    const QS=300,qPad=16;
-    const panelW=QS+qPad*2,panelX=cx-panelW/2,panelY=70;
-    ctx.fillStyle="#f5f5ff";ctx.shadowColor=col+"22";ctx.shadowBlur=16;
-    ctx.beginPath();try{ctx.roundRect(panelX,panelY,panelW,QS+qPad*2,14);}catch{ctx.rect(panelX,panelY,panelW,QS+qPad*2);}
-    ctx.fill();ctx.shadowBlur=0;
+    // Biz type or handle
+    if(isBiz&&bizInfo){
+      ctx.font="500 14px Inter,Arial,sans-serif";ctx.fillStyle=col;
+      ctx.fillText(`${bizInfo.emoji} ${bizInfo.label}`,cx,198);
+    } else if(profile.handle){
+      ctx.font="500 13px JetBrains Mono,monospace";ctx.fillStyle="#8888a8";
+      ctx.fillText(profile.handle,cx,198);
+    }
 
-    // QR image — centered in panel
-    ctx.drawImage(qc,panelX+qPad,panelY+qPad,QS,QS);
+    // QR — centered, fixed size 320×320
+    const QS=320,qx=cx-QS/2,qy=215;
+    ctx.drawImage(qc,qx,qy,QS,QS);
 
-    // Corner brackets
-    const bs=22,bp=4;
-    [[panelX+bp,panelY+bp,"tl"],[panelX+panelW-bp-bs,panelY+bp,"tr"],
-     [panelX+bp,panelY+QS+qPad*2-bp-bs,"bl"],[panelX+panelW-bp-bs,panelY+QS+qPad*2-bp-bs,"br"]
-    ].forEach(([bx,by,c])=>{
-      ctx.strokeStyle=col;ctx.lineWidth=3;ctx.lineCap="round";ctx.beginPath();
-      if(c==="tl"){ctx.moveTo(bx+bs,by);ctx.lineTo(bx,by);ctx.lineTo(bx,by+bs);}
-      if(c==="tr"){ctx.moveTo(bx,by);ctx.lineTo(bx+bs,by);ctx.lineTo(bx+bs,by+bs);}
-      if(c==="bl"){ctx.moveTo(bx+bs,by+bs);ctx.lineTo(bx,by+bs);ctx.lineTo(bx,by);}
-      if(c==="br"){ctx.moveTo(bx,by+bs);ctx.lineTo(bx+bs,by+bs);ctx.lineTo(bx+bs,by);}
-      ctx.stroke();
-    });
-
-    // H logo centered in QR
-    const hx=cx,hy=panelY+qPad+QS/2;
-    ctx.beginPath();ctx.arc(hx,hy,24,0,Math.PI*2);
-    ctx.fillStyle="#fff";ctx.fill();
+    // H logo center of QR
+    const hx=cx,hy=qy+QS/2;
+    ctx.beginPath();ctx.arc(hx,hy,22,0,Math.PI*2);
+    ctx.fillStyle="#ffffff";ctx.fill();
     ctx.strokeStyle=col;ctx.lineWidth=2.5;ctx.stroke();
-    ctx.font="900 26px Inter,Arial,sans-serif";ctx.fillStyle=col;
-    ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText("H",hx,hy+1);
+    ctx.font="900 24px Inter,Arial,sans-serif";ctx.fillStyle=col;
+    ctx.textAlign="center";ctx.textBaseline="middle";
+    ctx.fillText("H",hx,hy+1);
 
     // Scan prompt
     ctx.textBaseline="alphabetic";ctx.textAlign="center";
-    ctx.font="700 14px Inter,Arial,sans-serif";ctx.fillStyle=col;
-    ctx.fillText(isBiz?"📱 SCAN TO REVIEW US":"📱 SCAN TO VIEW PROFILE",cx,panelY+QS+qPad*2+32);
-
-    // Divider
-    ctx.fillStyle=col+"20";ctx.fillRect(panelX+20,panelY+QS+qPad*2+42,panelW-40,1);
-
-    // Avatar initials
-    ctx.textBaseline="middle";ctx.textAlign="center";
-    const avatarY=panelY+QS+qPad*2+72;
-    ctx.beginPath();ctx.arc(cx,avatarY,24,0,Math.PI*2);ctx.fillStyle=col+"22";ctx.fill();
-    ctx.strokeStyle=col;ctx.lineWidth=1.5;ctx.stroke();
-    ctx.font="700 18px Inter,Arial,sans-serif";ctx.fillStyle=col;ctx.fillText(ini(profile.name),cx,avatarY);
-
-    // Name
-    ctx.textBaseline="alphabetic";
-    ctx.font="700 20px Inter,Arial,sans-serif";ctx.fillStyle="#0d0c1a";
-    ctx.fillText(profile.name,cx,avatarY+44);
-
-    // Biz sub-category or tier
-    if(isBiz){
-      const bizT=BIZ_TYPES.find(b=>b.id===(profile.biz_type||"general"));
-      const bl=`${bizT?.emoji||"💼"} ${bizT?.label||"Business"}`;
-      ctx.font="600 12px Inter,Arial,sans-serif";
-      const bw=ctx.measureText(bl).width+20;
-      ctx.fillStyle=col+"14";ctx.strokeStyle=col+"40";ctx.lineWidth=1;
-      ctx.beginPath();try{ctx.roundRect(cx-bw/2,avatarY+50,bw,24,6);}catch{ctx.rect(cx-bw/2,avatarY+50,bw,24);}
-      ctx.fill();ctx.stroke();
-      ctx.fillStyle=col;ctx.fillText(bl,cx,avatarY+66);
-    } else {
-      ctx.font="600 12px Inter,Arial,sans-serif";ctx.fillStyle=t.color;
-      ctx.fillText(`${t.emoji} ${t.label}`,cx,avatarY+62);
-    }
+    ctx.font="600 13px Inter,Arial,sans-serif";ctx.fillStyle=col;
+    ctx.fillText(isBiz?"Scan to review this business":"Scan to view profile",cx,560);
 
     // URL
-    ctx.font="500 11px JetBrains Mono,monospace";ctx.fillStyle="#8080a0";
-    ctx.fillText(displayUrl,cx,avatarY+88);
+    ctx.font="500 11px JetBrains Mono,monospace";ctx.fillStyle="#9090b0";
+    ctx.fillText(displayUrl,cx,580);
 
-    // Bottom bar
+    // HighEnough brand footer
+    ctx.font="800 18px Inter,Arial,sans-serif";ctx.fillStyle="#0d0c1a";
+    const hiW2=ctx.measureText("High").width;
+    const lx2=cx-(hiW2+ctx.measureText("Enough").width+3)/2;
+    ctx.textAlign="left";ctx.fillText("High",lx2,618);
+    ctx.font="300 18px Inter,Arial,sans-serif";ctx.fillStyle=col;ctx.fillText("Enough",lx2+hiW2+3,618);
+
+    // Bottom accent
     ctx.fillStyle=col;ctx.fillRect(0,H-5,W,5);
-
-    // Save as JPEG — widely supported, smaller file
-    const a=document.createElement("a");
-    a.download=`${profile.name.replace(/\s+/g,"_")}_HighEnough.jpg`;
-    a.href=fc.toDataURL("image/jpeg",.92);a.click();
   }
 
-  function saveCard(){
-    renderCard();
+  async function shareQR(){
+    renderSaveCard();
+    const fc=cardRef.current;
+    if(!fc||fc.width===0){
+      if(navigator.share)navigator.share({title:profile.name+" on HighEnough",text:isBiz?`Review ${profile.name} on HighEnough`:`Check out ${profile.name} on HighEnough`,url:shareUrl}).catch(()=>copyUrl());
+      else copyUrl();
+      return;
+    }
+    fc.toBlob(async blob=>{
+      if(blob&&navigator.canShare?.({files:[new File([blob],"qr.jpg",{type:"image/jpeg"})]})){
+        try{
+          await navigator.share({
+            title:profile.name+" on HighEnough",
+            text:isBiz?`Review ${profile.name} on HighEnough`:`Check out ${profile.name} on HighEnough`,
+            url:shareUrl,
+            files:[new File([blob],`${profile.name.replace(/\s+/g,"_")}_HighEnough.jpg`,{type:"image/jpeg"})]
+          });return;
+        }catch(e){console.warn("File share failed:",e);}
+      }
+      if(navigator.share)navigator.share({title:profile.name+" on HighEnough",url:shareUrl}).catch(()=>copyUrl());
+      else copyUrl();
+    },"image/jpeg",.92);
+  }
+
+  function saveQR(){
+    renderSaveCard();
     const fc=cardRef.current;if(!fc||fc.width===0)return;
     const a=document.createElement("a");
-    a.download=`${profile.name.replace(/\s+/g,"_")}_HighEnough.jpg`;
-    a.href=fc.toDataURL("image/jpeg",.92);a.click();
+    a.download=`${profile.name.replace(/\s+/g,"_")}_HighEnough_QR.jpg`;
+    a.href=fc.toDataURL("image/jpeg",.92);
+    a.click();
+    setSaved(true);setTimeout(()=>setSaved(false),2500);
   }
 
   return(
-    <div onClick={e=>e.target===e.currentTarget&&onClose()} style={{position:"fixed",inset:0,zIndex:400,background:"rgba(4,3,14,.96)",backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"20px 16px"}}>
+    <div onClick={e=>e.target===e.currentTarget&&onClose()} style={{position:"fixed",inset:0,zIndex:400,background:"rgba(4,3,14,.97)",backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"20px 16px"}}>
       <canvas ref={cardRef} style={{display:"none"}}/>
       <button onClick={onClose} style={{position:"fixed",top:18,right:18,width:36,height:36,borderRadius:"50%",background:"rgba(255,255,255,.12)",border:"1px solid rgba(255,255,255,.2)",color:"rgba(255,255,255,.8)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,zIndex:10}}>✕</button>
 
-      {/* ── QR Card — fixed 320px, never varies ── */}
-      <div style={{background:"#ffffff",borderRadius:24,width:320,flexShrink:0,overflow:"hidden",boxShadow:`0 0 0 1.5px ${col}30, 0 40px 120px rgba(0,0,0,.9), 0 0 80px ${col}20`}}>
+      {/* QR Card — WhatsApp style: avatar overlaps top edge */}
+      <div style={{background:"#ffffff",borderRadius:24,width:300,position:"relative",paddingTop:50,overflow:"visible",boxShadow:`0 0 0 1px ${col}20, 0 40px 120px rgba(0,0,0,.9)`}}>
+
+        {/* Avatar — sits above card, overlapping */}
+        <div style={{position:"absolute",top:-44,left:"50%",transform:"translateX(-50%)",width:88,height:88,borderRadius:"50%",overflow:"hidden",border:`3px solid #ffffff`,boxShadow:`0 0 0 2px ${col}`,background:col+"22",display:"flex",alignItems:"center",justifyContent:"center",zIndex:2}}>
+          {profile.photo
+            ?<img src={profile.photo} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+            :<span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:32,fontWeight:700,color:col}}>{ini(profile.name)}</span>
+          }
+        </div>
 
         {/* Top accent strip */}
-        <div style={{height:5,background:`linear-gradient(90deg,${col},${col}80)`}}/>
+        <div style={{position:"absolute",top:0,left:0,right:0,height:4,borderRadius:"24px 24px 0 0",background:`linear-gradient(90deg,${col},${col}80)`}}/>
 
-        {/* Brand header */}
-        <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:7,padding:"16px 0 14px"}}>
-          <div style={{width:5,height:5,borderRadius:"50%",background:col}}/>
-          <span style={{fontFamily:"'Inter',sans-serif",fontWeight:900,fontSize:15,color:"#0d0c1a",letterSpacing:"-0.4px"}}>High<span style={{color:col,fontWeight:300}}>Enough</span></span>
-          <div style={{width:5,height:5,borderRadius:"50%",background:col}}/>
+        <div style={{padding:"8px 20px 20px",display:"flex",flexDirection:"column",alignItems:"center"}}>
+          {/* Name — truncated */}
+          <div style={{fontWeight:700,fontSize:16,color:"#0d0c1a",textAlign:"center",maxWidth:240,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:3}}>{profile.name}</div>
+
+          {/* Biz type or handle */}
+          {isBiz&&bizInfo
+            ?<div style={{fontSize:11,color:col,fontWeight:600,background:`${col}12`,borderRadius:6,padding:"2px 9px",marginBottom:8}}>{bizInfo.emoji} {bizInfo.label}</div>
+            :<div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:"#8888a8",marginBottom:8}}>{profile.handle||""}</div>
+          }
+
+          {/* QR — fixed 240×240, perfectly square */}
+          <div style={{position:"relative",width:240,height:240,borderRadius:12,overflow:"hidden",background:"#ffffff",border:`1px solid ${col}18`,flexShrink:0}}>
+            <canvas ref={qrRef} style={{position:"absolute",top:0,left:0,width:240,height:240,display:"block"}}/>
+            {!ready&&<div style={{position:"absolute",inset:0,background:"rgba(255,255,255,.98)",display:"flex",alignItems:"center",justifyContent:"center"}}><Spinner/></div>}
+            {/* Corner brackets */}
+            {ready&&[
+              {top:6,left:6,borderTop:`2.5px solid ${col}`,borderLeft:`2.5px solid ${col}`,borderRadius:"3px 0 0 0"},
+              {top:6,right:6,borderTop:`2.5px solid ${col}`,borderRight:`2.5px solid ${col}`,borderRadius:"0 3px 0 0"},
+              {bottom:6,left:6,borderBottom:`2.5px solid ${col}`,borderLeft:`2.5px solid ${col}`,borderRadius:"0 0 0 3px"},
+              {bottom:6,right:6,borderBottom:`2.5px solid ${col}`,borderRight:`2.5px solid ${col}`,borderRadius:"0 0 3px 0"},
+            ].map((s,i)=><div key={i} style={{position:"absolute",width:20,height:20,...s}}/>)}
+            {/* H logo — dead center of 240×240 */}
+            {ready&&<div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",width:40,height:40,borderRadius:9,background:"#fff",border:`2.5px solid ${col}`,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:`0 0 0 3px #fff`}}>
+              <span style={{fontSize:22,fontWeight:900,color:col,fontFamily:"'Inter',sans-serif",lineHeight:1}}>H</span>
+            </div>}
+          </div>
+
+          {/* Scan prompt */}
+          <div style={{fontSize:11,fontWeight:700,color:col,letterSpacing:"0.06em",textTransform:"uppercase",marginTop:10}}>
+            {isBiz?"📱 Scan to Review Us":"📱 Scan to View Profile"}
+          </div>
+
+          {/* URL */}
+          <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:9,color:"#9090b0",marginTop:4,textAlign:"center"}}>{displayUrl}</div>
+
+          {/* HighEnough brand */}
+          <div style={{display:"flex",alignItems:"center",gap:5,marginTop:10,padding:"6px 14px",background:"#f8f8fc",borderRadius:8}}>
+            <span style={{fontWeight:900,fontSize:13,color:"#0d0c1a",fontFamily:"'Inter',sans-serif"}}>High</span>
+            <span style={{fontWeight:300,fontSize:13,color:col,fontFamily:"'Inter',sans-serif"}}>Enough</span>
+          </div>
         </div>
 
-        {/* ── QR area — fixed 260×260, perfectly square ── */}
-        <div style={{position:"relative",width:260,height:260,margin:"0 auto",background:"#f5f5ff",borderRadius:12,overflow:"hidden",flexShrink:0}}>
-          {/* Canvas: internal resolution 400×400, CSS 260×260 — ratio preserved */}
-          <canvas ref={qrRef} style={{position:"absolute",top:0,left:0,width:260,height:260,display:"block"}}/>
-          {!ready&&<div style={{position:"absolute",inset:0,background:"rgba(245,245,255,.98)",display:"flex",alignItems:"center",justifyContent:"center"}}><Spinner/></div>}
-          {/* Corner brackets */}
-          {ready&&[
-            {top:7,left:7,borderTop:`3px solid ${col}`,borderLeft:`3px solid ${col}`,borderRadius:"4px 0 0 0"},
-            {top:7,right:7,borderTop:`3px solid ${col}`,borderRight:`3px solid ${col}`,borderRadius:"0 4px 0 0"},
-            {bottom:7,left:7,borderBottom:`3px solid ${col}`,borderLeft:`3px solid ${col}`,borderRadius:"0 0 0 4px"},
-            {bottom:7,right:7,borderBottom:`3px solid ${col}`,borderRight:`3px solid ${col}`,borderRadius:"0 0 4px 0"},
-          ].map((s,i)=><div key={i} style={{position:"absolute",width:24,height:24,...s}}/>)}
-          {/* H logo — dead center of the 260×260 box */}
-          {ready&&<div style={{position:"absolute",width:44,height:44,top:"50%",left:"50%",transform:"translate(-50%,-50%)",borderRadius:10,background:"#fff",border:`2.5px solid ${col}`,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:`0 0 0 4px #f5f5ff, 0 2px 12px ${col}40`}}>
-            <span style={{fontSize:24,fontWeight:900,color:col,fontFamily:"'Inter',sans-serif",lineHeight:1}}>H</span>
-          </div>}
-        </div>
-
-        {/* Scan prompt */}
-        <div style={{textAlign:"center",margin:"12px 0 8px",fontSize:12,fontWeight:700,color:col,letterSpacing:"0.08em",textTransform:"uppercase"}}>
-          {isBiz?"📱 Scan to Review Us":"📱 Scan to View Profile"}
-        </div>
-
-        {/* Divider */}
-        <div style={{height:1,background:`${col}15`,margin:"0 20px"}}/>
-
-        {/* Profile info */}
-        <div style={{display:"flex",flexDirection:"column",alignItems:"center",padding:"12px 16px 16px",gap:5}}>
-          <Ava p={profile} size={40} T={{nav:"#fff"}} ring/>
-          <div style={{fontWeight:700,fontSize:14,color:"#0d0c1a",textAlign:"center",marginTop:2}}>{profile.name}</div>
-          {isBiz&&<div style={{fontSize:10,color:col,fontWeight:700,background:`${col}12`,border:`1px solid ${col}25`,borderRadius:5,padding:"2px 9px"}}>
-            {BIZ_TYPES.find(b=>b.id===(profile.biz_type||"general"))?.emoji} {BIZ_TYPES.find(b=>b.id===(profile.biz_type||"general"))?.label||"Business"}
-          </div>}
-          <TierBadge sc={sc} size="sm" isBiz={isBiz}/>
-          <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:9,color:"#7a7aa0",marginTop:2,textAlign:"center"}}>{displayUrl}</div>
-        </div>
-
-        {/* Bottom accent strip */}
-        <div style={{height:4,background:`linear-gradient(90deg,${col}60,${col})`}}/>
+        {/* Bottom accent */}
+        <div style={{height:4,background:`linear-gradient(90deg,${col}60,${col})`,borderRadius:"0 0 24px 24px"}}/>
       </div>
 
+      {/* Tier badge below card */}
+      <div style={{marginTop:12}}><TierBadge sc={sc} size="sm" isBiz={isBiz}/></div>
+
       {/* Actions */}
-      <div style={{display:"flex",gap:10,marginTop:14,width:320}}>
-        <button onClick={shareProfile} style={{flex:1,padding:"13px 0",background:col,borderRadius:14,color:"#fff",fontWeight:700,fontSize:14,display:"flex",alignItems:"center",justifyContent:"center",gap:7,boxShadow:`0 4px 20px ${col}55`}}>
+      <div style={{display:"flex",gap:10,marginTop:14,width:300}}>
+        <button onClick={shareQR} style={{flex:1,padding:"13px 0",background:col,borderRadius:14,color:"#fff",fontWeight:700,fontSize:14,display:"flex",alignItems:"center",justifyContent:"center",gap:7,boxShadow:`0 4px 20px ${col}55`}}>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
           Share
         </button>
         <button onClick={copyUrl} style={{flex:1,padding:"13px 0",background:copied?`${col}22`:"rgba(255,255,255,.08)",border:`1px solid ${copied?col:"rgba(255,255,255,.16)"}`,borderRadius:14,color:copied?col:"rgba(255,255,255,.8)",fontWeight:600,fontSize:13,transition:"all .2s"}}>
           {copied?"✓ Copied":"Copy Link"}
         </button>
-        <button onClick={saveCard} style={{width:48,padding:"13px 0",background:"rgba(255,255,255,.08)",border:"1px solid rgba(255,255,255,.16)",borderRadius:14,color:"rgba(255,255,255,.7)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        <button onClick={saveQR} title={saved?"Saved!":"Save QR"} style={{width:48,padding:"13px 0",background:saved?`${col}22`:"rgba(255,255,255,.08)",border:`1px solid ${saved?col:"rgba(255,255,255,.16)"}`,borderRadius:14,color:saved?col:"rgba(255,255,255,.7)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"all .2s"}}>
+          {saved?<span style={{fontSize:16}}>✓</span>:<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>}
         </button>
       </div>
+      {saved&&<div style={{fontSize:11,color:"rgba(255,255,255,.5)",marginTop:6}}>QR saved ✓</div>}
     </div>
   );
 }
-
 /* ── RATE MODAL ── */
 function RateModal({target,raterId,raterName,existing,T,onClose,onSubmit}){
   const isBiz=target?.account_type==="business";
@@ -1445,8 +1427,21 @@ function ChatScreen({conv,myProfile,profiles,T,onBack,onSend,onMarkRead,onClearC
     onMarkRead(conv.id,conv.other?.id);
   },[msgs.length,conv.id]);
 
-  function send(){if(!txt.trim())return;onSend(conv.id,txt.trim());setTxt("");setShowEmoji(false);}
-  function addEmoji(e){setTxt(prev=>prev+e);inputRef.current?.focus();}
+  function toggleEmoji(){
+    if(!showEmoji){
+      // Dismiss keyboard before showing emoji panel
+      inputRef.current?.blur();
+      setShowEmoji(true);
+    }else{
+      setShowEmoji(false);
+      inputRef.current?.focus();
+    }
+  }
+
+  function addEmoji(e){
+    setTxt(prev=>prev+e);
+    setRecentEmojis(prev=>{const updated=[e,...prev.filter(x=>x!==e)].slice(0,32);localStorage.setItem("he_recent_emojis",JSON.stringify(updated));return updated;});
+  }
 
   return<div style={{position:"fixed",inset:0,zIndex:400,background:T.bg,display:"flex",flexDirection:"column"}}>
     {/* Header */}
@@ -1474,58 +1469,73 @@ function ChatScreen({conv,myProfile,profiles,T,onBack,onSend,onMarkRead,onClearC
     </div>
 
     {/* Messages */}
-    <div style={{flex:1,overflowY:"auto",padding:"16px 14px",display:"flex",flexDirection:"column",gap:6}}>
+    <div onClick={()=>{setShowEmoji(false);}} style={{flex:1,overflowY:"auto",padding:"16px 14px",display:"flex",flexDirection:"column",gap:6}}>
       {msgs.length===0&&<div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",color:T.mu,fontSize:14,flexDirection:"column",gap:8,marginTop:60}}><Ava p={conv.other} size={56} T={T}/><span>Say hello to {conv.other?.name}!</span></div>}
       {msgs.map((m,i)=>{
+        // ── Date separator ──
+        const prevMsg=msgs[i-1];
+        const mDate=m.ts?new Date(m.ts):null;
+        const pDate=prevMsg?.ts?new Date(prevMsg.ts):null;
+        const showDate=mDate&&(!pDate||mDate.toDateString()!==pDate.toDateString());
+        const dateLabel=mDate?formatDateLabel(mDate):"";
         const mine=m.sid===myProfile.id;
         const showAva=!mine&&(i===0||msgs[i-1]?.sid!==m.sid);
         const isProfileCard=m.txt?.startsWith("__PROFILE__");
-        return<div key={m.dbId||i} style={{display:"flex",flexDirection:mine?"row-reverse":"row",gap:8,alignItems:"flex-end"}}>
-          {!mine&&<div style={{width:28,flexShrink:0}}>{showAva&&<Ava p={conv.other} size={26} T={T}/>}</div>}
-          <div style={{maxWidth:"78%"}}>
-            <div style={{
-              background:isProfileCard?"transparent":mine?`linear-gradient(135deg,${myProfile.color}dd,${myProfile.color}99)`:T.card,
-              border:isProfileCard?`1.5px solid ${T.b2}`:mine?"none":`1px solid ${T.b1}`,
-              borderRadius:mine?"18px 18px 4px 18px":"18px 18px 18px 4px",
-              padding:isProfileCard?"0":"10px 14px",
-              overflow:"hidden",
-              color:mine?"#fff":T.txt,fontSize:14,lineHeight:1.5,wordBreak:"break-word"
-            }}>
-              <MsgText txt={m.txt} mine={mine} T={T} onViewProfile={p=>{
-                // Merge with full profile from state (has ratings, photo, etc.)
-                const full=(profiles||[]).find(x=>x.id===(p.profileId||p.id))||p;
-                onViewProfile&&onViewProfile(full);
-              }}/>
-            </div>
-            <div style={{display:"flex",alignItems:"center",justifyContent:mine?"flex-end":"flex-start",gap:3,marginTop:3}}>
-              <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:9,color:T.mu}}>{fmtTime(m.ts)}</span>
-              {mine&&<MsgStatus m={m} myId={myProfile.id}/>}
+        return<React.Fragment key={m.dbId||i}>
+          {showDate&&<div style={{display:"flex",alignItems:"center",gap:8,margin:"8px 0"}}>
+            <div style={{flex:1,height:1,background:T.b1}}/>
+            <div style={{fontSize:10,color:T.mu,background:T.faint,borderRadius:8,padding:"3px 10px",fontFamily:"'JetBrains Mono',monospace",fontWeight:600,letterSpacing:".04em",flexShrink:0}}>{dateLabel}</div>
+            <div style={{flex:1,height:1,background:T.b1}}/>
+          </div>}
+          <div style={{display:"flex",flexDirection:mine?"row-reverse":"row",gap:8,alignItems:"flex-end"}}>
+            {!mine&&<div style={{width:28,flexShrink:0}}>{showAva&&<Ava p={conv.other} size={26} T={T}/>}</div>}
+            <div style={{maxWidth:"78%"}}>
+              <div style={{
+                background:isProfileCard?"transparent":mine?`linear-gradient(135deg,${myProfile.color}dd,${myProfile.color}99)`:T.card,
+                border:isProfileCard?`1.5px solid ${T.b2}`:mine?"none":`1px solid ${T.b1}`,
+                borderRadius:mine?"18px 18px 4px 18px":"18px 18px 18px 4px",
+                padding:isProfileCard?"0":"10px 14px",
+                overflow:"hidden",
+                color:mine?"#fff":T.txt,fontSize:14,lineHeight:1.5,wordBreak:"break-word"
+              }}>
+                <MsgText txt={m.txt} mine={mine} T={T} onViewProfile={p=>{
+                  const full=(profiles||[]).find(x=>x.id===(p.profileId||p.id))||p;
+                  onViewProfile&&onViewProfile(full);
+                }}/>
+              </div>
+              <div style={{display:"flex",alignItems:"center",justifyContent:mine?"flex-end":"flex-start",gap:3,marginTop:3}}>
+                <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:9,color:T.mu}}>{fmtTime(m.ts)}</span>
+                {mine&&<MsgStatus m={m} myId={myProfile.id}/>}
+              </div>
             </div>
           </div>
-        </div>;
+        </React.Fragment>;
       })}
       <div ref={endRef}/>
     </div>
 
-    {/* Profile share picker - REMOVED (use native share on profile pages instead) */}
-
-    {/* Emoji picker */}
-    {showEmoji&&<div style={{background:T.nav,borderTop:`1px solid ${T.b1}`,flexShrink:0}}>
-      {/* Category tabs */}
-      <div style={{display:"flex",overflowX:"auto",borderBottom:`1px solid ${T.b1}`,padding:"6px 8px 0"}}>
-        {EMOJI_CATS.map(c=><button key={c.id} onClick={()=>setEmojiCat(c.id)} style={{fontSize:18,padding:"4px 8px",borderRadius:"8px 8px 0 0",background:emojiCat===c.id?T.faint:"transparent",border:"none",borderBottom:emojiCat===c.id?`2px solid ${myProfile.color}`:"2px solid transparent",flexShrink:0,cursor:"pointer",opacity:c.id==="recent"&&recentEmojis.length===0?.4:1}}>{c.label}</button>)}
+    {/* Input bar — ALWAYS above emoji panel */}
+    <div style={{background:T.nav,flexShrink:0}}>
+      {/* Emoji picker */}
+      {showEmoji&&<div style={{borderTop:`1px solid ${T.b1}`}}>
+        <div style={{display:"flex",overflowX:"auto",borderBottom:`1px solid ${T.b1}`,padding:"6px 8px 0"}}>
+          {EMOJI_CATS.map(c=><button key={c.id} onClick={()=>setEmojiCat(c.id)} style={{fontSize:18,padding:"4px 8px",borderRadius:"8px 8px 0 0",background:emojiCat===c.id?T.faint:"transparent",border:"none",borderBottom:emojiCat===c.id?`2px solid ${myProfile.color}`:"2px solid transparent",flexShrink:0,cursor:"pointer",opacity:c.id==="recent"&&recentEmojis.length===0?.4:1}}>{c.label}</button>)}
+        </div>
+        <div style={{display:"flex",flexWrap:"wrap",padding:"8px 10px",height:180,overflowY:"auto",gap:2,alignContent:"flex-start"}}>
+          {currentEmojis.map((e,i)=><button key={i} onClick={()=>addEmoji(e)} style={{background:"none",fontSize:24,width:40,height:40,borderRadius:8,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{e}</button>)}
+        </div>
+      </div>}
+      {/* Text input row */}
+      <div style={{padding:"10px 14px",paddingBottom:"max(14px,env(safe-area-inset-bottom))",borderTop:`1px solid ${T.b1}`,display:"flex",gap:8,alignItems:"center"}}>
+        <button onClick={toggleEmoji} style={{width:38,height:38,borderRadius:"50%",background:showEmoji?`${myProfile.color}22`:T.faint,border:`1px solid ${showEmoji?myProfile.color+"50":T.b1}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>😊</button>
+        <input ref={inputRef} value={txt}
+          onChange={e=>{setTxt(e.target.value);if(showEmoji)setShowEmoji(false);}}
+          onFocus={()=>setShowEmoji(false)}
+          onKeyDown={e=>e.key==="Enter"&&send()}
+          placeholder="Message…"
+          style={{flex:1,padding:"12px 16px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:24,color:T.txt,fontSize:14,outline:"none"}}/>
+        <button onClick={send} style={{width:42,height:42,borderRadius:"50%",background:txt.trim()?`linear-gradient(135deg,${myProfile.color}dd,${myProfile.color}99)`:T.faint,display:"flex",alignItems:"center",justifyContent:"center",color:txt.trim()?"#fff":T.mu,flexShrink:0,transition:"background .15s"}}><SendIcon/></button>
       </div>
-      {/* Emoji grid */}
-      <div style={{display:"flex",flexWrap:"wrap",padding:"8px 10px",maxHeight:180,overflowY:"auto",gap:2}}>
-        {currentEmojis.map((e,i)=><button key={i} onClick={()=>addEmoji(e)} style={{background:"none",fontSize:24,width:38,height:38,borderRadius:8,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{e}</button>)}
-      </div>
-    </div>}
-
-    {/* Input bar */}
-    <div style={{padding:"10px 14px",paddingBottom:"max(14px,env(safe-area-inset-bottom))",borderTop:`1px solid ${T.b1}`,background:T.nav,display:"flex",gap:8,alignItems:"center",flexShrink:0}}>
-      <button onClick={()=>setShowEmoji(v=>!v)} style={{width:38,height:38,borderRadius:"50%",background:showEmoji?`${myProfile.color}22`:T.faint,border:`1px solid ${showEmoji?myProfile.color+"50":T.b1}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>😊</button>
-      <input ref={inputRef} value={txt} onChange={e=>setTxt(e.target.value)} onKeyDown={e=>e.key==="Enter"&&send()} placeholder="Message…" style={{flex:1,padding:"12px 16px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:24,color:T.txt,fontSize:14,outline:"none"}}/>
-      <button onClick={send} style={{width:42,height:42,borderRadius:"50%",background:txt.trim()?`linear-gradient(135deg,${myProfile.color}dd,${myProfile.color}99)`:T.faint,display:"flex",alignItems:"center",justifyContent:"center",color:txt.trim()?"#fff":T.mu,flexShrink:0,transition:"background .15s"}}><SendIcon/></button>
     </div>
   </div>;
 }
@@ -2033,12 +2043,14 @@ function SearchTab({profiles,myId,following,T,onView,onFollow,onUnfollow,onRate,
       </div>
       {suggested.map((p,i)=><PersonRow key={p.id} p={p} myId={myId} following={following} T={T} onView={onView} onFollow={onFollow} onUnfollow={onUnfollow} idx={i}/>)}
       {suggested.length===0&&<div style={{textAlign:"center",padding:"48px 20px",color:T.mu,fontSize:13}}>You're following everyone here!</div>}
+      <div style={{height:80}}/>
     </>}
 
     {q.trim().length>0&&<>
       <div style={{padding:"10px 16px 4px",fontSize:12,color:T.mu}}>{results.length} result{results.length!==1?"s":""} for "{q}"</div>
       {results.length===0&&<div style={{textAlign:"center",padding:"48px 20px",color:T.mu}}><div style={{fontSize:32,marginBottom:12,opacity:.3}}>🔍</div><div style={{fontWeight:600,marginBottom:4}}>No results for "{q}"</div><div style={{fontSize:13,opacity:.7}}>Try name, @handle or #ID</div></div>}
       {results.map((p,i)=><PersonRow key={p.id} p={p} myId={myId} following={following} T={T} onView={onView} onFollow={onFollow} onUnfollow={onUnfollow} idx={i}/>)}
+      <div style={{height:80}}/>
     </>}
   </div>;
 }
@@ -2706,11 +2718,10 @@ function PhotoModal({profile,T,onClose,onSave}){
   const [cropSrc,setCropSrc]=useState(null);
   const [scale,setScale]=useState(1);
   const [offset,setOffset]=useState({x:0,y:0});
-  const [dragging,setDragging]=useState(false);
-  const [dragStart,setDragStart]=useState(null);
+  const dragRef=useRef(null); // {startX,startY,startOX,startOY}
   const vRef=useRef(null);const cRef=useRef(null);
   const cropImgRef=useRef(null);
-  const CROP_SIZE=220;
+  const CROP_SIZE=240;
 
   useEffect(()=>()=>stream?.getTracks().forEach(t=>t.stop()),[]);
 
@@ -2723,7 +2734,6 @@ function PhotoModal({profile,T,onClose,onSave}){
       r.readAsDataURL(f);
     };i.click();
   }
-
   async function startCam(){
     try{const s=await navigator.mediaDevices.getUserMedia({video:{facingMode:"user"}});setStream(s);setCam(true);setTimeout(()=>{if(vRef.current)vRef.current.srcObject=s;},100);}
     catch{alert("Camera unavailable");}
@@ -2737,73 +2747,102 @@ function PhotoModal({profile,T,onClose,onSave}){
     stopCam();setCropSrc(dataUrl);setScale(1);setOffset({x:0,y:0});setCropping(true);
   }
 
+  // Pointer drag — use ref to avoid re-renders on every move
+  function onPointerDown(e){
+    e.currentTarget.setPointerCapture(e.pointerId);
+    dragRef.current={sx:e.clientX,sy:e.clientY,ox:offset.x,oy:offset.y};
+  }
+  function onPointerMove(e){
+    if(!dragRef.current)return;
+    const dx=e.clientX-dragRef.current.sx,dy=e.clientY-dragRef.current.sy;
+    setOffset({x:dragRef.current.ox+dx,y:dragRef.current.oy+dy});
+  }
+  function onPointerUp(){dragRef.current=null;}
+
   function applyCrop(){
     const img=cropImgRef.current;if(!img)return;
-    const out=document.createElement("canvas");
-    out.width=300;out.height=300;
+    const out=document.createElement("canvas");out.width=300;out.height=300;
     const ctx=out.getContext("2d");
-    // Clip to circle
     ctx.beginPath();ctx.arc(150,150,150,0,Math.PI*2);ctx.clip();
-    // Draw scaled+offset image centred in crop area
-    const s=scale;
-    const iW=img.naturalWidth*s,iH=img.naturalHeight*s;
-    const dx=150-iW/2+offset.x,dy=150-iH/2+offset.y;
-    ctx.drawImage(img,dx,dy,iW,iH);
+    const s=scale,iW=img.naturalWidth*s,iH=img.naturalHeight*s;
+    // We display image scaled inside CROP_SIZE×CROP_SIZE circle
+    // The display scale = (CROP_SIZE / naturalWidth) * scale
+    const dispScale=(CROP_SIZE/img.naturalWidth)*scale;
+    const dispW=img.naturalWidth*dispScale,dispH=img.naturalHeight*dispScale;
+    // offset is in display pixels — convert to output canvas pixels
+    const ratio=300/CROP_SIZE;
+    const dx=(150-dispW/2+offset.x)*ratio,dy=(150-dispH/2+offset.y)*ratio;
+    ctx.drawImage(img,dx,dy,dispW*ratio,dispH*ratio);
     setPrev(out.toDataURL("image/jpeg",.92));
     setCropping(false);setCropSrc(null);
   }
 
-  function onPointerDown(e){setDragging(true);setDragStart({x:e.clientX-offset.x,y:e.clientY-offset.y});}
-  function onPointerMove(e){if(!dragging||!dragStart)return;setOffset({x:e.clientX-dragStart.x,y:e.clientY-dragStart.y});}
-  function onPointerUp(){setDragging(false);}
-
   if(cropping&&cropSrc)return<Overlay onBg={()=>{setCropping(false);setCropSrc(null);}} T={T} bottom>
-    <div style={{fontWeight:700,fontSize:17,color:T.txt,marginBottom:4}}>Adjust Photo</div>
-    <div style={{fontSize:12,color:T.mu,marginBottom:14}}>Drag to reposition · Pinch or slide to zoom</div>
-    {/* Crop preview */}
-    <div style={{display:"flex",justifyContent:"center",marginBottom:14}}>
-      <div style={{width:CROP_SIZE,height:CROP_SIZE,borderRadius:"50%",overflow:"hidden",border:`3px solid ${profile.color}`,cursor:"grab",userSelect:"none",flexShrink:0,background:T.faint}}
-        onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerLeave={onPointerUp}>
-        <img ref={cropImgRef} src={cropSrc} alt="" draggable={false} style={{width:`${scale*100}%`,height:`${scale*100}%`,objectFit:"cover",transform:`translate(${offset.x}px,${offset.y}px)`,transformOrigin:"center",pointerEvents:"none"}}/>
+    <div style={{fontWeight:700,fontSize:17,color:T.txt,marginBottom:3}}>Adjust Photo</div>
+    <div style={{fontSize:12,color:T.mu,marginBottom:14}}>Drag to reposition · Slide to zoom</div>
+    {/* Circular crop preview — touch-friendly, no scroll conflict */}
+    <div style={{display:"flex",justifyContent:"center",marginBottom:16}}>
+      <div
+        style={{width:CROP_SIZE,height:CROP_SIZE,borderRadius:"50%",overflow:"hidden",border:`3px solid ${profile.color}`,cursor:"grab",userSelect:"none",touchAction:"none",flexShrink:0,background:"#eee",position:"relative"}}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+      >
+        <img ref={cropImgRef} src={cropSrc} alt="" draggable={false} style={{
+          position:"absolute",
+          width:`${scale*100}%`,
+          height:`${scale*100}%`,
+          objectFit:"cover",
+          left:"50%",top:"50%",
+          transform:`translate(calc(-50% + ${offset.x}px), calc(-50% + ${offset.y}px))`,
+          pointerEvents:"none",
+          userSelect:"none"
+        }}/>
       </div>
     </div>
     {/* Zoom slider */}
-    <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16,padding:"0 4px"}}>
-      <span style={{fontSize:13,color:T.mu}}>🔍</span>
-      <input type="range" min="0.5" max="3" step="0.01" value={scale} onChange={e=>setScale(parseFloat(e.target.value))} style={{flex:1,accentColor:profile.color}}/>
-      <span style={{fontSize:13,color:T.mu,fontFamily:"'JetBrains Mono',monospace",minWidth:36}}>{Math.round(scale*100)}%</span>
+    <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:18,padding:"0 4px"}}>
+      <span style={{fontSize:16}}>🔍</span>
+      <input type="range" min="0.5" max="3" step="0.01" value={scale}
+        onChange={e=>setScale(parseFloat(e.target.value))}
+        style={{flex:1,accentColor:profile.color,height:4}}/>
+      <span style={{fontSize:11,color:T.mu,fontFamily:"monospace",minWidth:36,textAlign:"right"}}>{Math.round(scale*100)}%</span>
     </div>
-    <div style={{display:"flex",gap:8}}>
-      <button onClick={applyCrop} style={{flex:1,padding:"13px 0",background:`linear-gradient(135deg,${profile.color}e0,${profile.color}90)`,borderRadius:12,color:"#fff",fontWeight:700}}>✓ Apply</button>
+    <div style={{display:"flex",gap:10}}>
+      <button onClick={applyCrop} style={{flex:1,padding:"13px 0",background:`linear-gradient(135deg,${profile.color}e0,${profile.color}90)`,borderRadius:12,color:"#fff",fontWeight:700,fontSize:14}}>✓ Use Photo</button>
       <button onClick={()=>{setCropping(false);setCropSrc(null);}} style={{flex:1,padding:"13px 0",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:12,color:T.mu,fontWeight:500}}>Cancel</button>
     </div>
   </Overlay>;
 
   return<Overlay onBg={()=>{stopCam();onClose();}} T={T} bottom>
     <div style={{fontWeight:700,fontSize:17,color:T.txt,marginBottom:16}}>Profile Photo</div>
+    {/* Preview */}
     <div style={{display:"flex",justifyContent:"center",marginBottom:16}}>
-      <div style={{width:110,height:110,borderRadius:"50%",overflow:"hidden",border:`2px solid ${profile.color}50`,background:T.faint,display:"flex",alignItems:"center",justifyContent:"center"}}>
-        {cam?<video ref={vRef} autoPlay playsInline style={{width:"100%",height:"100%",objectFit:"cover"}}/>:prev?<img src={prev} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:32,fontWeight:700,color:profile.color}}>{ini(profile.name)}</span>}
+      <div style={{width:100,height:100,borderRadius:"50%",overflow:"hidden",border:`2.5px solid ${profile.color}`,background:T.faint,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+        {cam?<video ref={vRef} autoPlay playsInline style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+          :prev?<img src={prev} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+          :<span style={{fontFamily:"monospace",fontSize:32,fontWeight:700,color:profile.color}}>{ini(profile.name)}</span>}
       </div>
       <canvas ref={cRef} style={{display:"none"}}/>
     </div>
+
     {cam
       ?<div style={{display:"flex",gap:8}}>
         <button onClick={snap} style={{flex:1,padding:"12px 0",background:`${profile.color}cc`,borderRadius:12,color:"#fff",fontWeight:700}}>📸 Capture</button>
         <button onClick={stopCam} style={{flex:1,padding:"12px 0",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:12,color:T.mu}}>Cancel</button>
       </div>
-      :<div style={{display:"flex",flexDirection:"column",gap:9}}>
+      :<div style={{display:"flex",flexDirection:"column",gap:8}}>
         <button onClick={pick} style={{padding:"13px 0",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:12,color:T.txt,fontWeight:500,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}><CamIcon/>Choose from Gallery</button>
         <button onClick={startCam} style={{padding:"13px 0",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:12,color:T.txt,fontWeight:500,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}><CamIcon/>Take Photo</button>
-        {prev&&<>
-          <button onClick={()=>{setCropSrc(prev);setScale(1);setOffset({x:0,y:0});setCropping(true);}} style={{padding:"12px 0",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:12,color:T.txt,fontWeight:500,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>✂️ Adjust / Crop</button>
-          <button onClick={()=>setPrev(null)} style={{padding:"12px 0",background:"transparent",border:"1px solid #c0404040",borderRadius:12,color:"#c06060",fontWeight:500}}>Remove Photo</button>
-        </>}
+        {prev&&<button onClick={()=>{setCropSrc(prev);setScale(1);setOffset({x:0,y:0});setCropping(true);}} style={{padding:"12px 0",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:12,color:T.txt,fontWeight:500,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>✂️ Adjust / Crop</button>}
+        {prev&&<button onClick={()=>setPrev(null)} style={{padding:"12px 0",background:"transparent",border:"1px solid #c0404040",borderRadius:12,color:"#c06060",fontWeight:500}}>Remove Photo</button>}
         <div style={{height:1,background:T.b1}}/>
-        <button onClick={()=>onSave(prev)} style={{padding:"13px 0",background:`linear-gradient(135deg,${profile.color}e0,${profile.color}90)`,borderRadius:12,color:"#fff",fontWeight:700}}>Save Photo</button>
+        <button onClick={()=>onSave(prev)} style={{padding:"13px 0",background:`linear-gradient(135deg,${profile.color}e0,${profile.color}90)`,borderRadius:12,color:"#fff",fontWeight:700,fontSize:14}}>Save Photo</button>
       </div>}
   </Overlay>;
 }
+
 
 /* ── SCORE CARD MODAL — rich visual design ── */
 function ScoreCardModal({profile,T,onClose}){
@@ -4374,7 +4413,13 @@ function App(){
   const suggestedBiz=allFeedProfiles.filter(p=>!following.includes(p.id)&&p.account_type==="business").slice(0,4);
   const unreadN=notifs.filter(n=>!n.read).length;
   const unreadM=convs.reduce((s,c)=>{
-    const unread=(c.messages||[]).filter(m=>m.sid&&m.sid!==profile.id&&m.read===false).length;
+    const msgs=c.messages||[];
+    // Only count messages FROM others that have NOT been read yet
+    const unread=msgs.filter(m=>{
+      if(!m||!m.sid)return false;
+      if(m.sid===profile.id)return false; // my own messages are never unread
+      return m.read===false; // strictly false, not undefined
+    }).length;
     return s+unread;
   },0);
 
