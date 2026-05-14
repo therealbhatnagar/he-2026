@@ -1,5 +1,34 @@
 const {useState,useEffect,useRef,useCallback}=React;
 
+// ── UTILITY IMPORTS ──────────────────────────────────────────────────────────
+// js/utils/format.js  → HE_UTILS: ini, fmtTime, formatDateLabel, ago,
+//                                 shortId, fmtScore, fmtCount
+// js/utils/score.js   → HE_UTILS: avg
+// js/utils/tiers.js   → HE_UTILS: tierOf (raw), tierPct (raw), tierLevel,
+//                                 tierLevelLabel, LEVEL_BREAKPOINTS
+// js/utils/storage.js → HE_UTILS: getPref, setPref, GRP_KEY, loadGroups,
+//                                 saveGroups, newGroupId, loadScript
+//
+// Thin wrappers below restore the original call signatures so nothing
+// else in this file needs to change.
+// ─────────────────────────────────────────────────────────────────────────────
+const {
+  ini, fmtTime, formatDateLabel, ago, shortId, fmtScore, fmtCount,
+  avg,
+  getPref, setPref, GRP_KEY, loadGroups, saveGroups, newGroupId, loadScript,
+  LEVEL_BREAKPOINTS,
+} = window.HE_UTILS;
+
+// Tier wrappers: restore original (sc, isBiz=false) signature.
+// HE_UTILS tier functions accept the tiers array directly (no global deps).
+const tierOf         = (sc, isBiz=false)  => window.HE_UTILS.tierOf(sc, isBiz ? BIZ_TIERS : TIERS);
+const tierPct        = (sc, isBiz=false)  => window.HE_UTILS.tierPct(sc, isBiz ? BIZ_TIERS : TIERS);
+const tierOfP        = p                  => { const sc=pScore(p); return tierOf(sc??0, p?.account_type==="business"); };
+const tierPctP       = p                  => { const sc=pScore(p); return tierPct(sc??0, p?.account_type==="business"); };
+function tierLevel   (sc, isBiz=false)    { return window.HE_UTILS.tierLevel(sc, isBiz ? BIZ_TIERS : TIERS); }
+function tierLevelLabel(sc, isBiz=false)  { return window.HE_UTILS.tierLevelLabel(sc, isBiz ? BIZ_TIERS : TIERS); }
+
+
 /* ── SUPABASE ── */
 const SUPABASE_URL  = "https://jwtopqlofxtuwevhmbqo.supabase.co";
 const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp3dG9wcWxvZnh0dXdldmhtYnFvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ3MDY2NjUsImV4cCI6MjA5MDI4MjY2NX0.BQsYBf_THxW7iqoFuqsuSaFN1rXBCi2Zb_NSqRzCkLM";
@@ -158,12 +187,6 @@ const REPORT_REASONS=[
 const AC="#7b72e9";
 const ADMIN_CODE="HE2025";
 
-const avg=a=>a.length?a.reduce((s,v)=>s+v,0)/a.length:0;
-const ini=n=>(n||"?").split(" ").map(w=>w[0]).join("").toUpperCase().slice(0,2);
-const fmtTime=ts=>{if(!ts)return"";const d=new Date(ts);return d.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit",hour12:true});};
-const formatDateLabel=d=>{const now=new Date();const today=new Date(now.getFullYear(),now.getMonth(),now.getDate());const yesterday=new Date(today-86400000);const msgDay=new Date(d.getFullYear(),d.getMonth(),d.getDate());if(msgDay.getTime()===today.getTime())return"Today";if(msgDay.getTime()===yesterday.getTime())return"Yesterday";const days=["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];const diff=(today-msgDay)/86400000;if(diff<7)return days[d.getDay()];return d.toLocaleDateString([],{day:"numeric",month:"short",year:d.getFullYear()!==now.getFullYear()?"numeric":undefined});};
-const ago=ts=>{const d=Date.now()-ts,s=Math.floor(d/1000),m=Math.floor(d/60000),h=Math.floor(d/3600000),dy=Math.floor(d/86400000);return dy>0?`${dy}d`:h>0?`${h}h`:m>0?`${m}m`:s>0?`${s}s`:"now";};
-const shortId=id=>id?id.toString().replace(/-/g,"").toUpperCase().slice(0,6):"------";
 /* ── SCORE FORMULA ──────────────────────────────────────────────────────────
    Score = Σ (each rater's average across all categories)
    i.e. for each rater, compute their mean category score, then sum across all raters.
@@ -183,8 +206,6 @@ const pScore=p=>{
   return Math.round(total);
 };
 const cAvg=(p,c)=>{const r=p.ratings||[];return r.length?Math.round(avg(r.map(r2=>r2[c]||0))):0;};
-const fmtScore=s=>{if(s==null)return"—";if(s>=10000)return`${(s/1000).toFixed(1)}K`;if(s>=1000)return`${(s/1000).toFixed(2)}K`;return String(s);};
-const fmtCount=n=>{if(!n)return"0";if(n>=1000000)return`${(n/1000000).toFixed(1)}M`;if(n>=1000)return`${(n/1000).toFixed(1)}K`;return String(n);};
 const TIERS=[
   {label:"Ghost",      emoji:"👤",min:0,    max:0,     color:"#4c5266",grad:["#3e4257","#4c5266"],glow:"#4c526618"},
   {label:"Spark",      emoji:"⚡",min:1,    max:299,   color:"#7a8098",grad:["#636780","#7a8098"],glow:"#7a809820"},
@@ -202,17 +223,6 @@ const TIERS=[
    Level thresholds use exponential curve so higher levels are significantly harder.
    L1 = first 2% of range, L9 = last 25% of range.
 */
-const LEVEL_BREAKPOINTS=[0,.02,.05,.10,.18,.30,.46,.65,.80,1.00]; // 9 segments
-function tierLevel(sc,isBiz=false){
-  if(!sc||sc<=0)return{level:0,pct:0};
-  const t=tierOf(sc,isBiz);
-  if(t.max===Infinity){
-    // Top tier: level based on how far past min
-    const over=sc-t.min;
-    const chunk=2000; // every 2000 pts = 1 level in top tier
-    const level=Math.min(9,Math.floor(over/chunk)+1);
-    return{level,pct:(over%(chunk))/chunk};
-  }
   const range=t.max-t.min+1;
   const pos=(sc-t.min)/range;
   let level=1;
@@ -224,25 +234,12 @@ function tierLevel(sc,isBiz=false){
   const pct=hi>lo?(pos-lo)/(hi-lo):0;
   return{level,pct:Math.min(1,Math.max(0,pct))};
 }
-function tierLevelLabel(sc,isBiz=false){
-  if(!sc||sc<=0)return null;
-  const t=tierOf(sc,isBiz);
-  if(t.label==="Ghost"||t.label==="New")return null;
-  const {level}=tierLevel(sc,isBiz);
-  return`${t.label} L${level}`;
-}
-const tierOf=(sc,isBiz=false)=>{const tiers=isBiz?BIZ_TIERS:TIERS;if(sc==null||sc===0)return tiers[0];for(let i=tiers.length-1;i>=0;i--){if(sc>=tiers[i].min)return tiers[i];}return tiers[0];};
-const tierPct=(sc,isBiz=false)=>{if(!sc)return 0;const t=tierOf(sc,isBiz);if(t.max===Infinity)return 1;return Math.min((sc-t.min)/(t.max-t.min+1),1);};
-const tierOfP=p=>{const sc=pScore(p);return tierOf(sc??0,p?.account_type==="business");};
-const tierPctP=p=>{const sc=pScore(p);return tierPct(sc??0,p?.account_type==="business");};
 
 /* ── THEMES ── */
 const DK={bg:"#060610",surf:"#0d0d1a",card:"#10101e",b1:"#1e1e30",b2:"#28283e",txt:"#e8eaf8",mu:"#5a5a80",faint:"#0c0c1c",inp:"#0a0a18",nav:"#060610",ov:"rgba(0,0,8,.96)"};
 const LT={bg:"#ffffff",surf:"#ffffff",card:"#fafafa",b1:"#efefef",b2:"#e0e0e8",txt:"#0d0c1a",mu:"#8c87a5",faint:"#f5f5f9",inp:"#f7f7fa",nav:"#ffffff",ov:"rgba(8,8,28,.72)"};
 
 /* ── LOCAL PREFS ── */
-const getPref=()=>{try{return JSON.parse(localStorage.getItem("he_pref"))||{};}catch{return{};}};
-const setPref=v=>{try{localStorage.setItem("he_pref",JSON.stringify(v));}catch{}};
 
 /* ── SVG ICONS ── */
 const IC=(d,sw=1.6)=><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round">{d}</svg>;
@@ -309,7 +306,6 @@ function Overlay({onBg,children,T,wide,bottom}){
 
 function SRow({label,desc,val,onChange,T}){return<div style={{display:"flex",alignItems:"center",gap:12,padding:"3px 0"}}><div style={{flex:1}}><div style={{fontSize:14,color:T.txt,fontWeight:500}}>{label}</div>{desc&&<div style={{fontSize:12,color:T.mu,marginTop:1}}>{desc}</div>}</div><Pill on={val} onChange={onChange} color={AC}/></div>;}
 
-function loadScript(src,cb){if(src.includes("jsQR")&&window.jsQR)return cb();if(src.includes("qrious")&&window.QRious)return cb();const s=document.createElement("script");s.src=src;s.onload=cb;document.head.appendChild(s);}
 
 /* ── AUTH SCREEN ── */
 function AuthScreen({T,onAuthed,authError,onClearAuthError}){
@@ -1464,10 +1460,6 @@ function ChatScreen({conv,myProfile,profiles,T,onBack,onSend,onMarkRead,onClearC
 }
 
 /* ── GROUP HELPERS (localStorage — no DB schema change needed) ── */
-const GRP_KEY=uid=>`he_groups_${uid}`;
-function loadGroups(uid){try{return JSON.parse(localStorage.getItem(GRP_KEY(uid))||"[]");}catch{return[];}}
-function saveGroups(uid,groups){try{localStorage.setItem(GRP_KEY(uid),JSON.stringify(groups));}catch{}}
-function newGroupId(){return"grp_"+Math.random().toString(36).slice(2,10);}
 
 /* ── CREATE GROUP MODAL ── */
 function CreateGroupModal({profiles,myProfile,following,T,onClose,onCreate}){
