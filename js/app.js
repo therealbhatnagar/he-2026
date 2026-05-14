@@ -19,15 +19,6 @@ const {
   LEVEL_BREAKPOINTS,
 } = window.HE_UTILS;
 
-// Tier wrappers: restore original (sc, isBiz=false) signature.
-// HE_UTILS tier functions accept the tiers array directly (no global deps).
-const tierOf         = (sc, isBiz=false)  => window.HE_UTILS.tierOf(sc, isBiz ? BIZ_TIERS : TIERS);
-const tierPct        = (sc, isBiz=false)  => window.HE_UTILS.tierPct(sc, isBiz ? BIZ_TIERS : TIERS);
-const tierOfP        = p                  => { const sc=pScore(p); return tierOf(sc??0, p?.account_type==="business"); };
-const tierPctP       = p                  => { const sc=pScore(p); return tierPct(sc??0, p?.account_type==="business"); };
-function tierLevel   (sc, isBiz=false)    { return window.HE_UTILS.tierLevel(sc, isBiz ? BIZ_TIERS : TIERS); }
-function tierLevelLabel(sc, isBiz=false)  { return window.HE_UTILS.tierLevelLabel(sc, isBiz ? BIZ_TIERS : TIERS); }
-
 
 /* ── SUPABASE ── */
 const SUPABASE_URL  = "https://jwtopqlofxtuwevhmbqo.supabase.co";
@@ -171,6 +162,18 @@ const BIZ_TIERS=[
   {label:"Elite",     emoji:"💎",min:1300,max:2799, color:"#7c56c0",grad:["#6340a8","#9470d8"],glow:"#7c56c030"},
   {label:"HighEnough",emoji:"👑",min:2800,max:Infinity,color:"#c09038",grad:["#a87828","#d8ac50"],glow:"#c0903840"},
 ];
+
+// ── TIER WRAPPERS ─────────────────────────────────────────────────────────────
+// Placed here (after TIERS + BIZ_TIERS) so the const references are valid.
+// Restores original (sc, isBiz=false) call signatures used throughout the file.
+const tierOf        = (sc, isBiz=false) => window.HE_UTILS.tierOf(sc, isBiz ? BIZ_TIERS : TIERS);
+const tierPct       = (sc, isBiz=false) => window.HE_UTILS.tierPct(sc, isBiz ? BIZ_TIERS : TIERS);
+const tierOfP       = p => { const sc=pScore(p); return tierOf(sc??0, p?.account_type==="business"); };
+const tierPctP      = p => { const sc=pScore(p); return tierPct(sc??0, p?.account_type==="business"); };
+function tierLevel  (sc, isBiz=false) { return window.HE_UTILS.tierLevel(sc, isBiz ? BIZ_TIERS : TIERS); }
+function tierLevelLabel(sc, isBiz=false) { return window.HE_UTILS.tierLevelLabel(sc, isBiz ? BIZ_TIERS : TIERS); }
+// ─────────────────────────────────────────────────────────────────────────────
+
 const getBizCats=p=>{const bt=p?.biz_type||(p?.links?.biz_type)||"general";return BIZ_CAT_MAP[bt]||BIZ_CAT_MAP.general;};
 const getCats=p=>p?.account_type==="business"?getBizCats(p):CATS;
 const getTiers=p=>p?.account_type==="business"?BIZ_TIERS:TIERS;
@@ -219,21 +222,7 @@ const TIERS=[
   {label:"HighEnough", emoji:"👑",min:15600,max:Infinity,color:"#c09038",grad:["#a87828","#d8ac50"],glow:"#c0903840"},
 ];
 
-/* ── LEVEL SYSTEM (L1–L9 within each tier, non-linear) ──
-   Level thresholds use exponential curve so higher levels are significantly harder.
-   L1 = first 2% of range, L9 = last 25% of range.
-*/
-  const range=t.max-t.min+1;
-  const pos=(sc-t.min)/range;
-  let level=1;
-  for(let i=1;i<LEVEL_BREAKPOINTS.length-1;i++){
-    if(pos>=LEVEL_BREAKPOINTS[i])level=i+1;
-  }
-  level=Math.min(9,level);
-  const lo=LEVEL_BREAKPOINTS[level-1],hi=LEVEL_BREAKPOINTS[level];
-  const pct=hi>lo?(pos-lo)/(hi-lo):0;
-  return{level,pct:Math.min(1,Math.max(0,pct))};
-}
+
 
 /* ── THEMES ── */
 const DK={bg:"#060610",surf:"#0d0d1a",card:"#10101e",b1:"#1e1e30",b2:"#28283e",txt:"#e8eaf8",mu:"#5a5a80",faint:"#0c0c1c",inp:"#0a0a18",nav:"#060610",ov:"rgba(0,0,8,.96)"};
