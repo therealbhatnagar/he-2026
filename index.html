@@ -74,6 +74,12 @@ button:active{opacity:.8;transform:scale(.96)}
 <body>
 <div id="splash" style="position:fixed;inset:0;background:#09090f;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;z-index:9999;transition:opacity .3s"><div style="font-weight:800;font-size:42px;letter-spacing:-2px;color:#dde0f0;line-height:1">High<span style="color:#7b72e9;font-weight:300;letter-spacing:.04em">Enough</span></div><div style="width:20px;height:20px;border:2px solid #1c1c2c;border-top-color:#7b72e9;border-radius:50%;animation:spin .55s linear infinite"></div><div id="splash-status" style="font-size:11px;color:#3a3a5a;margin-top:4px;font-family:'JetBrains Mono',monospace;letter-spacing:.05em">Loading…</div></div>
 <div id="root"></div>
+<!-- Utils: pure helpers, no React, no JSX, loaded before app.js -->
+<script src="./js/utils/format.js"></script>
+<script src="./js/utils/score.js"></script>
+<script src="./js/utils/tiers.js"></script>
+<script src="./js/utils/storage.js"></script>
+<!-- Main app: React/JSX, processed by Babel standalone -->
 <script type="text/babel" src="./js/app.js"></script>
 <script src="./js/pwa.js"></script>
 </body>
