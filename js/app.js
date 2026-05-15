@@ -2537,6 +2537,8 @@ function ScoreCardModal({profile,T,onClose}){
   const cats=getCats(profile);
   const sc=pScore(profile),n=(profile.ratings||[]).length,t=tierOf(sc??0,isBiz);
   const canvasRef=useRef(null);const[saved,setSaved]=useState(false);
+  const cachedBlob=useRef(null);      // pre-encoded PNG blob — ready before tap
+  const cachedDataUrl=useRef(null);   // pre-encoded data URL for download
   const profileUrl=getProfileUrl(profile);
   const col=profile.color||AC;
 
@@ -2779,8 +2781,37 @@ function ScoreCardModal({profile,T,onClose}){
     }
   },[profile]);
 
-  function download(){const canvas=canvasRef.current;if(!canvas)return;const a=document.createElement("a");a.download=`${profile.name.replace(/\s+/g,"_")}_HighEnough.png`;a.href=canvas.toDataURL("image/png");a.click();setSaved(true);setTimeout(()=>setSaved(false),2000);}
-  function shareCard(){const canvas=canvasRef.current;if(!canvas)return;canvas.toBlob(b=>{try{navigator.share({files:[new File([b],"highenough_scorecard.png",{type:"image/png"})],title:`${profile.name}'s HighEnough Score`,text:`Check out my score on HighEnough! 👉 ${profileUrl}`,url:profileUrl});}catch{download();}});}
+  // Pre-encode share assets right after canvas finishes drawing.
+  // By the time user taps Share or Download the blob/dataUrl is cached —
+  // the share sheet opens instantly with no encoding on the tap path.
+  useEffect(()=>{
+    const canvas=canvasRef.current;if(!canvas||!canvas.width)return;
+    let cancelled=false;
+    // PNG for sharing (lossless — score numbers stay sharp)
+    canvas.toBlob(blob=>{if(!cancelled&&blob)cachedBlob.current=blob;},"image/png");
+    // Also cache the data URL for the download button
+    try{cachedDataUrl.current=canvas.toDataURL("image/png");}catch{}
+    return()=>{cancelled=true;};
+  },[profile]);
+
+  function download(){
+    const url=cachedDataUrl.current;if(!url)return;
+    const a=document.createElement("a");
+    a.download=`${profile.name.replace(/\s+/g,"_")}_HighEnough.png`;
+    a.href=url;a.click();
+    setSaved(true);setTimeout(()=>setSaved(false),2000);
+  }
+  function shareCard(){
+    const blob=cachedBlob.current;
+    if(!blob){download();return;}  // fallback: trigger download if blob not ready
+    const file=new File([blob],"highenough_scorecard.png",{type:"image/png"});
+    navigator.share({
+      files:[file],
+      title:`${profile.name}'s HighEnough Score`,
+      text:`Check out my score on HighEnough! 👉 ${profileUrl}`,
+      url:profileUrl,
+    }).catch(()=>download());
+  }
 
   /* ── Live interactive scorecard view ── */
   const allTiers=getTiers(profile);
