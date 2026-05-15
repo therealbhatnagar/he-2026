@@ -189,7 +189,6 @@
     const cachedDataUrl = useRef(null); // pre-built data URL for save
     const [copied,  setCopied]  = useState(false);
     const [ready,   setReady]   = useState(false);
-    const [saved,   setSaved]   = useState(false);
 
     // ── Step 1: Load QRious + render QR ───────────────────────────────────
     // loadScript is a no-op if QRious is already on window (subsequent opens
@@ -259,7 +258,10 @@
       else copyUrl();
     }
 
-    // ── Save: uses pre-built data URL — triggers download instantly ───────
+    // ── Save: triggers browser download — no false success state ──────────
+    // a.click() opens the Android download chooser asynchronously.
+    // There is no reliable API to know if the user confirmed or canceled,
+    // so we never claim success. The download either completes or it doesn't.
     function saveQR() {
       const dataUrl = cachedDataUrl.current;
       if (!dataUrl) return;
@@ -267,8 +269,6 @@
       a.download = `${profile.name.replace(/\s+/g,"_")}_HighEnough_QR.jpg`;
       a.href = dataUrl;
       a.click();
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2500);
     }
 
     return (
@@ -454,30 +454,25 @@
 
           <button
             onClick={saveQR}
-            title={saved ? "Saved!" : "Save QR"}
+            title="Save QR"
             style={{
               width:48,padding:"13px 0",
-              background:saved ? `${col}22` : "rgba(255,255,255,.08)",
-              border:`1px solid ${saved ? col : "rgba(255,255,255,.16)"}`,
-              borderRadius:14,color:saved ? col : "rgba(255,255,255,.7)",
+              background:"rgba(255,255,255,.08)",
+              border:"1px solid rgba(255,255,255,.16)",
+              borderRadius:14,color:"rgba(255,255,255,.7)",
               display:"flex",alignItems:"center",justifyContent:"center",
-              flexShrink:0,transition:"all .2s",
+              flexShrink:0,
             }}
           >
-            {saved
-              ? <span style={{fontSize:16}}>✓</span>
-              : <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
-                  <polyline points="7 10 12 15 17 10"/>
-                  <line x1="12" y1="15" x2="12" y2="3"/>
-                </svg>
-            }
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
           </button>
         </div>
 
-        {saved && (
-          <div style={{fontSize:11,color:"rgba(255,255,255,.5)",marginTop:6}}>QR saved ✓</div>
-        )}
+
       </div>
     );
   }
