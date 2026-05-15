@@ -2536,7 +2536,7 @@ function ScoreCardModal({profile,T,onClose}){
   const isBiz=profile.account_type==="business";
   const cats=getCats(profile);
   const sc=pScore(profile),n=(profile.ratings||[]).length,t=tierOf(sc??0,isBiz);
-  const canvasRef=useRef(null);const[saved,setSaved]=useState(false);
+  const canvasRef=useRef(null);
   const cachedBlob=useRef(null);      // pre-encoded PNG blob — ready before tap
   const cachedDataUrl=useRef(null);   // pre-encoded data URL for download
   const profileUrl=getProfileUrl(profile);
@@ -2795,15 +2795,28 @@ function ScoreCardModal({profile,T,onClose}){
   },[profile]);
 
   function download(){
-    const url=cachedDataUrl.current;if(!url)return;
+    // Resolve data URL — cache hit or encode now
+    const url=cachedDataUrl.current||canvasRef.current?.toDataURL("image/png");
+    if(!url)return;
+    if(!cachedDataUrl.current)cachedDataUrl.current=url; // populate cache
     const a=document.createElement("a");
     a.download=`${profile.name.replace(/\s+/g,"_")}_HighEnough.png`;
     a.href=url;a.click();
-    setSaved(true);setTimeout(()=>setSaved(false),2000);
+    // No setSaved — a.click() opens the chooser async; we can't confirm completion
   }
-  function shareCard(){
-    const blob=cachedBlob.current;
-    if(!blob){download();return;}
+  async function shareCard(){
+    // Resolve blob — cache hit (instant) or encode now (fast-tap edge case)
+    let blob=cachedBlob.current;
+    if(!blob){
+      const canvas=canvasRef.current;if(!canvas)return;
+      blob=await new Promise(resolve=>{
+        canvas.toBlob(b=>{
+          cachedBlob.current=b; // populate cache for next tap
+          resolve(b);
+        },"image/png");
+      });
+    }
+    if(!blob)return;
     const file=new File([blob],"highenough_scorecard.png",{type:"image/png"});
     navigator.share({
       files:[file],
@@ -2811,8 +2824,6 @@ function ScoreCardModal({profile,T,onClose}){
       text:`Check out my score on HighEnough! 👉 ${profileUrl}`,
       url:profileUrl,
     }).catch(e=>{
-      // AbortError = user canceled the share sheet — do nothing.
-      // Any other error (NotAllowedError, etc.) = fall back to download.
       if(e?.name==="AbortError"||e?.message?.includes("cancel"))return;
       download();
     });
@@ -2922,7 +2933,7 @@ function ScoreCardModal({profile,T,onClose}){
         </button>
         <button onClick={download} style={{padding:"14px 18px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:14,color:T.txt,fontWeight:600,fontSize:13,display:"flex",alignItems:"center",gap:7}}>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          {saved?"Saved ✓":"Save"}
+          Save
         </button>
       </div>
     </div>
