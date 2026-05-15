@@ -2656,17 +2656,15 @@ function ScoreCardModal({profile,T,onClose}){
   },[profile]);
 
   // Pre-encode share assets right after canvas finishes drawing.
-  // By the time user taps Share or Download the blob/dataUrl is cached —
-  // the share sheet opens instantly with no encoding on the tap path.
+  // profile.photo in deps ensures stale blob is invalidated when avatar changes.
   useEffect(()=>{
     const canvas=canvasRef.current;if(!canvas||!canvas.width)return;
+    cachedBlob.current=null;cachedDataUrl.current=null; // clear stale cache
     let cancelled=false;
-    // PNG for sharing (lossless — score numbers stay sharp)
     canvas.toBlob(blob=>{if(!cancelled&&blob)cachedBlob.current=blob;},"image/png");
-    // Also cache the data URL for the download button
     try{cachedDataUrl.current=canvas.toDataURL("image/png");}catch{}
     return()=>{cancelled=true;};
-  },[profile]);
+  },[profile,profile.photo]);
 
   function download(){
     // Resolve data URL — cache hit or encode now
@@ -3756,24 +3754,9 @@ function App(){
 
   async function handleSavePhoto(photoData){
     if(!photoData){await handleSaveProfile({photo:null});setPhoto(false);pop("Photo removed");return;}
-    // Compress photo before saving
-    try{
-      const compressed=await new Promise((res,rej)=>{
-        const img=new Image();
-        img.onload=()=>{
-          const canvas=document.createElement("canvas");
-          const MAX=400;
-          let w=img.width,h=img.height;
-          if(w>h){if(w>MAX){h=h*MAX/w;w=MAX;}}else{if(h>MAX){w=w*MAX/h;h=MAX;}}
-          canvas.width=w;canvas.height=h;
-          canvas.getContext("2d").drawImage(img,0,0,w,h);
-          res(canvas.toDataURL("image/jpeg",0.72));
-        };
-        img.onerror=rej;
-        img.src=photoData;
-      });
-      await handleSaveProfile({photo:compressed});
-    }catch{await handleSaveProfile({photo:photoData});}
+    // Cropper already outputs 400px JPEG at 0.92. Pass through directly —
+    // re-compressing caused quality loss and a decode+encode delay on first save.
+    await handleSaveProfile({photo:photoData});
     setPhoto(false);pop("Photo updated");
   }
   function handleSavePrefs(p){setPrefs(p);setPref(p);}
