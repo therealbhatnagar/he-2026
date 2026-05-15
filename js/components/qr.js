@@ -237,11 +237,27 @@
       setTimeout(() => setCopied(false), 2200);
     }
 
-    // ── Share: uses pre-built blob — opens native sheet instantly ─────────
+    // ── Share: cache hit = instant; cache miss = await build then share ────
+    // cachedBlob is pre-built in the background (fast path for 99% of taps).
+    // If user taps before toBlob finishes (first open, very fast tap),
+    // we build+encode now so the image is ALWAYS included on first attempt.
     async function shareQR() {
-      const blob = cachedBlob.current;
       const title = profile.name + " on HighEnough";
       const text  = isBiz ? `Review ${profile.name} on HighEnough` : `Check out ${profile.name} on HighEnough`;
+
+      // Resolve blob — from cache (instant) or build now (first tap edge case)
+      let blob = cachedBlob.current;
+      if (!blob && ready && qrRef.current) {
+        blob = await new Promise(resolve => {
+          buildShareCard(qrRef.current, profile, col, isBiz, bizInfo).then(fc => {
+            if (!fc) { resolve(null); return; }
+            fc.toBlob(b => {
+              cachedBlob.current = b;   // populate cache for next tap
+              resolve(b);
+            }, "image/jpeg", .92);
+          });
+        });
+      }
 
       if (blob) {
         const file = new File([blob], `${profile.name.replace(/\s+/g,"_")}_HighEnough.jpg`, { type: "image/jpeg" });
@@ -249,12 +265,17 @@
           try {
             await navigator.share({ title, text, url: shareUrl, files: [file] });
             return;
-          } catch (e) { console.warn("File share failed:", e); }
+          } catch (e) {
+            if (e?.name === "AbortError") return; // user canceled — do nothing
+            console.warn("File share failed:", e);
+          }
         }
       }
-      // Fallback: share URL only
+      // Fallback: share URL only (no image support on this device/browser)
       if (navigator.share)
-        navigator.share({ title, text, url: shareUrl }).catch(() => copyUrl());
+        navigator.share({ title, text, url: shareUrl }).catch(e => {
+          if (e?.name !== "AbortError") copyUrl();
+        });
       else copyUrl();
     }
 
