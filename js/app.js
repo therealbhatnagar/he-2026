@@ -2803,14 +2803,19 @@ function ScoreCardModal({profile,T,onClose}){
   }
   function shareCard(){
     const blob=cachedBlob.current;
-    if(!blob){download();return;}  // fallback: trigger download if blob not ready
+    if(!blob){download();return;}
     const file=new File([blob],"highenough_scorecard.png",{type:"image/png"});
     navigator.share({
       files:[file],
       title:`${profile.name}'s HighEnough Score`,
       text:`Check out my score on HighEnough! 👉 ${profileUrl}`,
       url:profileUrl,
-    }).catch(()=>download());
+    }).catch(e=>{
+      // AbortError = user canceled the share sheet — do nothing.
+      // Any other error (NotAllowedError, etc.) = fall back to download.
+      if(e?.name==="AbortError"||e?.message?.includes("cancel"))return;
+      download();
+    });
   }
 
   /* ── Live interactive scorecard view ── */
