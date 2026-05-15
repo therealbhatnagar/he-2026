@@ -212,24 +212,21 @@
       );
     }, [shareUrl]);
 
-    // ── Step 2: Pre-build the share card as soon as QR is ready ──────────
-    // This runs in the background after the QR preview is already visible.
-    // By the time the user taps Share or Save the blob is already cached —
-    // the share sheet opens instantly with no canvas work on the tap path.
+    // ── Step 2: Pre-build share card in background ───────────────────────
+    // profile.photo in deps: rebuilt when avatar changes → no stale photo in exports.
     useEffect(() => {
       if (!ready || !qrRef.current) return;
+      cachedBlob.current = null; cachedDataUrl.current = null; // clear stale
       let cancelled = false;
       buildShareCard(qrRef.current, profile, col, isBiz, bizInfo).then(fc => {
         if (cancelled || !fc) return;
-        // Cache blob for Share (navigator.share needs a File)
         fc.toBlob(blob => {
           if (!cancelled) cachedBlob.current = blob;
         }, "image/jpeg", .92);
-        // Cache data URL for Save (instant download trigger)
         cachedDataUrl.current = fc.toDataURL("image/jpeg", .92);
       });
       return () => { cancelled = true; };
-    }, [ready]);
+    }, [ready, profile.photo]);
 
     function copyUrl() {
       try { navigator.clipboard?.writeText(shareUrl); } catch {}
