@@ -710,9 +710,10 @@ function ProfileSetup({user,T,onDone}){
   </div>;
 }
 
-// Expose React components needed by qr.js
+// Expose React components needed by qr.js and cropper.js
 window.HE_Spinner   = Spinner;
 window.HE_TierBadge = TierBadge;
+window.HE_CamIcon   = CamIcon;
 
 /* ── PROFILE URL helpers ── */
 const BASE_URL="https://highenough.in";
@@ -2397,139 +2398,12 @@ function SettingsModal({me,prefs,T,onClose,onSave,onSavePrefs,onEditPhoto,onShow
 }
 
 /* ── PHOTO MODAL ── */
-function PhotoModal({profile,T,onClose,onSave}){
-  const [prev,setPrev]=useState(profile.photo||null);
-  const [cam,setCam]=useState(false);
-  const [stream,setStream]=useState(null);
-  const [cropping,setCropping]=useState(false);
-  const [cropSrc,setCropSrc]=useState(null);
-  const [scale,setScale]=useState(1);
-  const [offset,setOffset]=useState({x:0,y:0});
-  const dragRef=useRef(null); // {startX,startY,startOX,startOY}
-  const vRef=useRef(null);const cRef=useRef(null);
-  const cropImgRef=useRef(null);
-  const CROP_SIZE=240;
-
-  useEffect(()=>()=>stream?.getTracks().forEach(t=>t.stop()),[]);
-
-  function pick(){
-    const i=document.createElement("input");i.type="file";i.accept="image/*";
-    i.onchange=e=>{
-      const f=e.target.files[0];if(!f)return;
-      const r=new FileReader();
-      r.onload=ev=>{setCropSrc(ev.target.result);setScale(1);setOffset({x:0,y:0});setCropping(true);};
-      r.readAsDataURL(f);
-    };i.click();
-  }
-  async function startCam(){
-    try{const s=await navigator.mediaDevices.getUserMedia({video:{facingMode:"user"}});setStream(s);setCam(true);setTimeout(()=>{if(vRef.current)vRef.current.srcObject=s;},100);}
-    catch{alert("Camera unavailable");}
-  }
-  function stopCam(){stream?.getTracks().forEach(t=>t.stop());setStream(null);setCam(false);}
-  function snap(){
-    const v=vRef.current,c=cRef.current;if(!v||!c)return;
-    c.width=v.videoWidth;c.height=v.videoHeight;
-    c.getContext("2d").drawImage(v,0,0);
-    const dataUrl=c.toDataURL("image/jpeg",.85);
-    stopCam();setCropSrc(dataUrl);setScale(1);setOffset({x:0,y:0});setCropping(true);
-  }
-
-  // Pointer drag — use ref to avoid re-renders on every move
-  function onPointerDown(e){
-    e.currentTarget.setPointerCapture(e.pointerId);
-    dragRef.current={sx:e.clientX,sy:e.clientY,ox:offset.x,oy:offset.y};
-  }
-  function onPointerMove(e){
-    if(!dragRef.current)return;
-    const dx=e.clientX-dragRef.current.sx,dy=e.clientY-dragRef.current.sy;
-    setOffset({x:dragRef.current.ox+dx,y:dragRef.current.oy+dy});
-  }
-  function onPointerUp(){dragRef.current=null;}
-
-  function applyCrop(){
-    const img=cropImgRef.current;if(!img)return;
-    const out=document.createElement("canvas");out.width=300;out.height=300;
-    const ctx=out.getContext("2d");
-    ctx.beginPath();ctx.arc(150,150,150,0,Math.PI*2);ctx.clip();
-    const s=scale,iW=img.naturalWidth*s,iH=img.naturalHeight*s;
-    // We display image scaled inside CROP_SIZE×CROP_SIZE circle
-    // The display scale = (CROP_SIZE / naturalWidth) * scale
-    const dispScale=(CROP_SIZE/img.naturalWidth)*scale;
-    const dispW=img.naturalWidth*dispScale,dispH=img.naturalHeight*dispScale;
-    // offset is in display pixels — convert to output canvas pixels
-    const ratio=300/CROP_SIZE;
-    const dx=(150-dispW/2+offset.x)*ratio,dy=(150-dispH/2+offset.y)*ratio;
-    ctx.drawImage(img,dx,dy,dispW*ratio,dispH*ratio);
-    setPrev(out.toDataURL("image/jpeg",.92));
-    setCropping(false);setCropSrc(null);
-  }
-
-  if(cropping&&cropSrc)return<Overlay onBg={()=>{setCropping(false);setCropSrc(null);}} T={T} bottom>
-    <div style={{fontWeight:700,fontSize:17,color:T.txt,marginBottom:3}}>Adjust Photo</div>
-    <div style={{fontSize:12,color:T.mu,marginBottom:14}}>Drag to reposition · Slide to zoom</div>
-    {/* Circular crop preview — touch-friendly, no scroll conflict */}
-    <div style={{display:"flex",justifyContent:"center",marginBottom:16}}>
-      <div
-        style={{width:CROP_SIZE,height:CROP_SIZE,borderRadius:"50%",overflow:"hidden",border:`3px solid ${profile.color}`,cursor:"grab",userSelect:"none",touchAction:"none",flexShrink:0,background:"#eee",position:"relative"}}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
-      >
-        <img ref={cropImgRef} src={cropSrc} alt="" draggable={false} style={{
-          position:"absolute",
-          width:`${scale*100}%`,
-          height:`${scale*100}%`,
-          objectFit:"cover",
-          left:"50%",top:"50%",
-          transform:`translate(calc(-50% + ${offset.x}px), calc(-50% + ${offset.y}px))`,
-          pointerEvents:"none",
-          userSelect:"none"
-        }}/>
-      </div>
-    </div>
-    {/* Zoom slider */}
-    <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:18,padding:"0 4px"}}>
-      <span style={{fontSize:16}}>🔍</span>
-      <input type="range" min="0.5" max="3" step="0.01" value={scale}
-        onChange={e=>setScale(parseFloat(e.target.value))}
-        style={{flex:1,accentColor:profile.color,height:4}}/>
-      <span style={{fontSize:11,color:T.mu,fontFamily:"monospace",minWidth:36,textAlign:"right"}}>{Math.round(scale*100)}%</span>
-    </div>
-    <div style={{display:"flex",gap:10}}>
-      <button onClick={applyCrop} style={{flex:1,padding:"13px 0",background:`linear-gradient(135deg,${profile.color}e0,${profile.color}90)`,borderRadius:12,color:"#fff",fontWeight:700,fontSize:14}}>✓ Use Photo</button>
-      <button onClick={()=>{setCropping(false);setCropSrc(null);}} style={{flex:1,padding:"13px 0",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:12,color:T.mu,fontWeight:500}}>Cancel</button>
-    </div>
-  </Overlay>;
-
-  return<Overlay onBg={()=>{stopCam();onClose();}} T={T} bottom>
-    <div style={{fontWeight:700,fontSize:17,color:T.txt,marginBottom:16}}>Profile Photo</div>
-    {/* Preview */}
-    <div style={{display:"flex",justifyContent:"center",marginBottom:16}}>
-      <div style={{width:100,height:100,borderRadius:"50%",overflow:"hidden",border:`2.5px solid ${profile.color}`,background:T.faint,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-        {cam?<video ref={vRef} autoPlay playsInline style={{width:"100%",height:"100%",objectFit:"cover"}}/>
-          :prev?<img src={prev} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
-          :<span style={{fontFamily:"monospace",fontSize:32,fontWeight:700,color:profile.color}}>{ini(profile.name)}</span>}
-      </div>
-      <canvas ref={cRef} style={{display:"none"}}/>
-    </div>
-
-    {cam
-      ?<div style={{display:"flex",gap:8}}>
-        <button onClick={snap} style={{flex:1,padding:"12px 0",background:`${profile.color}cc`,borderRadius:12,color:"#fff",fontWeight:700}}>📸 Capture</button>
-        <button onClick={stopCam} style={{flex:1,padding:"12px 0",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:12,color:T.mu}}>Cancel</button>
-      </div>
-      :<div style={{display:"flex",flexDirection:"column",gap:8}}>
-        <button onClick={pick} style={{padding:"13px 0",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:12,color:T.txt,fontWeight:500,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}><CamIcon/>Choose from Gallery</button>
-        <button onClick={startCam} style={{padding:"13px 0",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:12,color:T.txt,fontWeight:500,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}><CamIcon/>Take Photo</button>
-        {prev&&<button onClick={()=>{setCropSrc(prev);setScale(1);setOffset({x:0,y:0});setCropping(true);}} style={{padding:"12px 0",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:12,color:T.txt,fontWeight:500,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>✂️ Adjust / Crop</button>}
-        {prev&&<button onClick={()=>setPrev(null)} style={{padding:"12px 0",background:"transparent",border:"1px solid #c0404040",borderRadius:12,color:"#c06060",fontWeight:500}}>Remove Photo</button>}
-        <div style={{height:1,background:T.b1}}/>
-        <button onClick={()=>onSave(prev)} style={{padding:"13px 0",background:`linear-gradient(135deg,${profile.color}e0,${profile.color}90)`,borderRadius:12,color:"#fff",fontWeight:700,fontSize:14}}>Save Photo</button>
-      </div>}
-  </Overlay>;
+/* ── PHOTO MODAL — implemented in js/components/cropper.js ── */
+function PhotoModal(props){
+  const Mod = window.HE_COMPONENTS && window.HE_COMPONENTS.PhotoModal;
+  if(!Mod) return null;
+  return React.createElement(Mod, props);
 }
-
 
 /* ── SCORE CARD MODAL — rich visual design ── */
 function ScoreCardModal({profile,T,onClose}){
