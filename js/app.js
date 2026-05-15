@@ -4226,7 +4226,7 @@ function App(){
     {viewT      &&<ProfileModal profile={viewT} myId={profile.id} following={following} profiles={profiles} T={T} onClose={()=>setViewT(null)} onRate={handleRate} onFollow={handleFollow} onUnfollow={handleUnfollow} onBlock={handleBlock} onReport={setReportT} onMsg={p=>{setViewT(null);handleMsg(p);}} onViewOther={p=>setViewT(p)}/>}
     {qrT        &&<QRModal profile={qrT} T={T} onClose={()=>setQRT(null)}/>}
     {settings   &&<SettingsModal me={profile} prefs={prefs} T={T} onClose={()=>setSettings(false)} onSave={handleSaveProfile} onSavePrefs={handleSavePrefs} onEditPhoto={()=>{setSettings(false);setPhoto(true);}} onShowBlocked={()=>{setSettings(false);setShowBlocked(true);}} onLogout={handleLogout} onDelete={handleDeleteAccount} onQR={()=>{setSettings(false);setTimeout(()=>setQRT(myP),80);}}/>}
-    {editProfile&&<EditProfileModal me={profile} prefs={prefs} T={T} onClose={()=>setEditProfile(false)} onSave={handleSaveProfile} onEditPhoto={()=>{setEditProfile(false);setPhoto(true);}} onQR={()=>{setEditProfile(false);setTimeout(()=>setQRT(myP),80);}}/>}
+    {editProfile&&<EditProfileModal me={profile} prefs={prefs} T={T} onClose={()=>setEditProfile(false)} onSave={handleSaveProfile} onEditPhoto={()=>{setEditProfile(false);setPhoto(true);}} onQR={()=>{setQRT(myP);setEditProfile(false);}}/>}
     {photo      &&<PhotoModal profile={profile} T={T} onClose={()=>setPhoto(false)} onSave={handleSavePhoto}/>}
     {scoreCard  &&<ScoreCardModal profile={scoreCard} T={T} onClose={()=>setScoreCard(null)}/>}
     {reportT    &&<ReportModal target={reportT} T={T} onClose={()=>setReportT(null)} onSubmit={handleReport}/>}
