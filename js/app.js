@@ -2321,7 +2321,7 @@ function EditProfileModal({me,prefs,T,onClose,onSave,onEditPhoto,onQR}){
     <SettingsProfileUrl me={me} T={T}/>
 
     <button disabled={hdStatus==="taken"} onClick={sv} style={{width:"100%",padding:"12px 0",background:hdStatus==="taken"?T.faint:`linear-gradient(135deg,${col}e0,${col}90)`,borderRadius:11,color:hdStatus==="taken"?T.mu:"#fff",fontWeight:700,fontSize:14,marginBottom:10}}>{ok?"Saved ✓":"Save Changes"}</button>
-    <button onClick={()=>{onClose();setTimeout(()=>onQR&&onQR(),80);}} style={{width:"100%",padding:"11px 0",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:11,color:T.txt,fontWeight:600,fontSize:13,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+    <button onClick={()=>onQR&&onQR()} style={{width:"100%",padding:"11px 0",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:11,color:T.txt,fontWeight:600,fontSize:13,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="3" height="3"/><rect x="19" y="14" width="2" height="2"/><rect x="14" y="19" width="2" height="2"/><rect x="18" y="18" width="3" height="3" rx=".5"/></svg>
       My QR Code
     </button>
@@ -4225,7 +4225,7 @@ function App(){
     {rateT      &&<RateModal target={rateT.profile} raterId={profile.id} existing={rateT.existing} T={T} onClose={()=>setRateT(null)} onSubmit={handleSubmit}/>}
     {viewT      &&<ProfileModal profile={viewT} myId={profile.id} following={following} profiles={profiles} T={T} onClose={()=>setViewT(null)} onRate={handleRate} onFollow={handleFollow} onUnfollow={handleUnfollow} onBlock={handleBlock} onReport={setReportT} onMsg={p=>{setViewT(null);handleMsg(p);}} onViewOther={p=>setViewT(p)}/>}
     {qrT        &&<QRModal profile={qrT} T={T} onClose={()=>setQRT(null)}/>}
-    {settings   &&<SettingsModal me={profile} prefs={prefs} T={T} onClose={()=>setSettings(false)} onSave={handleSaveProfile} onSavePrefs={handleSavePrefs} onEditPhoto={()=>{setSettings(false);setPhoto(true);}} onShowBlocked={()=>{setSettings(false);setShowBlocked(true);}} onLogout={handleLogout} onDelete={handleDeleteAccount} onQR={()=>{setSettings(false);setTimeout(()=>setQRT(myP),80);}}/>}
+    {settings   &&<SettingsModal me={profile} prefs={prefs} T={T} onClose={()=>setSettings(false)} onSave={handleSaveProfile} onSavePrefs={handleSavePrefs} onEditPhoto={()=>{setSettings(false);setPhoto(true);}} onShowBlocked={()=>{setSettings(false);setShowBlocked(true);}} onLogout={handleLogout} onDelete={handleDeleteAccount} onQR={()=>{setQRT(myP);setSettings(false);}}/>}
     {editProfile&&<EditProfileModal me={profile} prefs={prefs} T={T} onClose={()=>setEditProfile(false)} onSave={handleSaveProfile} onEditPhoto={()=>{setEditProfile(false);setPhoto(true);}} onQR={()=>{setQRT(myP);setEditProfile(false);}}/>}
     {photo      &&<PhotoModal profile={profile} T={T} onClose={()=>setPhoto(false)} onSave={handleSavePhoto}/>}
     {scoreCard  &&<ScoreCardModal profile={scoreCard} T={T} onClose={()=>setScoreCard(null)}/>}
