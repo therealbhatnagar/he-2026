@@ -184,24 +184,25 @@
     const col     = profile.color || window.HE_AC;
     const bizInfo = isBiz ? window.HE_BIZ_TYPES.find(b => b.id === (profile.biz_type || "general")) : null;
 
-    const qrRef   = useRef(null);   // QRious renders onto this canvas
+    const qrRef      = useRef(null);  // QRious renders onto this canvas
+    const cachedBlob = useRef(null);  // pre-built share card blob — ready before tap
+    const cachedDataUrl = useRef(null); // pre-built data URL for save
     const [copied,  setCopied]  = useState(false);
     const [ready,   setReady]   = useState(false);
     const [saved,   setSaved]   = useState(false);
-    const [exporting, setExporting] = useState(false);
 
-    // ── Render QR code ─────────────────────────────────────────────────────
+    // ── Step 1: Load QRious + render QR ───────────────────────────────────
+    // loadScript is a no-op if QRious is already on window (subsequent opens
+    // are instant — no network round-trip).
     useEffect(() => {
       window.HE_UTILS.loadScript(
         "https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js",
         () => {
           if (!qrRef.current) return;
-          // QR_SIZE is the backing canvas resolution — stays constant.
-          // CSS display size is set separately via inline style.
           new window.QRious({
             element:    qrRef.current,
             value:      shareUrl,
-            size:       QR_SIZE,       // ← actual canvas pixels (crisp)
+            size:       QR_SIZE,
             background: "#ffffff",
             foreground: "#0a0a14",
             level:      "H",
@@ -212,74 +213,62 @@
       );
     }, [shareUrl]);
 
+    // ── Step 2: Pre-build the share card as soon as QR is ready ──────────
+    // This runs in the background after the QR preview is already visible.
+    // By the time the user taps Share or Save the blob is already cached —
+    // the share sheet opens instantly with no canvas work on the tap path.
+    useEffect(() => {
+      if (!ready || !qrRef.current) return;
+      let cancelled = false;
+      buildShareCard(qrRef.current, profile, col, isBiz, bizInfo).then(fc => {
+        if (cancelled || !fc) return;
+        // Cache blob for Share (navigator.share needs a File)
+        fc.toBlob(blob => {
+          if (!cancelled) cachedBlob.current = blob;
+        }, "image/jpeg", .92);
+        // Cache data URL for Save (instant download trigger)
+        cachedDataUrl.current = fc.toDataURL("image/jpeg", .92);
+      });
+      return () => { cancelled = true; };
+    }, [ready]);
+
     function copyUrl() {
       try { navigator.clipboard?.writeText(shareUrl); } catch {}
       setCopied(true);
       setTimeout(() => setCopied(false), 2200);
     }
 
-    // ── Get the export canvas, building it fresh each time ───────────────
-    // Returns a Promise<HTMLCanvasElement>.
-    // Previously this was called synchronously then toBlob/toDataURL was
-    // read immediately — race condition caused black/blank QR area.
-    async function getExportCanvas() {
-      if (!ready || !qrRef.current) return null;
-      return buildShareCard(qrRef.current, profile, col, isBiz, bizInfo);
-    }
-
+    // ── Share: uses pre-built blob — opens native sheet instantly ─────────
     async function shareQR() {
-      if (exporting) return;
-      setExporting(true);
-      try {
-        const fc = await getExportCanvas();
-        if (!fc) {
-          // Fallback: share URL only
-          if (navigator.share)
-            navigator.share({
-              title: profile.name + " on HighEnough",
-              text:  isBiz ? `Review ${profile.name} on HighEnough` : `Check out ${profile.name} on HighEnough`,
-              url:   shareUrl,
-            }).catch(() => copyUrl());
-          else copyUrl();
-          return;
+      const blob = cachedBlob.current;
+      const title = profile.name + " on HighEnough";
+      const text  = isBiz ? `Review ${profile.name} on HighEnough` : `Check out ${profile.name} on HighEnough`;
+
+      if (blob) {
+        const file = new File([blob], `${profile.name.replace(/\s+/g,"_")}_HighEnough.jpg`, { type: "image/jpeg" });
+        if (navigator.canShare?.({ files: [file] })) {
+          try {
+            await navigator.share({ title, text, url: shareUrl, files: [file] });
+            return;
+          } catch (e) { console.warn("File share failed:", e); }
         }
-        fc.toBlob(async blob => {
-          const file = new File([blob], `${profile.name.replace(/\s+/g,"_")}_HighEnough.jpg`, { type: "image/jpeg" });
-          if (blob && navigator.canShare?.({ files: [file] })) {
-            try {
-              await navigator.share({
-                title: profile.name + " on HighEnough",
-                text:  isBiz ? `Review ${profile.name} on HighEnough` : `Check out ${profile.name} on HighEnough`,
-                url:   shareUrl,
-                files: [file],
-              });
-              return;
-            } catch (e) { console.warn("File share failed:", e); }
-          }
-          if (navigator.share)
-            navigator.share({ title: profile.name + " on HighEnough", url: shareUrl }).catch(() => copyUrl());
-          else copyUrl();
-        }, "image/jpeg", .92);
-      } finally {
-        setExporting(false);
       }
+      // Fallback: share URL only
+      if (navigator.share)
+        navigator.share({ title, text, url: shareUrl }).catch(() => copyUrl());
+      else copyUrl();
     }
 
-    async function saveQR() {
-      if (exporting) return;
-      setExporting(true);
-      try {
-        const fc = await getExportCanvas();
-        if (!fc) return;
-        const a = document.createElement("a");
-        a.download = `${profile.name.replace(/\s+/g,"_")}_HighEnough_QR.jpg`;
-        a.href = fc.toDataURL("image/jpeg", .92);
-        a.click();
-        setSaved(true);
-        setTimeout(() => setSaved(false), 2500);
-      } finally {
-        setExporting(false);
-      }
+    // ── Save: uses pre-built data URL — triggers download instantly ───────
+    function saveQR() {
+      const dataUrl = cachedDataUrl.current;
+      if (!dataUrl) return;
+      const a = document.createElement("a");
+      a.download = `${profile.name.replace(/\s+/g,"_")}_HighEnough_QR.jpg`;
+      a.href = dataUrl;
+      a.click();
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
     }
 
     return (
@@ -436,12 +425,10 @@
         <div style={{display:"flex",gap:10,marginTop:14,width:300}}>
           <button
             onClick={shareQR}
-            disabled={exporting}
             style={{
               flex:1,padding:"13px 0",background:col,borderRadius:14,color:"#fff",
               fontWeight:700,fontSize:14,display:"flex",alignItems:"center",
               justifyContent:"center",gap:7,boxShadow:`0 4px 20px ${col}55`,
-              opacity:exporting?.6:1,
             }}
           >
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
@@ -449,7 +436,7 @@
               <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/>
               <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
             </svg>
-            {exporting ? "…" : "Share"}
+            Share
           </button>
 
           <button
@@ -467,7 +454,6 @@
 
           <button
             onClick={saveQR}
-            disabled={exporting}
             title={saved ? "Saved!" : "Save QR"}
             style={{
               width:48,padding:"13px 0",
@@ -475,7 +461,7 @@
               border:`1px solid ${saved ? col : "rgba(255,255,255,.16)"}`,
               borderRadius:14,color:saved ? col : "rgba(255,255,255,.7)",
               display:"flex",alignItems:"center",justifyContent:"center",
-              flexShrink:0,transition:"all .2s",opacity:exporting?.6:1,
+              flexShrink:0,transition:"all .2s",
             }}
           >
             {saved
