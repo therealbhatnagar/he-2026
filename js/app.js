@@ -2598,12 +2598,8 @@ function ScoreCardModal({profile,T,onClose}){
       // Divider
       ctx.strokeStyle="#e6e6f2";ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(80,122);ctx.lineTo(W-80,122);ctx.stroke();
 
-      // Avatar — clean circle, no glow blur
-      const aX=W/2,aY=252,aR=80;
-      ctx.beginPath();ctx.arc(aX,aY,aR,0,Math.PI*2);ctx.fillStyle=profile.color+"1a";ctx.fill();
-      ctx.strokeStyle=profile.color+"80";ctx.lineWidth=3.5;ctx.stroke();
-      ctx.font=`bold ${Math.round(aR*.82)}px Inter,Arial`;ctx.fillStyle=profile.color;
-      ctx.textAlign="center";ctx.fillText(ini(profile.name),aX,aY+aR*.32);
+      // Avatar — uses real photo via drawAvatar() (same as biz branch)
+      drawAvatar(W/2,252,80);
 
       // Name + handle
       ctx.textAlign="center";ctx.font="800 46px Inter,Arial,sans-serif";ctx.fillStyle="#111126";ctx.fillText(profile.name,W/2,396);
@@ -2694,18 +2690,17 @@ function ScoreCardModal({profile,T,onClose}){
       // Bottom color band
       ctx.fillStyle=topBand;ctx.fillRect(0,H-12,W,12);
     }
-  })(); // end async IIFE
-  },[profile]);
+    // ── Encode after draw completes ──────────────────────────────────────
+    // Done inside the async IIFE so encoding always happens AFTER avatarImg
+    // is resolved and all drawing is finished. The separate encode useEffect
+    // was firing synchronously before the IIFE completed → black PNG.
+    cachedBlob.current=null; cachedDataUrl.current=null;
+    await new Promise(resolve=>{
+      canvas.toBlob(blob=>{ cachedBlob.current=blob; resolve(); },"image/png");
+    });
+    try{ cachedDataUrl.current=canvas.toDataURL("image/png"); }catch{}
 
-  // Pre-encode share assets right after canvas finishes drawing.
-  // profile.photo in deps ensures stale blob is invalidated when avatar changes.
-  useEffect(()=>{
-    const canvas=canvasRef.current;if(!canvas||!canvas.width)return;
-    cachedBlob.current=null;cachedDataUrl.current=null; // clear stale cache
-    let cancelled=false;
-    canvas.toBlob(blob=>{if(!cancelled&&blob)cachedBlob.current=blob;},"image/png");
-    try{cachedDataUrl.current=canvas.toDataURL("image/png");}catch{}
-    return()=>{cancelled=true;};
+  })(); // end async IIFE
   },[profile,profile.photo]);
 
   function download(){
