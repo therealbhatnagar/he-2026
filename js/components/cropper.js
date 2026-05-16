@@ -283,16 +283,35 @@
 
     async function snap() {
       const v = vRef.current, c = cRef.current; if (!v || !c) return;
-      // Wait for video to have actual frame data
       if (v.readyState < 2 || !v.videoWidth || !v.videoHeight) {
         alert("Camera not ready yet. Please try again.");
         return;
       }
+      // Capture frame BEFORE stopping stream or touching state.
+      // stopCam() calls setState which triggers a React re-render mid-async —
+      // on Android this can unmount the component, dropping the decode promise.
       c.width = v.videoWidth; c.height = v.videoHeight;
       c.getContext("2d").drawImage(v, 0, 0);
       const src = c.toDataURL("image/jpeg", .92);
-      stopCam();
-      await loadAndDecode(src);
+
+      // Stop tracks directly — don't call stopCam() (avoids setState mid-decode)
+      stream?.getTracks().forEach(t => t.stop());
+
+      // Decode first, then clear cam state atomically in one update
+      setDecoding(true);
+      try {
+        const result = await decodeImage(src);
+        // Single setState batch: clears camera UI and shows cropper together
+        setStream(null);
+        setCam(false);
+        setDecoded(result);
+      } catch {
+        setStream(null);
+        setCam(false);
+        alert("Could not process image. Please try again.");
+      } finally {
+        setDecoding(false);
+      }
     }
 
     function handleCropConfirm(dataUrl) {
