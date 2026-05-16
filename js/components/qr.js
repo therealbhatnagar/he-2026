@@ -61,8 +61,25 @@
   // shareQR/saveQR called renderSaveCard synchronously then immediately
   // read the canvas before drawImage had completed.
 
-  function buildShareCard(qrCanvas, profile, col, isBiz, bizInfo) {
+  // Load and decode avatar photo, returns Image or null
+  function loadAvatarImage(photo) {
+    if (!photo) return Promise.resolve(null);
     return new Promise(resolve => {
+      const img = new Image();
+      img.onload = () => {
+        if (typeof img.decode === "function") {
+          img.decode().then(() => resolve(img)).catch(() => resolve(img));
+        } else { resolve(img); }
+      };
+      img.onerror = () => resolve(null);
+      img.src = photo;
+    });
+  }
+
+  function buildShareCard(qrCanvas, profile, col, isBiz, bizInfo) {
+    // Load avatar before starting canvas draw so drawImage never runs on
+    // an undecoded image (which produces a blank/black circle silently).
+    return loadAvatarImage(profile.photo).then(avatarImg => {
       const { canvas, ctx, W, H } = makeHiDpiCanvas(QR_EXPORT_W, QR_EXPORT_H);
       const cx = W / 2;
 
@@ -84,19 +101,32 @@
       ctx.shadowOffsetY = 4;
       roundRect(ctx, 24, 90, W - 48, H - 114, 20);
       ctx.fill();
-      clearShadow(ctx); // ← critical: clears shadow before all subsequent draws
+      clearShadow(ctx);
 
-      // ── Avatar circle ──
+      // ── Avatar circle — real photo or initials fallback ──
+      const aR = 50, aX = cx, aY = 100;
+      ctx.save();
       ctx.beginPath();
-      ctx.arc(cx, 100, 50, 0, Math.PI * 2);
-      ctx.fillStyle = col + "22"; ctx.fill();
+      ctx.arc(aX, aY, aR, 0, Math.PI * 2);
+      ctx.clip();
+      if (avatarImg) {
+        const iW = avatarImg.naturalWidth, iH = avatarImg.naturalHeight;
+        const sc = Math.max((aR*2)/iW, (aR*2)/iH);
+        ctx.drawImage(avatarImg, aX - iW*sc/2, aY - iH*sc/2, iW*sc, iH*sc);
+      } else {
+        ctx.fillStyle = col + "22"; ctx.fill();
+      }
+      ctx.restore();
+      // Ring — drawn outside clip so it sits on top of photo
+      ctx.beginPath(); ctx.arc(aX, aY, aR, 0, Math.PI * 2);
       ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 4; ctx.stroke();
       ctx.strokeStyle = col;       ctx.lineWidth = 2; ctx.stroke();
-      ctx.font          = "bold 36px Inter,Arial,sans-serif";
-      ctx.fillStyle     = col;
-      ctx.textAlign     = "center";
-      ctx.textBaseline  = "middle";
-      ctx.fillText(window.HE_UTILS.ini(profile.name), cx, 100);
+      if (!avatarImg) {
+        // Initials — only when no photo
+        ctx.font = "bold 36px Inter,Arial,sans-serif";
+        ctx.fillStyle = col; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        ctx.fillText(window.HE_UTILS.ini(profile.name), aX, aY);
+      }
 
       // ── Name ──
       ctx.textBaseline = "alphabetic";
@@ -169,8 +199,8 @@
       ctx.fillStyle = col;
       ctx.fillRect(0, H - 5, W, 5);
 
-      resolve(canvas);
-    });
+      return canvas;
+    }); // end loadAvatarImage.then
   }
 
   // ── QR MODAL ────────────────────────────────────────────────────────────────
