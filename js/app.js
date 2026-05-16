@@ -2418,9 +2418,28 @@ function ScoreCardModal({profile,T,onClose}){
 
   useEffect(()=>{
     const canvas=canvasRef.current;if(!canvas)return;
+    // Async IIFE so we can await avatar image decode before drawing
+    (async()=>{
     const ctx=canvas.getContext("2d");
     const W=900,H=isBiz?1080:1240;
     canvas.width=W;canvas.height=H;
+
+    // Load and fully decode the profile photo before any drawing.
+    // Returns the Image element (ready for drawImage) or null if no photo.
+    async function loadAvatar(){
+      if(!profile.photo)return null;
+      return new Promise(resolve=>{
+        const img=new Image();
+        img.onload=()=>{
+          if(typeof img.decode==="function"){
+            img.decode().then(()=>resolve(img)).catch(()=>resolve(img));
+          } else { resolve(img); }
+        };
+        img.onerror=()=>resolve(null);
+        img.src=profile.photo;
+      });
+    }
+    const avatarImg=await loadAvatar();
 
     // ── Shared helper: draw clean white card shell ──
     function drawShell(){
@@ -2445,10 +2464,32 @@ function ScoreCardModal({profile,T,onClose}){
     }
 
     // ── Shared: avatar circle ──
+    // Uses real photo (avatarImg) if available; falls back to initials.
     function drawAvatar(aX,aY,aR){
-      ctx.beginPath();ctx.arc(aX,aY,aR,0,Math.PI*2);ctx.fillStyle=profile.color+"18";ctx.fill();
+      ctx.save();
+      ctx.beginPath();ctx.arc(aX,aY,aR,0,Math.PI*2);ctx.clip();
+      if(avatarImg){
+        // Fill circle with photo, preserving aspect ratio (cover behaviour)
+        const side=aR*2;
+        const iW=avatarImg.naturalWidth,iH=avatarImg.naturalHeight;
+        const scale=Math.max(side/iW,side/iH);
+        const dW=iW*scale,dH=iH*scale;
+        ctx.drawImage(avatarImg,aX-dW/2,aY-dH/2,dW,dH);
+      } else {
+        ctx.fillStyle=profile.color+"18";ctx.fill();
+        ctx.restore();
+        ctx.save();
+        ctx.beginPath();ctx.arc(aX,aY,aR,0,Math.PI*2);
+        ctx.strokeStyle=profile.color+"70";ctx.lineWidth=3;ctx.stroke();
+        ctx.font=`bold ${aR*.82}px Inter,Arial`;ctx.fillStyle=profile.color;
+        ctx.textAlign="center";ctx.textBaseline="middle";
+        ctx.fillText(ini(profile.name),aX,aY);
+        ctx.textBaseline="alphabetic";
+      }
+      ctx.restore();
+      // Ring over photo
+      ctx.beginPath();ctx.arc(aX,aY,aR,0,Math.PI*2);
       ctx.strokeStyle=profile.color+"70";ctx.lineWidth=3;ctx.stroke();
-      ctx.font=`bold ${aR*.82}px Inter,Arial`;ctx.fillStyle=profile.color;ctx.textAlign="center";ctx.fillText(ini(profile.name),aX,aY+aR*.3);
     }
 
     // ── Shared: name + handle ──
@@ -2653,6 +2694,7 @@ function ScoreCardModal({profile,T,onClose}){
       // Bottom color band
       ctx.fillStyle=topBand;ctx.fillRect(0,H-12,W,12);
     }
+  })(); // end async IIFE
   },[profile]);
 
   // Pre-encode share assets right after canvas finishes drawing.
