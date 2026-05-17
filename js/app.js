@@ -1392,6 +1392,14 @@ function GroupChatScreen({group,myProfile,profiles,T,onBack,onSendGroup,onUpdate
   const [showAddModal,setShowAddModal]=useState(false);
   const [editingDesc,setEditingDesc]=useState(false);
   const [descDraft,setDescDraft]=useState(group.description||"");
+  const [showEmoji,setShowEmoji]=useState(false);
+  const inputRef=useRef(null);
+  const EMOJI_QUICK=["😀","😂","🥰","😎","🤔","😢","😡","🔥","👍","👎","❤️","💯","🎉","✅","🙏","💪","🤣","😍","🥳","👏","🫡","💀","🤯","😭","🤝","💬","🚀","⭐","🎯","💡"];
+  function addEmoji(e){setTxt(prev=>prev+e);inputRef.current?.focus();}
+  function toggleEmoji(){
+    if(!showEmoji){inputRef.current?.blur();setShowEmoji(true);}
+    else{setShowEmoji(false);setTimeout(()=>inputRef.current?.focus(),50);}
+  }
   const endRef=useRef(null);
   const msgs=group.messages||[];
   const members=(group.members||[]).map(id=>profiles.find(p=>p.id===id)||{id,name:"Unknown",color:AC});
@@ -1433,6 +1441,7 @@ function GroupChatScreen({group,myProfile,profiles,T,onBack,onSendGroup,onUpdate
       <div style={{width:40,height:40,borderRadius:"50%",background:`linear-gradient(135deg,${AC}40,${AC}18)`,border:`1.5px solid ${AC}50`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0,cursor:"pointer"}} onClick={()=>setShowMembers(v=>!v)}>👥</div>
       <div style={{flex:1,minWidth:0,cursor:"pointer"}} onClick={()=>setShowMembers(v=>!v)}>
         <div style={{fontWeight:700,fontSize:15,color:T.txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{group.name}</div>
+          <div style={{fontSize:9,color:T.mu,fontFamily:"'JetBrains Mono',monospace",letterSpacing:".04em"}}>LOCAL GROUP</div>
         <div style={{fontSize:10,color:T.mu,marginTop:1}}>
           {group.description
             ?<span style={{color:T.mu,fontStyle:"italic"}}>{group.description}</span>
@@ -1512,9 +1521,14 @@ function GroupChatScreen({group,myProfile,profiles,T,onBack,onSendGroup,onUpdate
       <div ref={endRef}/>
     </div>
 
-    {/* Input */}
-    <div style={{padding:"10px 14px",paddingBottom:"max(14px,env(safe-area-inset-bottom))",borderTop:`1px solid ${T.b1}`,background:T.nav,display:"flex",gap:10,alignItems:"center",flexShrink:0}}>
-      <input value={txt} onChange={e=>setTxt(e.target.value)} onKeyDown={e=>e.key==="Enter"&&send()} placeholder={`Message ${group.name}…`} style={{flex:1,padding:"12px 16px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:24,color:T.txt,fontSize:14,outline:"none"}}/>
+    {/* Emoji tray — shown above input bar when toggled */}
+    {showEmoji&&<div style={{borderTop:`1px solid ${T.b1}`,background:T.nav,padding:"10px 14px",display:"flex",flexWrap:"wrap",gap:6,maxHeight:160,overflowY:"auto",flexShrink:0}}>
+      {EMOJI_QUICK.map(e=><button key={e} onClick={()=>addEmoji(e)} style={{fontSize:24,background:"none",padding:"2px 4px",borderRadius:6,border:"none"}}>{e}</button>)}
+    </div>}
+    {/* Input bar */}
+    <div style={{padding:"10px 14px",paddingBottom:"max(14px,env(safe-area-inset-bottom))",borderTop:`1px solid ${T.b1}`,background:T.nav,display:"flex",gap:8,alignItems:"center",flexShrink:0}}>
+      <button onClick={toggleEmoji} style={{width:36,height:36,borderRadius:"50%",background:showEmoji?`${myProfile.color}20`:T.faint,border:`1px solid ${showEmoji?myProfile.color:T.b1}`,color:showEmoji?myProfile.color:T.mu,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>😊</button>
+      <input ref={inputRef} value={txt} onChange={e=>setTxt(e.target.value)} onKeyDown={e=>e.key==="Enter"&&send()} onFocus={()=>setShowEmoji(false)} placeholder={`Message ${group.name}…`} style={{flex:1,padding:"12px 16px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:24,color:T.txt,fontSize:14,outline:"none"}}/>
       <button onClick={send} style={{width:42,height:42,borderRadius:"50%",background:txt.trim()?`linear-gradient(135deg,${myProfile.color}dd,${myProfile.color}99)`:T.faint,display:"flex",alignItems:"center",justifyContent:"center",color:txt.trim()?"#fff":T.mu,flexShrink:0,transition:"background .15s"}}><SendIcon/></button>
     </div>
 
@@ -3458,7 +3472,11 @@ function App(){
           if(!msgsByConv[cid])msgsByConv[cid]={id:cid,oid:otherId,messages:[]};
           msgsByConv[cid].messages.push({sid:m.sender_id,txt:m.text,ts:new Date(m.created_at).getTime(),read:m.read,status:m.status||"delivered",dbId:m.id});
         });
-        setConvs(Object.values(msgsByConv));
+        // Object.values already deduplicated by cid via the msgsByConv map
+        const convList=Object.values(msgsByConv);
+        // Sort messages within each conv by timestamp
+        convList.forEach(c=>c.messages.sort((a,b)=>a.ts-b.ts));
+        setConvs(convList);
       }
 
       // ── Real-time subscriptions (unique per user so re-login gets fresh channels) ──
@@ -3484,7 +3502,19 @@ function App(){
         const otherId=m.sender_id===uid?m.receiver_id:m.sender_id;
         const cid=[uid,otherId].sort().join("_");
         const newMsg={sid:m.sender_id,txt:m.text,ts:new Date(m.created_at).getTime(),read:m.read,status:m.status||"delivered",dbId:m.id};
-        setConvs(prev=>{const ex=prev.find(c=>c.id===cid);if(ex)return prev.map(c=>c.id===cid?{...c,messages:[...c.messages.filter(x=>x.dbId!==newMsg.dbId),newMsg]}:c);return[...prev,{id:cid,oid:otherId,messages:[newMsg]}];});
+        setConvs(prev=>{
+          // Merge into existing conv or create new one — deduplicate messages by dbId
+          const ex=prev.find(c=>c.id===cid);
+          let next;
+          if(ex){
+            next=prev.map(c=>c.id===cid?{...c,messages:[...c.messages.filter(x=>x.dbId!==newMsg.dbId),newMsg]}:c);
+          } else {
+            next=[...prev,{id:cid,oid:otherId,messages:[newMsg]}];
+          }
+          // Deduplicate convs by cid — prevents double badge counting
+          const seen=new Set();
+          return next.filter(c=>{if(seen.has(c.id))return false;seen.add(c.id);return true;});
+        });
         setActiveChat(prev=>prev&&prev.id===cid?{...prev,messages:[...prev.messages.filter(x=>x.dbId!==newMsg.dbId),newMsg]}:prev);
       }).subscribe();
 
@@ -4030,9 +4060,13 @@ function App(){
   // Active chat = full screen
   if(activeGroup)return<GroupChatScreen group={activeGroup} myProfile={profile} profiles={profiles} T={T} onBack={()=>setActiveGroup(null)} onSendGroup={handleSendGroup} onUpdateGroup={handleUpdateGroup} onDeleteGroup={handleDeleteGroup} onViewProfile={p=>setViewT(p)}/>;
   if(activeChat){
-    // Profile modal overlays chat — closing it returns to chat without losing state
+    // Always re-resolve `other` from current profiles at render time.
+    // The object stored in activeChat may be stale (set before profiles hydrated).
+    const freshOther=profiles.find(p=>p.id===activeChat.oid)||activeChat.other;
+    const freshConv=freshOther?{...activeChat,other:freshOther}:null;
+    if(!freshConv)return null; // profiles not hydrated yet — wait silently
     return<>
-      <ChatScreen conv={activeChat} myProfile={profile} profiles={profiles} T={T} onBack={()=>setActiveChat(null)} onSend={handleSend} onMarkRead={handleMarkRead} onClearChat={handleClearChat} onBlockUser={(uid)=>{handleBlock(uid);setActiveChat(null);}} onReportUser={(p)=>setReportT(p)} onViewProfile={p=>setViewT(p)}/>
+      <ChatScreen conv={freshConv} myProfile={profile} profiles={profiles} T={T} onBack={()=>setActiveChat(null)} onSend={handleSend} onMarkRead={handleMarkRead} onClearChat={handleClearChat} onBlockUser={(uid)=>{handleBlock(uid);setActiveChat(null);}} onReportUser={(p)=>setReportT(p)} onViewProfile={p=>setViewT(p)}/>
       {viewT&&<ProfileModal profile={viewT} myId={profile.id} following={following} profiles={profiles} T={T} onClose={()=>setViewT(null)} onRate={handleRate} onFollow={handleFollow} onUnfollow={handleUnfollow} onBlock={handleBlock} onReport={setReportT} onMsg={p=>{setViewT(null);handleMsg(p);}} onViewOther={p=>setViewT(p)}/>}
       {rateT&&<RateModal target={rateT.profile} raterId={profile.id} existing={rateT.existing} T={T} onClose={()=>setRateT(null)} onSubmit={handleSubmit}/>}
       {reportT&&<ReportModal target={reportT} T={T} onClose={()=>setReportT(null)} onSubmit={handleReport}/>}
