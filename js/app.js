@@ -1441,7 +1441,6 @@ function GroupChatScreen({group,myProfile,profiles,T,onBack,onSendGroup,onUpdate
       <div style={{width:40,height:40,borderRadius:"50%",background:`linear-gradient(135deg,${AC}40,${AC}18)`,border:`1.5px solid ${AC}50`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0,cursor:"pointer"}} onClick={()=>setShowMembers(v=>!v)}>👥</div>
       <div style={{flex:1,minWidth:0,cursor:"pointer"}} onClick={()=>setShowMembers(v=>!v)}>
         <div style={{fontWeight:700,fontSize:15,color:T.txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{group.name}</div>
-          <div style={{fontSize:9,color:T.mu,fontFamily:"'JetBrains Mono',monospace",letterSpacing:".04em"}}>LOCAL GROUP</div>
         <div style={{fontSize:10,color:T.mu,marginTop:1}}>
           {group.description
             ?<span style={{color:T.mu,fontStyle:"italic"}}>{group.description}</span>
@@ -1505,31 +1504,44 @@ function GroupChatScreen({group,myProfile,profiles,T,onBack,onSendGroup,onUpdate
         const mine=m.sid===myProfile.id;
         const sender=members.find(p=>p.id===m.sid)||{name:"?",color:AC};
         const showName=!mine&&(i===0||msgs[i-1]?.sid!==m.sid);
-        return<div key={i} style={{display:"flex",flexDirection:mine?"row-reverse":"row",gap:8,alignItems:"flex-end"}}>
-          {!mine&&<div style={{width:28,flexShrink:0}}>
-            {showName&&<div onClick={()=>sender.id&&onViewProfile&&onViewProfile(sender)} style={{width:28,height:28,borderRadius:"50%",background:`${sender.color||AC}18`,border:`1.5px solid ${sender.color||AC}40`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:8,fontWeight:700,color:sender.color||AC,overflow:"hidden",cursor:"pointer"}}>
-              {sender.photo?<img src={sender.photo} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:ini(sender.name)}
-            </div>}
+        const prevMsg=msgs[i-1];
+        const mDate=m.ts?new Date(m.ts):null;
+        const pDate=prevMsg?.ts?new Date(prevMsg.ts):null;
+        const showDate=mDate&&(!pDate||mDate.toDateString()!==pDate.toDateString());
+        const dateLabel=mDate?formatDateLabel(mDate):"";
+        return<React.Fragment key={m.ts+"_"+i}>
+          {showDate&&<div style={{display:"flex",alignItems:"center",gap:8,margin:"8px 0"}}>
+            <div style={{flex:1,height:1,background:T.b1}}/>
+            <div style={{fontSize:10,color:T.mu,background:T.faint,borderRadius:8,padding:"3px 10px",fontFamily:"'JetBrains Mono',monospace",fontWeight:600,letterSpacing:".04em",flexShrink:0}}>{dateLabel}</div>
+            <div style={{flex:1,height:1,background:T.b1}}/>
           </div>}
-          <div style={{maxWidth:"74%"}}>
-            {showName&&<div style={{fontSize:10,color:sender.color||AC,fontWeight:600,marginBottom:2,paddingLeft:4}}>{sender.name}</div>}
-            <div style={{background:mine?`linear-gradient(135deg,${myProfile.color}dd,${myProfile.color}99)`:T.card,border:mine?"none":`1px solid ${T.b1}`,borderRadius:mine?"18px 18px 4px 18px":"18px 18px 18px 4px",padding:"10px 14px",color:mine?"#fff":T.txt,fontSize:14,lineHeight:1.5,wordBreak:"break-word"}}>{m.txt}</div>
-            <div style={{fontSize:9,color:T.mu,marginTop:3,textAlign:mine?"right":"left",fontFamily:"'JetBrains Mono',monospace",paddingLeft:4,paddingRight:4}}>{ago(m.ts)}</div>
+          <div style={{display:"flex",flexDirection:mine?"row-reverse":"row",gap:8,alignItems:"flex-end"}}>
+            {!mine&&<div style={{width:28,flexShrink:0}}>
+              {showName&&<div onClick={()=>sender.id&&onViewProfile&&onViewProfile(sender)} style={{width:28,height:28,borderRadius:"50%",background:`${sender.color||AC}18`,border:`1.5px solid ${sender.color||AC}40`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:8,fontWeight:700,color:sender.color||AC,overflow:"hidden",cursor:"pointer"}}>
+                {sender.photo?<img src={sender.photo} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:ini(sender.name)}
+              </div>}
+            </div>}
+            <div style={{maxWidth:"74%"}}>
+              {showName&&<div style={{fontSize:10,color:sender.color||AC,fontWeight:600,marginBottom:2,paddingLeft:4}}>{sender.name}</div>}
+              <div style={{background:mine?`linear-gradient(135deg,${myProfile.color}dd,${myProfile.color}99)`:T.card,border:mine?"none":`1px solid ${T.b1}`,borderRadius:mine?"18px 18px 4px 18px":"18px 18px 18px 4px",padding:"10px 14px",color:mine?"#fff":T.txt,fontSize:14,lineHeight:1.5,wordBreak:"break-word"}}>{m.txt}</div>
+              <div style={{fontSize:9,color:T.mu,marginTop:3,textAlign:mine?"right":"left",fontFamily:"'JetBrains Mono',monospace",paddingLeft:4,paddingRight:4}}>{fmtTime(m.ts)}</div>
+            </div>
           </div>
-        </div>;
+        </React.Fragment>;
       })}
       <div ref={endRef}/>
     </div>
 
-    {/* Emoji tray — shown above input bar when toggled */}
-    {showEmoji&&<div style={{borderTop:`1px solid ${T.b1}`,background:T.nav,padding:"10px 14px",display:"flex",flexWrap:"wrap",gap:6,maxHeight:160,overflowY:"auto",flexShrink:0}}>
-      {EMOJI_QUICK.map(e=><button key={e} onClick={()=>addEmoji(e)} style={{fontSize:24,background:"none",padding:"2px 4px",borderRadius:6,border:"none"}}>{e}</button>)}
-    </div>}
-    {/* Input bar */}
-    <div style={{padding:"10px 14px",paddingBottom:"max(14px,env(safe-area-inset-bottom))",borderTop:`1px solid ${T.b1}`,background:T.nav,display:"flex",gap:8,alignItems:"center",flexShrink:0}}>
-      <button onClick={toggleEmoji} style={{width:36,height:36,borderRadius:"50%",background:showEmoji?`${myProfile.color}20`:T.faint,border:`1px solid ${showEmoji?myProfile.color:T.b1}`,color:showEmoji?myProfile.color:T.mu,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>😊</button>
-      <input ref={inputRef} value={txt} onChange={e=>setTxt(e.target.value)} onKeyDown={e=>e.key==="Enter"&&send()} onFocus={()=>setShowEmoji(false)} placeholder={`Message ${group.name}…`} style={{flex:1,padding:"12px 16px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:24,color:T.txt,fontSize:14,outline:"none"}}/>
-      <button onClick={send} style={{width:42,height:42,borderRadius:"50%",background:txt.trim()?`linear-gradient(135deg,${myProfile.color}dd,${myProfile.color}99)`:T.faint,display:"flex",alignItems:"center",justifyContent:"center",color:txt.trim()?"#fff":T.mu,flexShrink:0,transition:"background .15s"}}><SendIcon/></button>
+    {/* Input area — emoji tray + input bar, same pattern as ChatScreen */}
+    <div style={{background:T.nav,flexShrink:0}}>
+      {showEmoji&&<div style={{borderTop:`1px solid ${T.b1}`,display:"flex",flexWrap:"wrap",padding:"8px 10px",height:180,overflowY:"auto",gap:2,alignContent:"flex-start"}}>
+        {EMOJI_QUICK.map((e,i)=><button key={i} onClick={()=>addEmoji(e)} style={{background:"none",fontSize:24,width:40,height:40,borderRadius:8,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{e}</button>)}
+      </div>}
+      <div style={{padding:"10px 14px",paddingBottom:"max(14px,env(safe-area-inset-bottom))",borderTop:`1px solid ${T.b1}`,display:"flex",gap:8,alignItems:"center"}}>
+        <button onClick={toggleEmoji} style={{width:38,height:38,borderRadius:"50%",background:showEmoji?`${myProfile.color}22`:T.faint,border:`1px solid ${showEmoji?myProfile.color+"50":T.b1}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>😊</button>
+        <input ref={inputRef} value={txt} onChange={e=>{setTxt(e.target.value);if(showEmoji)setShowEmoji(false);}} onFocus={()=>setShowEmoji(false)} onKeyDown={e=>e.key==="Enter"&&send()} placeholder={`Message ${group.name}…`} style={{flex:1,padding:"12px 16px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:24,color:T.txt,fontSize:14,outline:"none"}}/>
+        <button onClick={send} style={{width:42,height:42,borderRadius:"50%",background:txt.trim()?`linear-gradient(135deg,${myProfile.color}dd,${myProfile.color}99)`:T.faint,display:"flex",alignItems:"center",justifyContent:"center",color:txt.trim()?"#fff":T.mu,flexShrink:0,transition:"background .15s"}}><SendIcon/></button>
+      </div>
     </div>
 
     {/* Add Members Modal */}
@@ -4058,15 +4070,27 @@ function App(){
   if(!profile&&profileFetched)return<ProfileSetup user={authUser} T={T} onDone={handleProfileCreated}/>;
 
   // Active chat = full screen
-  if(activeGroup)return<GroupChatScreen group={activeGroup} myProfile={profile} profiles={profiles} T={T} onBack={()=>setActiveGroup(null)} onSendGroup={handleSendGroup} onUpdateGroup={handleUpdateGroup} onDeleteGroup={handleDeleteGroup} onViewProfile={p=>setViewT(p)}/>;
-  if(activeChat){
-    // Always re-resolve `other` from current profiles at render time.
-    // The object stored in activeChat may be stale (set before profiles hydrated).
-    const freshOther=profiles.find(p=>p.id===activeChat.oid)||activeChat.other;
-    const freshConv=freshOther?{...activeChat,other:freshOther}:null;
-    if(!freshConv)return null; // profiles not hydrated yet — wait silently
+  if(activeGroup||activeChat){
+    // Resolve chat conv — show loading spinner if profiles not hydrated yet
+    let chatNode=null;
+    if(activeChat){
+      const freshOther=profiles.find(p=>p.id===activeChat.oid)||activeChat.other;
+      if(!freshOther){
+        chatNode=<div style={{position:"fixed",inset:0,zIndex:400,background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16}}>
+          <div style={{width:36,height:36,border:`3px solid ${T.b1}`,borderTopColor:AC,borderRadius:"50%",animation:"spin .55s linear infinite"}}/>
+          <div style={{fontSize:13,color:T.mu}}>Opening chat…</div>
+        </div>;
+      } else {
+        chatNode=<ChatScreen conv={{...activeChat,other:freshOther}} myProfile={profile} profiles={profiles} T={T} onBack={()=>setActiveChat(null)} onSend={handleSend} onMarkRead={handleMarkRead} onClearChat={handleClearChat} onBlockUser={(uid)=>{handleBlock(uid);setActiveChat(null);}} onReportUser={(p)=>setReportT(p)} onViewProfile={p=>setViewT(p)}/>;
+      }
+    }
+    // viewT/rateT/reportT overlays work in BOTH personal and group chat contexts.
+    // Previously viewT was only rendered in the activeChat branch — group member
+    // profiles could not be opened because GroupChatScreen's onViewProfile set viewT
+    // but the overlay was never rendered (group branch was a bare return).
     return<>
-      <ChatScreen conv={freshConv} myProfile={profile} profiles={profiles} T={T} onBack={()=>setActiveChat(null)} onSend={handleSend} onMarkRead={handleMarkRead} onClearChat={handleClearChat} onBlockUser={(uid)=>{handleBlock(uid);setActiveChat(null);}} onReportUser={(p)=>setReportT(p)} onViewProfile={p=>setViewT(p)}/>
+      {activeGroup&&<GroupChatScreen group={activeGroup} myProfile={profile} profiles={profiles} T={T} onBack={()=>setActiveGroup(null)} onSendGroup={handleSendGroup} onUpdateGroup={handleUpdateGroup} onDeleteGroup={handleDeleteGroup} onViewProfile={p=>setViewT(p)}/>}
+      {chatNode}
       {viewT&&<ProfileModal profile={viewT} myId={profile.id} following={following} profiles={profiles} T={T} onClose={()=>setViewT(null)} onRate={handleRate} onFollow={handleFollow} onUnfollow={handleUnfollow} onBlock={handleBlock} onReport={setReportT} onMsg={p=>{setViewT(null);handleMsg(p);}} onViewOther={p=>setViewT(p)}/>}
       {rateT&&<RateModal target={rateT.profile} raterId={profile.id} existing={rateT.existing} T={T} onClose={()=>setRateT(null)} onSubmit={handleSubmit}/>}
       {reportT&&<ReportModal target={reportT} T={T} onClose={()=>setReportT(null)} onSubmit={handleReport}/>}
