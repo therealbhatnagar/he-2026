@@ -1135,6 +1135,9 @@ function ChatScreen({conv,myProfile,profiles,T,onBack,onSend,onMarkRead,onClearC
     setRecentEmojis(prev=>{const updated=[e,...prev.filter(x=>x!==e)].slice(0,32);localStorage.setItem("he_recent_emojis",JSON.stringify(updated));return updated;});
   }
 
+  // Guard: never render a broken chat — conv.other missing = black screen
+  if(!conv||!conv.other){return null;}
+
   return<div style={{position:"fixed",inset:0,zIndex:400,background:T.bg,display:"flex",flexDirection:"column"}}>
     {/* Header */}
     <div style={{background:T.nav,borderBottom:`1px solid ${T.b1}`,padding:"12px 16px",paddingTop:"max(12px,env(safe-area-inset-top))",display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
@@ -3489,8 +3492,12 @@ function App(){
         const m=payload.new;
         const otherId=m.sender_id===uid?m.receiver_id:m.sender_id;
         const cid=[uid,otherId].sort().join("_");
-        setConvs(prev=>prev.map(c=>c.id===cid?{...c,messages:c.messages.map(x=>x.dbId===m.id?{...x,read:m.read,status:m.status||x.status}:x)}:c));
-        setActiveChat(prev=>prev&&prev.id===cid?{...prev,messages:prev.messages.map(x=>x.dbId===m.id?{...x,read:m.read,status:m.status||x.status}:x)}:prev);
+        // Never let a DB event downgrade read:true → read:false in local state.
+        // This prevents the stuck-badge race where the UPDATE event arrives before
+        // our own DB write completes, overwriting handleMarkRead's local optimistic update.
+        const safeRead=(localRead)=>localRead===true?true:m.read;
+        setConvs(prev=>prev.map(c=>c.id===cid?{...c,messages:c.messages.map(x=>x.dbId===m.id?{...x,read:safeRead(x.read),status:m.status||x.status}:x)}:c));
+        setActiveChat(prev=>prev&&prev.id===cid?{...prev,messages:prev.messages.map(x=>x.dbId===m.id?{...x,read:safeRead(x.read),status:m.status||x.status}:x)}:prev);
       }).subscribe();
 
       sb.channel(`rt_follows_${uid}`).on("postgres_changes",{event:"*",schema:"public",table:"follows"},async()=>{
@@ -3870,9 +3877,11 @@ function App(){
   }
 
   function handleMsg(other){
+    if(!other||!other.id)return;
     const cid=[profile.id,other.id].sort().join("_");
     const ex=convs.find(c=>c.id===cid)||{id:cid,oid:other.id,messages:[]};
-    setActiveChat({...ex,other});
+    const resolvedOther=profiles.find(p=>p.id===other.id)||other;
+    setActiveChat({...ex,other:resolvedOther});
   }
 
   async function handleSend(cid,txt){
@@ -3892,16 +3901,15 @@ function App(){
 
   async function handleMarkRead(cid,otherId){
     if(!cid)return;
-    // Force all incoming messages to read:true in local state immediately
-    // This fixes "stuck badge" where DB already has read:true but local state disagrees
+    // Resolve otherId from convs state if not passed (prevents stuck badge on reload)
+    const resolvedOtherId=otherId||convs.find(c=>c.id===cid)?.oid;
     const markRead=msgs=>msgs.map(m=>m.sid===profile.id?m:{...m,read:true,status:"seen"});
     setConvs(prev=>prev.map(c=>c.id===cid?{...c,messages:markRead(c.messages||[])}:c));
     setActiveChat(prev=>prev&&prev.id===cid?{...prev,messages:markRead(prev.messages||[])}:prev);
-    if(!otherId)return;
-    // Fire DB update for any that aren't yet marked in backend
+    if(!resolvedOtherId)return;
     await sb.from("messages")
       .update({read:true,status:"seen"})
-      .eq("sender_id",otherId)
+      .eq("sender_id",resolvedOtherId)
       .eq("receiver_id",profile.id)
       .eq("read",false);
   }
