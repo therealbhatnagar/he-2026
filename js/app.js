@@ -1648,7 +1648,7 @@ function InboxTab({convs,profiles,myProfile,following,T,onOpen,onDeleteConv,onVi
       {myGroups.map(g=>{
         const last=g.messages?.at(-1);
         const memberNames=(g.members||[]).slice(0,3).map(id=>{const p=profiles.find(x=>x.id===id);return p?.name?.split(" ")[0]||"?";}).join(", ");
-        const unread=(g.messages||[]).filter(m=>m.sid!==myProfile.id&&!m.read).length||0;
+        const unread=(g.messages||[]).filter(m=>m.sid!==myProfile.id&&m.read===false).length||0;
         return<div key={g.id} onClick={()=>onOpenGroup(g)} style={{display:"flex",alignItems:"center",gap:13,padding:"12px 16px",borderBottom:`1px solid ${T.b1}`,cursor:"pointer",transition:"background .12s"}} onMouseEnter={e=>e.currentTarget.style.background=T.faint} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
           {/* Group icon */}
           <div style={{width:52,height:52,borderRadius:"50%",background:`linear-gradient(135deg,${AC}30,${AC}14)`,border:`1.5px solid ${AC}40`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0,position:"relative"}}>
@@ -3158,6 +3158,7 @@ function App(){
 
   // ── Refs for popstate handler — avoids stale closure on all modal states ──
   const viewTRef=useRef(null);
+  const activeGroupRef=useRef(null);
   const rateTRef=useRef(null);
   const activeChatRef=useRef(null);
   const activeGroupRef=useRef(null);
@@ -3169,6 +3170,7 @@ function App(){
   const clearingRatingsRef=useRef(false); // blocks realtime re-fetch during category clear
 
   useEffect(()=>{viewTRef.current=viewT;},[viewT]);
+  useEffect(()=>{activeGroupRef.current=activeGroup;},[activeGroup]);
   useEffect(()=>{rateTRef.current=rateT;},[rateT]);
   useEffect(()=>{activeChatRef.current=activeChat;},[activeChat]);
   useEffect(()=>{activeGroupRef.current=activeGroup;},[activeGroup]);
@@ -3183,7 +3185,7 @@ function App(){
     window.history.pushState({he:"app"},"");
     function onPop(){
       if(activeGroupRef.current){setActiveGroup(null);window.history.pushState({he:"app"},"");return;}
-      if(activeChatRef.current&&viewTRef.current){setViewT(null);window.history.pushState({he:"app"},"");return;}
+      if((activeChatRef.current||activeGroupRef.current)&&viewTRef.current){setViewT(null);window.history.pushState({he:"app"},"");return;}
       if(activeChatRef.current){setActiveChat(null);window.history.pushState({he:"app"},"");return;}
       if(viewTRef.current){setViewT(null);window.history.pushState({he:"app"},"");return;}
       if(rateTRef.current){setRateT(null);window.history.pushState({he:"app"},"");return;}
