@@ -280,7 +280,7 @@ function Toast({msg,T}){return msg?<div style={{position:"fixed",bottom:92,left:
 
 function Overlay({onBg,children,T,wide,bottom}){
   if(bottom) return<div onClick={e=>e.target===e.currentTarget&&onBg()} style={{position:"fixed",inset:0,zIndex:300,background:T.ov,backdropFilter:"blur(8px)",display:"flex",alignItems:"flex-end"}}>
-    <div style={{background:T.card,borderRadius:"22px 22px 0 0",padding:"20px 18px 34px",width:"100%",maxHeight:"90vh",overflowY:"auto",animation:"slideUp .25s ease",border:`1px solid ${T.b1}`,borderBottom:"none"}}>
+    <div style={{background:T.card,borderRadius:"22px 22px 0 0",padding:"20px 18px 34px",width:"100%",maxHeight:"90vh",overflowY:"auto",WebkitOverflowScrolling:"touch",animation:"slideUp .25s ease",border:`1px solid ${T.b1}`,borderBottom:"none"}}>
       <div style={{width:36,height:4,background:T.b2,borderRadius:99,margin:"0 auto 20px"}}/>
       {children}
     </div>
@@ -822,10 +822,45 @@ function RateModal({target,raterId,raterName,existing,T,onClose,onSubmit}){
             <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:13,fontWeight:800,color:v>=80?"#4ade80":v>=50?col:T.mu,background:v>=80?"#4ade8018":v>=50?`${col}18`:T.faint,border:`1px solid ${v>=80?"#4ade8030":v>=50?col+"30":T.b1}`,borderRadius:6,padding:"2px 9px",minWidth:40,textAlign:"center",transition:"all .15s"}}>{v}</div>
           </div>
           {c.sub&&<div style={{fontSize:11,color:T.mu,marginBottom:6,opacity:.75}}>{c.sub}</div>}
-          <div style={{position:"relative",height:8,background:T.b1,borderRadius:99,overflow:"hidden",cursor:"pointer"}}>
-            <div style={{position:"absolute",left:0,top:0,bottom:0,width:`${pct*100}%`,background:`linear-gradient(90deg,${col}99,${col})`,borderRadius:99,transition:"width .08s"}}/>
+          {/* Custom slider — works on iOS Safari, Android, desktop.
+              Native <input type="range"> inside overflow:auto on iOS Safari
+              loses touchmove events because the scroll container steals them.
+              This custom implementation uses pointer events with a touch fallback. */}
+          <div
+            style={{position:"relative",height:36,display:"flex",alignItems:"center",cursor:"pointer",touchAction:"none",userSelect:"none"}}
+            onPointerDown={e=>{
+              e.currentTarget.setPointerCapture(e.pointerId);
+              const r=e.currentTarget.getBoundingClientRect();
+              const newV=Math.round(Math.max(0,Math.min(100,(e.clientX-r.left)/r.width*100)));
+              setVals(prev=>({...prev,[c.id]:newV}));
+            }}
+            onPointerMove={e=>{
+              if(e.buttons===0)return;
+              const r=e.currentTarget.getBoundingClientRect();
+              const newV=Math.round(Math.max(0,Math.min(100,(e.clientX-r.left)/r.width*100)));
+              setVals(prev=>({...prev,[c.id]:newV}));
+            }}
+            onTouchStart={e=>{
+              // iOS Safari fallback — pointer events may not fire inside overflow:auto
+              e.stopPropagation();
+              const r=e.currentTarget.getBoundingClientRect();
+              const newV=Math.round(Math.max(0,Math.min(100,(e.touches[0].clientX-r.left)/r.width*100)));
+              setVals(prev=>({...prev,[c.id]:newV}));
+            }}
+            onTouchMove={e=>{
+              e.preventDefault();e.stopPropagation();
+              const r=e.currentTarget.getBoundingClientRect();
+              const newV=Math.round(Math.max(0,Math.min(100,(e.touches[0].clientX-r.left)/r.width*100)));
+              setVals(prev=>({...prev,[c.id]:newV}));
+            }}
+          >
+            {/* Track */}
+            <div style={{position:"absolute",left:0,right:0,height:8,background:T.b1,borderRadius:99,overflow:"hidden"}}>
+              <div style={{position:"absolute",left:0,top:0,bottom:0,width:`${pct*100}%`,background:`linear-gradient(90deg,${col}99,${col})`,borderRadius:99}}/>
+            </div>
+            {/* Thumb */}
+            <div style={{position:"absolute",left:`calc(${pct*100}% - 11px)`,width:22,height:22,borderRadius:"50%",background:col,boxShadow:`0 0 0 3px ${col}30,0 2px 6px rgba(0,0,0,.35)`,transition:"left .04s",zIndex:1}}/>
           </div>
-          <input type="range" min={0} max={100} value={v} onChange={e=>setVals(prev=>({...prev,[c.id]:+e.target.value}))} style={{width:"100%",accentColor:col,cursor:"pointer",marginTop:-4,opacity:0,position:"relative",zIndex:2,height:16}}/>
         </div>;
       })}
     </div>
@@ -1224,8 +1259,8 @@ function ChatScreen({conv,myProfile,profiles,T,onBack,onSend,onMarkRead,onClearC
       <div style={{padding:"10px 14px",paddingBottom:"max(14px,env(safe-area-inset-bottom))",borderTop:`1px solid ${T.b1}`,display:"flex",gap:8,alignItems:"center"}}>
         <button onClick={toggleEmoji} style={{width:38,height:38,borderRadius:"50%",background:showEmoji?`${myProfile.color}22`:T.faint,border:`1px solid ${showEmoji?myProfile.color+"50":T.b1}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>😊</button>
         <input ref={inputRef} value={txt}
-          onChange={e=>{setTxt(e.target.value);if(showEmoji)setShowEmoji(false);}}
-          onFocus={()=>setShowEmoji(false)}
+          onChange={e=>setTxt(e.target.value)}
+          onFocus={()=>{if(showEmoji)setShowEmoji(false);}}
           onKeyDown={e=>e.key==="Enter"&&send()}
           placeholder="Message…"
           style={{flex:1,padding:"12px 16px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:24,color:T.txt,fontSize:14,outline:"none"}}/>
@@ -1395,7 +1430,7 @@ function GroupChatScreen({group,myProfile,profiles,T,onBack,onSendGroup,onUpdate
   const [showEmoji,setShowEmoji]=useState(false);
   const inputRef=useRef(null);
   const EMOJI_QUICK=["😀","😂","🥰","😎","🤔","😢","😡","🔥","👍","👎","❤️","💯","🎉","✅","🙏","💪","🤣","😍","🥳","👏","🫡","💀","🤯","😭","🤝","💬","🚀","⭐","🎯","💡"];
-  function addEmoji(e){setTxt(prev=>prev+e);inputRef.current?.focus();}
+  function addEmoji(e){setTxt(prev=>prev+e);}  // no focus() — that triggers onFocus close
   function toggleEmoji(){
     if(!showEmoji){inputRef.current?.blur();setShowEmoji(true);}
     else{setShowEmoji(false);setTimeout(()=>inputRef.current?.focus(),50);}
@@ -1539,7 +1574,7 @@ function GroupChatScreen({group,myProfile,profiles,T,onBack,onSendGroup,onUpdate
       </div>}
       <div style={{padding:"10px 14px",paddingBottom:"max(14px,env(safe-area-inset-bottom))",borderTop:`1px solid ${T.b1}`,display:"flex",gap:8,alignItems:"center"}}>
         <button onClick={toggleEmoji} style={{width:38,height:38,borderRadius:"50%",background:showEmoji?`${myProfile.color}22`:T.faint,border:`1px solid ${showEmoji?myProfile.color+"50":T.b1}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>😊</button>
-        <input ref={inputRef} value={txt} onChange={e=>{setTxt(e.target.value);if(showEmoji)setShowEmoji(false);}} onFocus={()=>setShowEmoji(false)} onKeyDown={e=>e.key==="Enter"&&send()} placeholder={`Message ${group.name}…`} style={{flex:1,padding:"12px 16px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:24,color:T.txt,fontSize:14,outline:"none"}}/>
+        <input ref={inputRef} value={txt} onChange={e=>setTxt(e.target.value)} onFocus={()=>{if(showEmoji)setShowEmoji(false);}} onKeyDown={e=>e.key==="Enter"&&send()} placeholder={`Message ${group.name}…`} style={{flex:1,padding:"12px 16px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:24,color:T.txt,fontSize:14,outline:"none"}}/>
         <button onClick={send} style={{width:42,height:42,borderRadius:"50%",background:txt.trim()?`linear-gradient(135deg,${myProfile.color}dd,${myProfile.color}99)`:T.faint,display:"flex",alignItems:"center",justifyContent:"center",color:txt.trim()?"#fff":T.mu,flexShrink:0,transition:"background .15s"}}><SendIcon/></button>
       </div>
     </div>
@@ -1639,13 +1674,13 @@ function InboxTab({convs,profiles,myProfile,following,T,onOpen,onDeleteConv,onVi
     {sorted.map((conv,i)=>{
       const other=profiles.find(p=>p.id===conv.oid);if(!other)return null;
       const last=conv.messages?.at(-1);
-      const unread=conv.messages?.filter(m=>m.sid!==myProfile.id&&!m.read).length||0;
+      const unread=conv.messages?.filter(m=>m.sid!==myProfile.id&&m.read===false).length||0;
       const isMenuOpen=menuId===conv.id;
       return<div key={conv.id} style={{position:"relative",borderBottom:`1px solid ${T.b1}`}}>
         {isMenuOpen&&<div onClick={()=>setMenuId(null)} style={{position:"fixed",inset:0,zIndex:10}}/>}
         <div style={{display:"flex",alignItems:"center",gap:13,padding:"13px 16px",transition:"background .12s"}} onMouseEnter={e=>e.currentTarget.style.background=T.faint} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
           <div onClick={()=>onViewProfile&&onViewProfile(other)} style={{cursor:"pointer",flexShrink:0}}>
-            <Ava p={other} size={52} T={T} badge={unread}/>
+            <Ava p={other} size={52} T={T}/>
           </div>
           <div onClick={()=>onOpen(conv,other)} style={{flex:1,minWidth:0,cursor:"pointer"}}>
             <div style={{fontWeight:unread>0?700:500,fontSize:15,color:T.txt}}>{other.name}</div>
