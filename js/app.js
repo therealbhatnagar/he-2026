@@ -40,13 +40,15 @@ let HE_PREFETCHED_SESSION=null;
 let HE_BOOT_READY=false;
 async function HE_BOOT(){
   try{
+    console.log("[BOOT] HE_BOOT start");
     const el=document.getElementById("splash-status");
     if(el)el.textContent="Restoring session…";
     const {data:{session}}=await sb.auth.getSession();
     HE_PREFETCHED_SESSION=session;
+    console.log("[BOOT] HE_BOOT session:",session?"found":"none");
     if(el)el.textContent=session?"Welcome back…":"Ready";
-  }catch(e){console.warn("Pre-boot getSession failed:",e);}
-  finally{HE_BOOT_READY=true;}
+  }catch(e){console.warn("[BOOT] Pre-boot getSession failed:",e);}
+  finally{HE_BOOT_READY=true;console.log("[BOOT] HE_BOOT_READY=true");}
 }
 
 
@@ -3301,9 +3303,7 @@ function App(){
       // ── App open / refresh / PWA resume ───────────────────────────────
       if(event==="INITIAL_SESSION"){
         clearTimeout(splashTimer);
-
-        // Prefer the pre-fetched session (resolved before React mounted).
-        // Falls back to the event session, then attempts getSession() directly.
+        console.log("[BOOT] INITIAL_SESSION — session:",!!session,"prefetched:",!!HE_PREFETCHED_SESSION);
         const effectiveSession=session||HE_PREFETCHED_SESSION;
 
         if(effectiveSession?.user){
@@ -3514,61 +3514,130 @@ function App(){
     }
   }
 
+  // Wraps any promise with a timeout — prevents silent hangs
+  function withTimeout(promise, ms=8000, label="query"){
+    return Promise.race([
+      promise,
+      new Promise((_,reject)=>setTimeout(()=>reject(new Error(`TIMEOUT: ${label} exceeded ${ms}ms`)),ms))
+    ]);
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // loadAppData — 2-TIER BOOT ARCHITECTURE
+  //
+  // TIER 1 (blocks render): Only the 4 small user-specific queries needed
+  //   to show the home screen: follows-out, follows-in, blocks, deleted.
+  //   setAuthLoading(false) fires as soon as these 4 complete (~200ms).
+  //   App is visible and interactive immediately.
+  //
+  // TIER 2 (background, never blocks): Everything else — profiles (full table),
+  //   ratings (full table), notifications, messages, realtime, groups.
+  //   Fires after render. If any of these fail, the app stays open.
+  //
+  // This permanently decouples messaging/social hydration from boot.
+  // ─────────────────────────────────────────────────────────────────────────
   async function loadAppData(myProfile,dl=null){
     const uid=myProfile.id;
     try{
-      // Fetch all app data in parallel — deleted_accounts for filtering orphaned profiles
-      // Group queries run NON-BLOCKING after boot — never stall startup
-      const [profRes,ratRes,followRes,myFollowersRes,blockRes,notifRes,msgRes,delRes]=await Promise.all([
-        sb.from("profiles").select("*"),
-        sb.from("ratings").select("*"),
-        sb.from("follows").select("following_id").eq("follower_id",uid),
-        sb.from("follows").select("follower_id").eq("following_id",uid),
-        sb.from("blocks").select("blocked_id").eq("blocker_id",uid),
-        sb.from("notifications").select("*").eq("target_id",uid).order("created_at",{ascending:false}).limit(60),
-        sb.from("messages").select("*").or(`sender_id.eq.${uid},receiver_id.eq.${uid}`).order("created_at",{ascending:true}),
-        sb.from("deleted_accounts").select("auth_id"),
+
+      // ── TIER 1: Critical user data — renders app ───────────────────────
+      // Only 4 filtered queries. Each has a hard 6s timeout.
+      // Full table scans (profiles, ratings) are NOT here.
+      const safe=p=>p.catch(e=>({data:null,error:e}));
+      const t6=(p)=>safe(withTimeout(p,6000,"tier1"));
+      const [followRes,myFollowersRes,blockRes,delRes]=await Promise.all([
+        t6(sb.from("follows").select("following_id").eq("follower_id",uid)),
+        t6(sb.from("follows").select("follower_id").eq("following_id",uid)),
+        t6(sb.from("blocks").select("blocked_id").eq("blocker_id",uid)),
+        t6(sb.from("deleted_accounts").select("auth_id")),
       ]);
 
-      const deletedIds=new Set((delRes.data||[]).map(d=>d.auth_id));
-      const allRatings=ratRes.data||[];
       const followingIds=(followRes.data||[]).map(r=>r.following_id);
       const followerIds=(myFollowersRes.data||[]).map(r=>r.follower_id);
+      setFollowing(followingIds);
+      setBlocked((blockRes.data||[]).map(r=>r.blocked_id));
+      setProfile(prev=>({...prev,followers_count:followerIds.length,following_count:followingIds.length}));
 
-      // Helper: map a raw ratings row to the app shape
-      const mapRating=r=>({raterId:r.rater_id,raterName:r.rater_name||"",vibe:r.vibe,humor:r.humor,kindness:r.kindness,rizz:r.rizz,loyalty:r.loyalty,drip:r.drip,ts:new Date(r.updated_at).getTime()});
-      // Strip ratings given BY deleted accounts — they no longer count
-      const activeRatings=allRatings.filter(r=>!deletedIds.has(r.rater_id));
+      // ── App renders NOW — user sees home screen ────────────────────────
+      setAuthLoading(false);
+      setDataReady(true);
+      profileLoadingRef.current=false;
+      bootingUserIdRef.current=null;
 
+      // ── TIER 2: Background hydration — never blocks render ─────────────
+      // Fire-and-forget. Each system is isolated. Any failure = silent skip.
+      loadBackgroundData(uid,myProfile,delRes.data||[],dl);
+
+    }catch(e){
+      console.error("loadAppData error:",e);
+    }finally{
+      // Belt-and-suspenders: always unblock even if tier1 throws
+      setAuthLoading(false);
+      setDataReady(true);
+      profileLoadingRef.current=false;
+      bootingUserIdRef.current=null;
+    }
+  }
+
+  // ── TIER 2: Background data — fires after app renders ─────────────────
+  // All systems are independently isolated. One failure never affects others.
+  async function loadBackgroundData(uid,myProfile,deletedRaw,dl){
+    const deletedIds=new Set((deletedRaw||[]).map(d=>d.auth_id));
+
+    // Helper shared across background systems
+    const mapRating=r=>({raterId:r.rater_id,raterName:r.rater_name||"",vibe:r.vibe,humor:r.humor,kindness:r.kindness,rizz:r.rizz,loyalty:r.loyalty,drip:r.drip,ts:new Date(r.updated_at).getTime()});
+    const safe=p=>p.catch(e=>({data:null,error:e}));
+
+    // ── Profiles + ratings (full table — can be slow) ──────────────────
+    try{
+      const [profRes,ratRes]=await Promise.all([
+        safe(sb.from("profiles").select("*")),
+        safe(sb.from("ratings").select("*")),
+      ]);
       if(profRes.data&&!clearingRatingsRef.current){
+        const activeRatings=(ratRes.data||[]).filter(r=>!deletedIds.has(r.rater_id));
         setProfiles(profRes.data
           .filter(p=>!deletedIds.has(p.id))
           .map(p=>({...p,account_type:p.account_type||"personal",ratings:activeRatings.filter(r=>r.target_id===p.id).map(mapRating)}))
         );
       }
+    }catch(e){console.warn("Background profiles/ratings failed:",e);}
 
-      setProfile(prev=>({...prev,followers_count:followerIds.length,following_count:followingIds.length}));
-      setFollowing(followingIds);
-      setBlocked((blockRes.data||[]).map(r=>r.blocked_id));
-      if(notifRes.data)setNotifs(notifRes.data.map(n=>({type:n.type,actorId:n.actor_id,text:n.text,ts:new Date(n.created_at).getTime(),read:n.read})));
+    // ── Notifications ──────────────────────────────────────────────────
+    try{
+      const {data:nd}=await safe(sb.from("notifications").select("*").eq("target_id",uid).order("created_at",{ascending:false}).limit(60));
+      if(nd)setNotifs(nd.map(n=>({type:n.type,actorId:n.actor_id,text:n.text,ts:new Date(n.created_at).getTime(),read:n.read})));
+    }catch(e){console.warn("Background notifs failed:",e);}
 
-      if(msgRes.data){
-        const msgsByConv={};
-        msgRes.data.forEach(m=>{
-          const otherId=m.sender_id===uid?m.receiver_id:m.sender_id;
-          const cid=[uid,otherId].sort().join("_");
-          if(!msgsByConv[cid])msgsByConv[cid]={id:cid,oid:otherId,messages:[]};
-          msgsByConv[cid].messages.push({sid:m.sender_id,txt:m.text,ts:new Date(m.created_at).getTime(),read:m.read,status:m.status||"delivered",dbId:m.id});
+    // ── Messages ───────────────────────────────────────────────────────
+    // Explicit column list avoids schema cache issues after ALTER TABLE
+    try{
+      const {data:md}=await safe(
+        sb.from("messages")
+          .select("id,sender_id,receiver_id,text,read,status,created_at")
+          .or(`sender_id.eq.${uid},receiver_id.eq.${uid}`)
+          .order("created_at",{ascending:true})
+      );
+      if(md){
+        const byConv={};
+        md.forEach(m=>{
+          const oid=m.sender_id===uid?m.receiver_id:m.sender_id;
+          const cid=[uid,oid].sort().join("_");
+          if(!byConv[cid])byConv[cid]={id:cid,oid,messages:[]};
+          byConv[cid].messages.push({sid:m.sender_id,txt:m.text,ts:new Date(m.created_at).getTime(),read:m.read,status:m.status||"sent",dbId:m.id});
         });
-        // Object.values already deduplicated by cid via the msgsByConv map
-        const convList=Object.values(msgsByConv);
-        // Sort messages within each conv by timestamp
+        const convList=Object.values(byConv);
         convList.forEach(c=>c.messages.sort((a,b)=>a.ts-b.ts));
         setConvs(convList);
       }
+    }catch(e){console.warn("Background messages failed:",e);}
 
-      // ── Real-time subscriptions (unique per user so re-login gets fresh channels) ──
-      // 2 realtime channels (Supabase free tier limit)
+    // ── Groups ─────────────────────────────────────────────────────────
+    loadGroupsFromSupabase(uid);
+
+    // ── Realtime subscriptions ─────────────────────────────────────────
+    // Wrapped in try/catch — WebSocket unavailability never blocks anything
+    try{
       sb.channel(`rt_user_${uid}`)
         .on("postgres_changes",{event:"INSERT",schema:"public",table:"messages"},payload=>{
           const m=payload.new;
@@ -3598,7 +3667,10 @@ function App(){
           setNotifs(prev=>[{type:n.type,actorId:n.actor_id,text:n.text,ts:new Date(n.created_at).getTime(),read:false},...prev].slice(0,60));
         })
         .on("postgres_changes",{event:"*",schema:"public",table:"follows"},async()=>{
-          const [{data:fol},{data:fwd}]=await Promise.all([sb.from("follows").select("following_id").eq("follower_id",uid),sb.from("follows").select("follower_id").eq("following_id",uid)]);
+          const [{data:fol},{data:fwd}]=await Promise.all([
+            sb.from("follows").select("following_id").eq("follower_id",uid),
+            sb.from("follows").select("follower_id").eq("following_id",uid),
+          ]);
           if(fol)setFollowing(fol.map(r=>r.following_id));
           if(fwd)setProfile(prev=>({...prev,followers_count:fwd.length,following_count:(fol||[]).length}));
         })
@@ -3617,75 +3689,54 @@ function App(){
           setActiveGroup(prev=>prev&&prev.id===m.group_id?{...prev,messages:[...(prev.messages||[]).filter(x=>x.dbId!==m.id),newMsg]}:prev);
         })
         .subscribe();
+    }catch(e){console.warn("Realtime setup failed (non-fatal):",e);}
 
-      // All data is set — now safe to hide the splash/spinner
-      setAuthLoading(false);
+    // ── Deep link — auto-open profile ──────────────────────────────────
+    const effectiveDl=dl||(()=>{
+      try{
+        const p=JSON.parse(sessionStorage.getItem("he_pending_profile")||"null");
+        if(p?.short_id)return{type:"short_id",val:p.short_id};
+        if(p?.handle)return{type:"handle",val:(p.handle||"").replace(/^@/,"")};
+      }catch{}
+      return null;
+    })();
+    if(effectiveDl){
+      pendingDlRef.current=null;
+      try{sessionStorage.removeItem("he_pending_profile");}catch{}
+      try{
+        let dq=sb.from("profiles").select("*");
+        if(effectiveDl.type==="handle")dq=dq.ilike("handle",`%${effectiveDl.val}%`);
+        else if(effectiveDl.type==="short_id"||effectiveDl.type==="invite")dq=dq.eq("short_id",effectiveDl.val);
+        else dq=dq.eq("id",effectiveDl.val);
+        const {data:dlp}=await dq.limit(1).maybeSingle();
+        if(dlp&&dlp.id!==myProfile.id){
+          const {data:dlr}=await sb.from("ratings").select("*").eq("target_id",dlp.id);
+          setViewT({...dlp,ratings:(dlr||[]).map(mapRating)});
+          window.history.replaceState({},"",window.location.pathname);
+        }
+      }catch(e){console.error("Deep link error:",e);}
+    }
 
-      // Load groups non-blocking AFTER boot completes
-      // Isolated try/catch: any group query failure never affects boot
-      loadGroupsFromSupabase(uid);
-
-      // ── Auto-open deep-linked profile ──
-      const effectiveDl=dl||(()=>{
-        try{
-          const p=JSON.parse(sessionStorage.getItem("he_pending_profile")||"null");
-          if(p?.short_id)return{type:"short_id",val:p.short_id};
-          if(p?.handle)return{type:"handle",val:(p.handle||"").replace(/^@/,"")};
-        }catch{}
-        return null;
-      })();
-      if(effectiveDl){
-        pendingDlRef.current=null;
-        try{sessionStorage.removeItem("he_pending_profile");}catch{}
-        try{
-          let dq=sb.from("profiles").select("*");
-          if(effectiveDl.type==="handle")dq=dq.ilike("handle",`%${effectiveDl.val}%`);
-          else if(effectiveDl.type==="short_id"||effectiveDl.type==="invite")dq=dq.eq("short_id",effectiveDl.val);
-          else dq=dq.eq("id",effectiveDl.val);
-          const {data:dlp}=await dq.limit(1).maybeSingle();
-          if(dlp&&dlp.id!==myProfile.id){
-            const {data:dlr}=await sb.from("ratings").select("*").eq("target_id",dlp.id);
-            setViewT({...dlp,ratings:(dlr||[]).map(mapRating)});
-            window.history.replaceState({},"",window.location.pathname);
-          }
-        }catch(e){console.error("Deep link open error:",e);}
-      }
-
-      // ── Poll every 30s (only when visible) ──
-      if(pollRef.current)clearInterval(pollRef.current);
-      pollRef.current=setInterval(async()=>{
-        if(document.visibilityState!=="visible")return;
-        if(clearingRatingsRef.current)return; // skip poll during category clear
+    // ── Poll every 30s ─────────────────────────────────────────────────
+    if(pollRef.current)clearInterval(pollRef.current);
+    pollRef.current=setInterval(async()=>{
+      if(document.visibilityState!=="visible")return;
+      if(clearingRatingsRef.current)return;
+      try{
         const [pr,rr,dr]=await Promise.all([
           sb.from("profiles").select("*"),
           sb.from("ratings").select("*"),
           sb.from("deleted_accounts").select("auth_id"),
         ]);
-        if(pr.data&&rr.data){
-          if(clearingRatingsRef.current)return; // re-check after await
+        if(pr.data&&rr.data&&!clearingRatingsRef.current){
           const delSet=new Set((dr.data||[]).map(d=>d.auth_id));
           const activeR=(rr.data||[]).filter(r=>!delSet.has(r.rater_id));
-          const updatedProfiles=pr.data
-            .filter(p=>!delSet.has(p.id))
-            .map(p=>({...p,account_type:p.account_type||"personal",ratings:activeR.filter(r=>r.target_id===p.id).map(mapRating)}));
-          setProfiles(updatedProfiles);
-          // Keep profile in sync with poll data
-          setProfile(prev=>{
-            if(!prev)return prev;
-            const fresh=updatedProfiles.find(p=>p.id===prev.id);
-            return fresh?{...fresh,followers_count:prev.followers_count,following_count:prev.following_count}:prev;
-          });
+          const updated=pr.data.filter(p=>!delSet.has(p.id)).map(p=>({...p,account_type:p.account_type||"personal",ratings:activeR.filter(r=>r.target_id===p.id).map(mapRating)}));
+          setProfiles(updated);
+          setProfile(prev=>{if(!prev)return prev;const f=updated.find(p=>p.id===prev.id);return f?{...f,followers_count:prev.followers_count,following_count:prev.following_count}:prev;});
         }
-      },30000);
-
-    }catch(e){
-      console.error("loadAppData error:",e);
-    }finally{
-      setAuthLoading(false);
-      setDataReady(true);
-      profileLoadingRef.current=false;
-      bootingUserIdRef.current=null;
-    }
+      }catch(e){console.warn("Poll error:",e);}
+    },30000);
   }
 
   // handleRefresh — in-app data refresh. Never reloads the page.
