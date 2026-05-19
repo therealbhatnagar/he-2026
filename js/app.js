@@ -1099,10 +1099,12 @@ function MsgText({txt,mine,T,onViewProfile}){
 /* ── CHAT SCREEN (full screen) ── */
 function MsgStatus({m,myId}){
   if(m.sid!==myId)return null;
+  const isTemp=m.dbId&&String(m.dbId).startsWith("temp_");
+  if(isTemp)return<span title="Sending" style={{fontSize:11,color:"#4e5270",marginLeft:4,opacity:.5}}>⏱</span>;
   const st=m.status||"sent";
-  if(st==="seen")return<span style={{fontSize:11,color:"#4a9eff",marginLeft:4}}>✓✓</span>;
-  if(st==="delivered")return<span style={{fontSize:11,color:"#7a8098",marginLeft:4}}>✓✓</span>;
-  return<span style={{fontSize:11,color:"#4e5270",marginLeft:4}}>✓</span>;
+  if(st==="seen")return<span title="Seen" style={{fontSize:11,color:"#4a9eff",marginLeft:4,letterSpacing:"-1px"}}>✓✓</span>;
+  if(st==="delivered")return<span title="Delivered" style={{fontSize:11,color:"#888aaa",marginLeft:4,letterSpacing:"-1px"}}>✓✓</span>;
+  return<span title="Sent" style={{fontSize:11,color:"#4e5270",marginLeft:4}}>✓</span>;
 }
 
 function ChatScreen({conv,myProfile,profiles,T,onBack,onSend,onMarkRead,onClearChat,onBlockUser,onReportUser,onViewProfile}){
@@ -3444,7 +3446,7 @@ function App(){
       if(data){
         const fullProfile={...data,account_type:data.account_type||"personal"};
         setProfile(fullProfile);setProfileFetched(true);
-        setGroups(loadGroups(fullProfile.id));
+        // Groups loaded from Supabase in loadAppData
         loadAppData(fullProfile,dl);
       }else{
         // No profile row — check for cross-provider collision
@@ -3476,10 +3478,47 @@ function App(){
     }
   }
 
+  // Loads group data from Supabase independently from boot.
+  // Called after setAuthLoading(false) so it NEVER blocks startup.
+  // Any failure is silently caught — app remains fully functional.
+  async function loadGroupsFromSupabase(uid){
+    try{
+      // Filter group_members to only this user — avoids full table scan
+      const {data:membData}=await sb.from("group_members")
+        .select("group_id,user_id").eq("user_id",uid);
+      if(!membData||!membData.length){setGroups([]);return;}
+      const myGroupIds=membData.map(r=>r.group_id);
+      // Fetch only groups and messages this user belongs to
+      const [grpRes,grpMsgRes,grpAllMembRes]=await Promise.all([
+        sb.from("group_chats").select("*").in("id",myGroupIds),
+        sb.from("group_messages").select("*")
+          .in("group_id",myGroupIds).order("created_at",{ascending:true}),
+        sb.from("group_members").select("group_id,user_id")
+          .in("group_id",myGroupIds),
+      ]);
+      const grps=(grpRes.data||[]).map(g=>({
+        id:g.id,name:g.name,description:g.description||"",
+        photo:g.photo||null,createdBy:g.created_by,
+        members:(grpAllMembRes.data||[]).filter(r=>r.group_id===g.id).map(r=>r.user_id),
+        messages:(grpMsgRes.data||[]).filter(m=>m.group_id===g.id).map(m=>({
+          sid:m.sender_id,txt:m.text,
+          ts:new Date(m.created_at).getTime(),
+          read:m.sender_id===uid,dbId:m.id,
+        })),
+      }));
+      setGroups(grps);
+    }catch(e){
+      // Silent fail — groups show empty, user can refresh manually
+      console.warn("loadGroupsFromSupabase failed (non-fatal):",e);
+      setGroups([]);
+    }
+  }
+
   async function loadAppData(myProfile,dl=null){
     const uid=myProfile.id;
     try{
       // Fetch all app data in parallel — deleted_accounts for filtering orphaned profiles
+      // Group queries run NON-BLOCKING after boot — never stall startup
       const [profRes,ratRes,followRes,myFollowersRes,blockRes,notifRes,msgRes,delRes]=await Promise.all([
         sb.from("profiles").select("*"),
         sb.from("ratings").select("*"),
@@ -3529,67 +3568,62 @@ function App(){
       }
 
       // ── Real-time subscriptions (unique per user so re-login gets fresh channels) ──
-      sb.channel(`rt_ratings_${uid}`).on("postgres_changes",{event:"*",schema:"public",table:"ratings",filter:`target_id=eq.${uid}`},async()=>{
-        // If we are in the middle of a category clear, don't re-fetch — it would restore old ratings
-        if(clearingRatingsRef.current)return;
-        const {data:nr}=await sb.from("ratings").select("*").eq("target_id",uid);
-        if(nr){
-          const mapped=nr.map(mapRating);
-          setProfiles(prev=>prev.map(p=>p.id===uid?{...p,ratings:mapped}:p));
-          setProfile(prev=>prev&&prev.id===uid?{...prev,ratings:mapped}:prev);
-        }
-      }).subscribe();
+      // 2 realtime channels (Supabase free tier limit)
+      sb.channel(`rt_user_${uid}`)
+        .on("postgres_changes",{event:"INSERT",schema:"public",table:"messages"},payload=>{
+          const m=payload.new;
+          if(m.sender_id!==uid&&m.receiver_id!==uid)return;
+          const otherId=m.sender_id===uid?m.receiver_id:m.sender_id;
+          const cid=[uid,otherId].sort().join("_");
+          const newMsg={sid:m.sender_id,txt:m.text,ts:new Date(m.created_at).getTime(),read:m.read,status:m.status||"delivered",dbId:m.id};
+          setConvs(prev=>{
+            const ex=prev.find(c=>c.id===cid);
+            let next=ex?prev.map(c=>c.id===cid?{...c,messages:[...c.messages.filter(x=>x.dbId!==newMsg.dbId),newMsg]}:c):[...prev,{id:cid,oid:otherId,messages:[newMsg]}];
+            const seen=new Set();
+            return next.filter(c=>{if(seen.has(c.id))return false;seen.add(c.id);return true;});
+          });
+          setActiveChat(prev=>prev&&prev.id===cid?{...prev,messages:[...prev.messages.filter(x=>x.dbId!==newMsg.dbId),newMsg]}:prev);
+          if(m.sender_id!==uid&&m.id)sb.from("messages").update({status:"delivered"}).eq("id",m.id).then(()=>{});
+        })
+        .on("postgres_changes",{event:"UPDATE",schema:"public",table:"messages"},payload=>{
+          const m=payload.new;
+          const otherId=m.sender_id===uid?m.receiver_id:m.sender_id;
+          const cid=[uid,otherId].sort().join("_");
+          const safeRead=lr=>lr===true?true:m.read;
+          setConvs(prev=>prev.map(c=>c.id===cid?{...c,messages:c.messages.map(x=>x.dbId===m.id?{...x,read:safeRead(x.read),status:m.status||x.status}:x)}:c));
+          setActiveChat(prev=>prev&&prev.id===cid?{...prev,messages:prev.messages.map(x=>x.dbId===m.id?{...x,read:safeRead(x.read),status:m.status||x.status}:x)}:prev);
+        })
+        .on("postgres_changes",{event:"INSERT",schema:"public",table:"notifications",filter:`target_id=eq.${uid}`},payload=>{
+          const n=payload.new;
+          setNotifs(prev=>[{type:n.type,actorId:n.actor_id,text:n.text,ts:new Date(n.created_at).getTime(),read:false},...prev].slice(0,60));
+        })
+        .on("postgres_changes",{event:"*",schema:"public",table:"follows"},async()=>{
+          const [{data:fol},{data:fwd}]=await Promise.all([sb.from("follows").select("following_id").eq("follower_id",uid),sb.from("follows").select("follower_id").eq("following_id",uid)]);
+          if(fol)setFollowing(fol.map(r=>r.following_id));
+          if(fwd)setProfile(prev=>({...prev,followers_count:fwd.length,following_count:(fol||[]).length}));
+        })
+        .on("postgres_changes",{event:"*",schema:"public",table:"ratings",filter:`target_id=eq.${uid}`},async()=>{
+          if(clearingRatingsRef.current)return;
+          const {data:nr}=await sb.from("ratings").select("*").eq("target_id",uid);
+          if(nr){const mapped=nr.map(mapRating);setProfiles(prev=>prev.map(p=>p.id===uid?{...p,ratings:mapped}:p));setProfile(prev=>prev&&prev.id===uid?{...prev,ratings:mapped}:prev);}
+        })
+        .subscribe();
 
-      sb.channel(`rt_notifs_${uid}`).on("postgres_changes",{event:"INSERT",schema:"public",table:"notifications",filter:`target_id=eq.${uid}`},payload=>{
-        const n=payload.new;
-        setNotifs(prev=>[{type:n.type,actorId:n.actor_id,text:n.text,ts:new Date(n.created_at).getTime(),read:false},...prev].slice(0,60));
-      }).subscribe();
-
-      sb.channel(`rt_msgs_${uid}`).on("postgres_changes",{event:"INSERT",schema:"public",table:"messages"},payload=>{
-        const m=payload.new;
-        if(m.sender_id!==uid&&m.receiver_id!==uid)return;
-        const otherId=m.sender_id===uid?m.receiver_id:m.sender_id;
-        const cid=[uid,otherId].sort().join("_");
-        const newMsg={sid:m.sender_id,txt:m.text,ts:new Date(m.created_at).getTime(),read:m.read,status:m.status||"delivered",dbId:m.id};
-        setConvs(prev=>{
-          // Merge into existing conv or create new one — deduplicate messages by dbId
-          const ex=prev.find(c=>c.id===cid);
-          let next;
-          if(ex){
-            next=prev.map(c=>c.id===cid?{...c,messages:[...c.messages.filter(x=>x.dbId!==newMsg.dbId),newMsg]}:c);
-          } else {
-            next=[...prev,{id:cid,oid:otherId,messages:[newMsg]}];
-          }
-          // Deduplicate convs by cid — prevents double badge counting
-          const seen=new Set();
-          return next.filter(c=>{if(seen.has(c.id))return false;seen.add(c.id);return true;});
-        });
-        setActiveChat(prev=>prev&&prev.id===cid?{...prev,messages:[...prev.messages.filter(x=>x.dbId!==newMsg.dbId),newMsg]}:prev);
-      }).subscribe();
-
-      sb.channel(`rt_msg_upd_${uid}`).on("postgres_changes",{event:"UPDATE",schema:"public",table:"messages"},payload=>{
-        const m=payload.new;
-        const otherId=m.sender_id===uid?m.receiver_id:m.sender_id;
-        const cid=[uid,otherId].sort().join("_");
-        // Never let a DB event downgrade read:true → read:false in local state.
-        // This prevents the stuck-badge race where the UPDATE event arrives before
-        // our own DB write completes, overwriting handleMarkRead's local optimistic update.
-        const safeRead=(localRead)=>localRead===true?true:m.read;
-        setConvs(prev=>prev.map(c=>c.id===cid?{...c,messages:c.messages.map(x=>x.dbId===m.id?{...x,read:safeRead(x.read),status:m.status||x.status}:x)}:c));
-        setActiveChat(prev=>prev&&prev.id===cid?{...prev,messages:prev.messages.map(x=>x.dbId===m.id?{...x,read:safeRead(x.read),status:m.status||x.status}:x)}:prev);
-      }).subscribe();
-
-      sb.channel(`rt_follows_${uid}`).on("postgres_changes",{event:"*",schema:"public",table:"follows"},async()=>{
-        const [{data:fol},{data:fwd}]=await Promise.all([
-          sb.from("follows").select("following_id").eq("follower_id",uid),
-          sb.from("follows").select("follower_id").eq("following_id",uid),
-        ]);
-        if(fol)setFollowing(fol.map(r=>r.following_id));
-        if(fwd)setProfile(prev=>({...prev,followers_count:fwd.length,following_count:(fol||[]).length}));
-      }).subscribe();
+      sb.channel(`rt_groups_${uid}`)
+        .on("postgres_changes",{event:"INSERT",schema:"public",table:"group_messages"},payload=>{
+          const m=payload.new;
+          const newMsg={sid:m.sender_id,txt:m.text,ts:new Date(m.created_at).getTime(),read:m.sender_id===uid,dbId:m.id};
+          setGroups(prev=>prev.map(g=>g.id===m.group_id?{...g,messages:[...(g.messages||[]).filter(x=>x.dbId!==m.id),newMsg]}:g));
+          setActiveGroup(prev=>prev&&prev.id===m.group_id?{...prev,messages:[...(prev.messages||[]).filter(x=>x.dbId!==m.id),newMsg]}:prev);
+        })
+        .subscribe();
 
       // All data is set — now safe to hide the splash/spinner
       setAuthLoading(false);
+
+      // Load groups non-blocking AFTER boot completes
+      // Isolated try/catch: any group query failure never affects boot
+      loadGroupsFromSupabase(uid);
 
       // ── Auto-open deep-linked profile ──
       const effectiveDl=dl||(()=>{
@@ -3726,29 +3760,44 @@ function App(){
     try{await sb.auth.signOut();}catch{}
   }
 
-  function handleCreateGroup(group){
-    const updated=[...groups,group];
-    setGroups(updated);
-    saveGroups(profile.id,updated);
-    pop(`Group "${group.name}" created! 👥`);
+  async function handleCreateGroup(group){
+    try{
+      await sb.from("group_chats").insert({id:group.id,name:group.name,description:group.description||"",photo:group.photo||null,created_by:profile.id});
+      const memberRows=(group.members||[profile.id]).map(uid=>({group_id:group.id,user_id:uid}));
+      await sb.from("group_members").insert(memberRows);
+      const local={...group,createdBy:profile.id,messages:[]};
+      setGroups(prev=>[...prev,local]);
+      setActiveGroup(local);
+      pop(`Group "${group.name}" created! 👥`);
+    }catch(e){console.error("createGroup:",e);pop("Failed to create group");}
   }
-  function handleSendGroup(groupId,txt){
-    const msg={sid:profile.id,txt,ts:Date.now(),read:false};
-    setGroups(prev=>{
-      const updated=prev.map(g=>g.id===groupId?{...g,messages:[...(g.messages||[]),msg]}:g);
-      saveGroups(profile.id,updated);
-      return updated;
-    });
-    setActiveGroup(ag=>ag&&ag.id===groupId?{...ag,messages:[...(ag.messages||[]),msg]}:ag);
+  async function handleSendGroup(groupId,txt){
+    const tempId="temp_"+Date.now();
+    const tmp={sid:profile.id,txt,ts:Date.now(),read:true,dbId:tempId};
+    setGroups(prev=>prev.map(g=>g.id===groupId?{...g,messages:[...(g.messages||[]),tmp]}:g));
+    setActiveGroup(ag=>ag&&ag.id===groupId?{...ag,messages:[...(ag.messages||[]),tmp]}:ag);
+    try{
+      const {data,error}=await sb.from("group_messages").insert({group_id:groupId,sender_id:profile.id,text:txt}).select().single();
+      if(error)throw error;
+      const real={sid:profile.id,txt:data.text,ts:new Date(data.created_at).getTime(),read:true,dbId:data.id};
+      setGroups(prev=>prev.map(g=>g.id===groupId?{...g,messages:g.messages.map(m=>m.dbId===tempId?real:m)}:g));
+      setActiveGroup(ag=>ag&&ag.id===groupId?{...ag,messages:ag.messages.map(m=>m.dbId===tempId?real:m)}:ag);
+    }catch(e){
+      setGroups(prev=>prev.map(g=>g.id===groupId?{...g,messages:g.messages.filter(m=>m.dbId!==tempId)}:g));
+      setActiveGroup(ag=>ag&&ag.id===groupId?{...ag,messages:ag.messages.filter(m=>m.dbId!==tempId)}:ag);
+      pop("Failed to send");
+    }
   }
-  function handleUpdateGroup(updated){
-    setGroups(prev=>{const next=prev.map(g=>g.id===updated.id?updated:g);saveGroups(profile.id,next);return next;});
+  async function handleUpdateGroup(updated){
+    setGroups(prev=>prev.map(g=>g.id===updated.id?updated:g));
     setActiveGroup(updated);
+    try{await sb.from("group_chats").update({name:updated.name,description:updated.description||"",photo:updated.photo||null}).eq("id",updated.id);}catch(e){console.error("updateGroup:",e);}
   }
-  function handleDeleteGroup(groupId){
-    setGroups(prev=>{const next=prev.filter(g=>g.id!==groupId);saveGroups(profile.id,next);return next;});
+  async function handleDeleteGroup(groupId){
+    setGroups(prev=>prev.filter(g=>g.id!==groupId));
     setActiveGroup(null);
     pop("Group deleted");
+    try{await sb.from("group_chats").delete().eq("id",groupId);}catch(e){console.error("deleteGroup:",e);}
   }
   async function handleDeleteAccount(){
     if(!profile)return;
