@@ -1160,7 +1160,6 @@ function ChatScreen({conv,myProfile,profiles,T,onBack,onSend,onMarkRead,onClearC
 
   function toggleEmoji(){
     if(!showEmoji){
-      // Dismiss keyboard before showing emoji panel
       inputRef.current?.blur();
       setShowEmoji(true);
     }else{
@@ -1172,6 +1171,13 @@ function ChatScreen({conv,myProfile,profiles,T,onBack,onSend,onMarkRead,onClearC
   function addEmoji(e){
     setTxt(prev=>prev+e);
     setRecentEmojis(prev=>{const updated=[e,...prev.filter(x=>x!==e)].slice(0,32);localStorage.setItem("he_recent_emojis",JSON.stringify(updated));return updated;});
+  }
+
+  function send(){
+    if(!txt.trim())return;
+    onSend(conv.id,txt.trim());
+    setTxt("");
+    setShowEmoji(false);
   }
 
   // Guard: never render a broken chat — conv.other missing = black screen
@@ -3581,51 +3587,51 @@ function App(){
   // All systems are independently isolated. One failure never affects others.
   async function loadBackgroundData(uid,myProfile,deletedRaw,dl){
     const deletedIds=new Set((deletedRaw||[]).map(d=>d.auth_id));
-
-    // Helper shared across background systems
     const mapRating=r=>({raterId:r.rater_id,raterName:r.rater_name||"",vibe:r.vibe,humor:r.humor,kindness:r.kindness,rizz:r.rizz,loyalty:r.loyalty,drip:r.drip,ts:new Date(r.updated_at).getTime()});
-    const safe=p=>p.catch(e=>({data:null,error:e}));
 
-    // ── Profiles + ratings (full table — can be slow) ──────────────────
+    // ── Profiles + ratings ─────────────────────────────────────────────
+    // Paginated — only load first 200 profiles for initial render.
+    // Full list loads on next poll cycle.
     try{
-      const [profRes,ratRes]=await Promise.all([
-        safe(sb.from("profiles").select("*")),
-        safe(sb.from("ratings").select("*")),
+      const [pr,rr]=await Promise.all([
+        sb.from("profiles").select("*").limit(200),
+        sb.from("ratings").select("*").limit(500),
       ]);
-      if(profRes.data&&!clearingRatingsRef.current){
-        const activeRatings=(ratRes.data||[]).filter(r=>!deletedIds.has(r.rater_id));
-        setProfiles(profRes.data
+      if(pr.data&&!clearingRatingsRef.current){
+        const activeR=(rr.data||[]).filter(r=>!deletedIds.has(r.rater_id));
+        setProfiles(pr.data
           .filter(p=>!deletedIds.has(p.id))
-          .map(p=>({...p,account_type:p.account_type||"personal",ratings:activeRatings.filter(r=>r.target_id===p.id).map(mapRating)}))
+          .map(p=>({...p,account_type:p.account_type||"personal",ratings:activeR.filter(r=>r.target_id===p.id).map(mapRating)}))
         );
       }
     }catch(e){console.warn("Background profiles/ratings failed:",e);}
 
     // ── Notifications ──────────────────────────────────────────────────
     try{
-      const {data:nd}=await safe(sb.from("notifications").select("*").eq("target_id",uid).order("created_at",{ascending:false}).limit(60));
+      const {data:nd}=await sb.from("notifications")
+        .select("*").eq("target_id",uid)
+        .order("created_at",{ascending:false}).limit(60);
       if(nd)setNotifs(nd.map(n=>({type:n.type,actorId:n.actor_id,text:n.text,ts:new Date(n.created_at).getTime(),read:n.read})));
     }catch(e){console.warn("Background notifs failed:",e);}
 
-    // ── Messages ───────────────────────────────────────────────────────
-    // Explicit column list avoids schema cache issues after ALTER TABLE
+    // ── Messages — explicit columns, paginated ─────────────────────────
     try{
-      const {data:md}=await safe(
-        sb.from("messages")
-          .select("id,sender_id,receiver_id,text,read,status,created_at")
-          .or(`sender_id.eq.${uid},receiver_id.eq.${uid}`)
-          .order("created_at",{ascending:true})
-      );
+      const {data:md}=await sb.from("messages")
+        .select("id,sender_id,receiver_id,text,read,status,created_at")
+        .or(`sender_id.eq.${uid},receiver_id.eq.${uid}`)
+        .order("created_at",{ascending:false})
+        .limit(300);
       if(md){
         const byConv={};
-        md.forEach(m=>{
+        // Process newest-first then reverse so messages are in order per conv
+        md.reverse().forEach(m=>{
           const oid=m.sender_id===uid?m.receiver_id:m.sender_id;
           const cid=[uid,oid].sort().join("_");
           if(!byConv[cid])byConv[cid]={id:cid,oid,messages:[]};
           byConv[cid].messages.push({sid:m.sender_id,txt:m.text,ts:new Date(m.created_at).getTime(),read:m.read,status:m.status||"sent",dbId:m.id});
         });
         const convList=Object.values(byConv);
-        convList.forEach(c=>c.messages.sort((a,b)=>a.ts-b.ts));
+        convList.forEach(cv=>cv.messages.sort((a,b)=>a.ts-b.ts));
         setConvs(convList);
       }
     }catch(e){console.warn("Background messages failed:",e);}
