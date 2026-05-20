@@ -1164,6 +1164,7 @@ function ChatScreen({conv,myProfile,profiles,T,onBack,onSend,onMarkRead,onClearC
   },[]);
   useEffect(()=>{
     endRef.current?.scrollIntoView({behavior:"smooth"});
+    // Mark read every time messages change or chat opens — clears stale unread
     onMarkRead(conv.id,conv.other?.id);
   },[msgs.length,conv.id]);
 
