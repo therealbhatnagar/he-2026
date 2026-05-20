@@ -1099,13 +1099,22 @@ function MsgText({txt,mine,T,onViewProfile}){
 }
 
 /* ── CHAT SCREEN (full screen) ── */
+// Status state machine — forward only: pending→sent→delivered→seen
+// Level: 0=pending, 1=sent, 2=delivered, 3=seen
+// Never render a lower level than already shown (prevents visual regression)
+const STATUS_LEVEL={pending:0,sent:1,delivered:2,seen:3};
 function MsgStatus({m,myId}){
   if(m.sid!==myId)return null;
-  const isTemp=m.dbId&&String(m.dbId).startsWith("temp_");
-  if(isTemp)return<span title="Sending" style={{fontSize:11,color:"#4e5270",marginLeft:4,opacity:.5}}>⏱</span>;
+  const isPending=!m.dbId||String(m.dbId).startsWith("temp_");
+  if(isPending)return<span title="Sending" style={{fontSize:11,color:"#4e5270",marginLeft:4,opacity:.5}}>⏱</span>;
   const st=m.status||"sent";
-  if(st==="seen")return<span title="Seen" style={{fontSize:11,color:"#4a9eff",marginLeft:4,letterSpacing:"-1px"}}>✓✓</span>;
-  if(st==="delivered")return<span title="Delivered" style={{fontSize:11,color:"#888aaa",marginLeft:4,letterSpacing:"-1px"}}>✓✓</span>;
+  // Seen: ✓✓ colored
+  if(st==="seen"||m.read===true)
+    return<span title="Seen" style={{fontSize:11,color:"#7864DC",marginLeft:4,letterSpacing:"-2px",fontWeight:600}}>✓✓</span>;
+  // Delivered: ✓✓ grey
+  if(st==="delivered")
+    return<span title="Delivered" style={{fontSize:11,color:"#888aaa",marginLeft:4,letterSpacing:"-2px"}}>✓✓</span>;
+  // Sent: ✓ grey (in DB, not yet delivered)
   return<span title="Sent" style={{fontSize:11,color:"#4e5270",marginLeft:4}}>✓</span>;
 }
 
@@ -1254,19 +1263,10 @@ function ChatScreen({conv,myProfile,profiles,T,onBack,onSend,onMarkRead,onClearC
       <div ref={endRef}/>
     </div>
 
-    {/* Input bar — ALWAYS above emoji panel */}
+    {/* Bottom bar: input row always visible, emoji tray slides below */}
     <div style={{background:T.nav,flexShrink:0}}>
-      {/* Emoji picker */}
-      {showEmoji&&<div style={{borderTop:`1px solid ${T.b1}`}}>
-        <div style={{display:"flex",overflowX:"auto",borderBottom:`1px solid ${T.b1}`,padding:"6px 8px 0"}}>
-          {EMOJI_CATS.map(c=><button key={c.id} onClick={()=>setEmojiCat(c.id)} style={{fontSize:18,padding:"4px 8px",borderRadius:"8px 8px 0 0",background:emojiCat===c.id?T.faint:"transparent",border:"none",borderBottom:emojiCat===c.id?`2px solid ${myProfile.color}`:"2px solid transparent",flexShrink:0,cursor:"pointer",opacity:c.id==="recent"&&recentEmojis.length===0?.4:1}}>{c.label}</button>)}
-        </div>
-        <div style={{display:"flex",flexWrap:"wrap",padding:"8px 10px",height:180,overflowY:"auto",gap:2,alignContent:"flex-start"}}>
-          {currentEmojis.map((e,i)=><button key={i} onClick={()=>addEmoji(e)} style={{background:"none",fontSize:24,width:40,height:40,borderRadius:8,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{e}</button>)}
-        </div>
-      </div>}
-      {/* Text input row */}
-      <div style={{padding:"10px 14px",paddingBottom:"max(14px,env(safe-area-inset-bottom))",borderTop:`1px solid ${T.b1}`,display:"flex",gap:8,alignItems:"center"}}>
+      {/* Input row — always at top of this container */}
+      <div style={{padding:"10px 14px",paddingBottom:showEmoji?"10px":"max(14px,env(safe-area-inset-bottom))",borderTop:`1px solid ${T.b1}`,display:"flex",gap:8,alignItems:"center"}}>
         <button onClick={toggleEmoji} style={{width:38,height:38,borderRadius:"50%",background:showEmoji?`${myProfile.color}22`:T.faint,border:`1px solid ${showEmoji?myProfile.color+"50":T.b1}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>😊</button>
         <input ref={inputRef} value={txt}
           onChange={e=>setTxt(e.target.value)}
@@ -1276,6 +1276,19 @@ function ChatScreen({conv,myProfile,profiles,T,onBack,onSend,onMarkRead,onClearC
           style={{flex:1,padding:"12px 16px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:24,color:T.txt,fontSize:14,outline:"none"}}/>
         <button onClick={send} style={{width:42,height:42,borderRadius:"50%",background:txt.trim()?`linear-gradient(135deg,${myProfile.color}dd,${myProfile.color}99)`:T.faint,display:"flex",alignItems:"center",justifyContent:"center",color:txt.trim()?"#fff":T.mu,flexShrink:0,transition:"background .15s"}}><SendIcon/></button>
       </div>
+      {/* Emoji tray — renders BELOW input row, slides up from bottom */}
+      {showEmoji&&<div style={{borderTop:`1px solid ${T.b1}`,paddingBottom:"max(8px,env(safe-area-inset-bottom))"}}>
+        {/* Category tabs + backspace */}
+        <div style={{display:"flex",alignItems:"center",overflowX:"auto",borderBottom:`1px solid ${T.b1}`,padding:"4px 8px 0"}}>
+          {EMOJI_CATS.map(cat=><button key={cat.id} onClick={()=>setEmojiCat(cat.id)} style={{fontSize:18,padding:"4px 8px",borderRadius:"8px 8px 0 0",background:emojiCat===cat.id?T.faint:"transparent",border:"none",borderBottom:emojiCat===cat.id?`2px solid ${myProfile.color}`:"2px solid transparent",flexShrink:0,cursor:"pointer",opacity:cat.id==="recent"&&recentEmojis.length===0?.4:1}}>{cat.label}</button>)}
+          <div style={{flex:1}}/>
+          <button onClick={()=>setTxt(prev=>prev.slice(0,-1))} style={{fontSize:16,padding:"4px 10px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:8,color:T.mu,flexShrink:0,marginBottom:4}}>⌫</button>
+        </div>
+        {/* Emoji grid */}
+        <div style={{display:"flex",flexWrap:"wrap",padding:"8px 10px",height:200,overflowY:"auto",gap:2,alignContent:"flex-start"}}>
+          {currentEmojis.map((e,i)=><button key={i} onClick={()=>addEmoji(e)} style={{background:"none",fontSize:24,width:40,height:40,borderRadius:8,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{e}</button>)}
+        </div>
+      </div>}
     </div>
   </div>;
 }
@@ -1577,16 +1590,19 @@ function GroupChatScreen({group,myProfile,profiles,T,onBack,onSendGroup,onUpdate
       <div ref={endRef}/>
     </div>
 
-    {/* Input area — emoji tray + input bar, same pattern as ChatScreen */}
+    {/* Bottom bar: input first, emoji tray below */}
     <div style={{background:T.nav,flexShrink:0}}>
-      {showEmoji&&<div style={{borderTop:`1px solid ${T.b1}`,display:"flex",flexWrap:"wrap",padding:"8px 10px",height:180,overflowY:"auto",gap:2,alignContent:"flex-start"}}>
-        {EMOJI_QUICK.map((e,i)=><button key={i} onClick={()=>addEmoji(e)} style={{background:"none",fontSize:24,width:40,height:40,borderRadius:8,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{e}</button>)}
-      </div>}
-      <div style={{padding:"10px 14px",paddingBottom:"max(14px,env(safe-area-inset-bottom))",borderTop:`1px solid ${T.b1}`,display:"flex",gap:8,alignItems:"center"}}>
+      <div style={{padding:"10px 14px",paddingBottom:showEmoji?"10px":"max(14px,env(safe-area-inset-bottom))",borderTop:`1px solid ${T.b1}`,display:"flex",gap:8,alignItems:"center"}}>
         <button onClick={toggleEmoji} style={{width:38,height:38,borderRadius:"50%",background:showEmoji?`${myProfile.color}22`:T.faint,border:`1px solid ${showEmoji?myProfile.color+"50":T.b1}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>😊</button>
         <input ref={inputRef} value={txt} onChange={e=>setTxt(e.target.value)} onFocus={()=>{if(showEmoji)setShowEmoji(false);}} onKeyDown={e=>e.key==="Enter"&&send()} placeholder={`Message ${group.name}…`} style={{flex:1,padding:"12px 16px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:24,color:T.txt,fontSize:14,outline:"none"}}/>
         <button onClick={send} style={{width:42,height:42,borderRadius:"50%",background:txt.trim()?`linear-gradient(135deg,${myProfile.color}dd,${myProfile.color}99)`:T.faint,display:"flex",alignItems:"center",justifyContent:"center",color:txt.trim()?"#fff":T.mu,flexShrink:0,transition:"background .15s"}}><SendIcon/></button>
       </div>
+      {showEmoji&&<div style={{borderTop:`1px solid ${T.b1}`,paddingBottom:"max(8px,env(safe-area-inset-bottom))"}}>
+        <div style={{display:"flex",alignItems:"center",padding:"6px 10px",gap:4,flexWrap:"wrap"}}>
+          {EMOJI_QUICK.map((e,i)=><button key={i} onClick={()=>addEmoji(e)} style={{background:"none",fontSize:24,width:40,height:40,borderRadius:8,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{e}</button>)}
+          <button onClick={()=>setTxt(prev=>prev.slice(0,-1))} style={{fontSize:16,padding:"4px 10px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:8,color:T.mu,marginLeft:"auto",flexShrink:0}}>⌫</button>
+        </div>
+      </div>}
     </div>
 
     {/* Add Members Modal */}
@@ -3487,19 +3503,24 @@ function App(){
   // Any failure is silently caught — app remains fully functional.
   async function loadGroupsFromSupabase(uid){
     try{
-      // Filter group_members to only this user — avoids full table scan
-      const {data:membData}=await sb.from("group_members")
-        .select("group_id,user_id").eq("user_id",uid);
-      if(!membData||!membData.length){setGroups([]);return;}
-      const myGroupIds=membData.map(r=>r.group_id);
-      // Fetch only groups and messages this user belongs to
+      // Step 1: fetch this user's own group_member rows
+      // Simple policy: auth.uid()=user_id — no recursive subquery, always works
+      const {data:myMembData,error:membErr}=await sb.from("group_members")
+        .select("group_id").eq("user_id",uid);
+      if(membErr){console.warn("group_members fetch error:",membErr);setGroups([]);return;}
+      if(!myMembData||!myMembData.length){setGroups([]);return;}
+      const myGroupIds=myMembData.map(r=>r.group_id);
+
+      // Step 2: fetch group_chats, all members, and messages in parallel
+      // Using .in("id", myGroupIds) so no RLS subquery is needed on group_chats
       const [grpRes,grpMsgRes,grpAllMembRes]=await Promise.all([
         sb.from("group_chats").select("*").in("id",myGroupIds),
-        sb.from("group_messages").select("*")
-          .in("group_id",myGroupIds).order("created_at",{ascending:true}),
+        sb.from("group_messages").select("id,group_id,sender_id,text,created_at")
+          .in("group_id",myGroupIds).order("created_at",{ascending:true}).limit(500),
         sb.from("group_members").select("group_id,user_id")
           .in("group_id",myGroupIds),
       ]);
+
       const grps=(grpRes.data||[]).map(g=>({
         id:g.id,name:g.name,description:g.description||"",
         photo:g.photo||null,createdBy:g.created_by,
@@ -3512,7 +3533,6 @@ function App(){
       }));
       setGroups(grps);
     }catch(e){
-      // Silent fail — groups show empty, user can refresh manually
       console.warn("loadGroupsFromSupabase failed (non-fatal):",e);
       setGroups([]);
     }
@@ -3832,15 +3852,18 @@ function App(){
     setGroups(prev=>prev.map(g=>g.id===groupId?{...g,messages:[...(g.messages||[]),tmp]}:g));
     setActiveGroup(ag=>ag&&ag.id===groupId?{...ag,messages:[...(ag.messages||[]),tmp]}:ag);
     try{
-      const {data,error}=await sb.from("group_messages").insert({group_id:groupId,sender_id:profile.id,text:txt}).select().single();
-      if(error)throw error;
+      const {data,error}=await sb.from("group_messages")
+        .insert({group_id:groupId,sender_id:profile.id,text:txt})
+        .select("id,group_id,sender_id,text,created_at").single();
+      if(error){console.error("group_messages insert error:",error);throw error;}
       const real={sid:profile.id,txt:data.text,ts:new Date(data.created_at).getTime(),read:true,dbId:data.id};
       setGroups(prev=>prev.map(g=>g.id===groupId?{...g,messages:g.messages.map(m=>m.dbId===tempId?real:m)}:g));
       setActiveGroup(ag=>ag&&ag.id===groupId?{...ag,messages:ag.messages.map(m=>m.dbId===tempId?real:m)}:ag);
     }catch(e){
+      console.error("handleSendGroup failed:",e?.message||e);
       setGroups(prev=>prev.map(g=>g.id===groupId?{...g,messages:g.messages.filter(m=>m.dbId!==tempId)}:g));
       setActiveGroup(ag=>ag&&ag.id===groupId?{...ag,messages:ag.messages.filter(m=>m.dbId!==tempId)}:ag);
-      pop("Failed to send");
+      pop("Failed to send — check group membership");
     }
   }
   async function handleUpdateGroup(updated){
@@ -4247,15 +4270,15 @@ function App(){
   const suggestedPersonal=allFeedProfiles.filter(p=>!following.includes(p.id)&&(p.account_type||"personal")==="personal").slice(0,6);
   const suggestedBiz=allFeedProfiles.filter(p=>!following.includes(p.id)&&p.account_type==="business").slice(0,4);
   const unreadN=notifs.filter(n=>!n.read).length;
-  const unreadM=convs.reduce((s,c)=>{
-    const msgs=c.messages||[];
-    // Only count messages FROM others that have NOT been read yet
-    const unread=msgs.filter(m=>{
-      if(!m||!m.sid)return false;
-      if(m.sid===profile.id)return false; // my own messages are never unread
-      return m.read===false; // strictly false, not undefined
-    }).length;
-    return s+unread;
+  const unreadM=convs.reduce((s,cv)=>{
+    const msgs=cv.messages||[];
+    const u=msgs.filter(m=>
+      m&&m.sid&&
+      m.sid!==profile.id&&          // not my own message
+      m.read!==true&&               // not marked read (covers false AND undefined)
+      !String(m.dbId||"").startsWith("temp_") // not a temp message
+    ).length;
+    return s+u;
   },0);
 
   const NAV=[
