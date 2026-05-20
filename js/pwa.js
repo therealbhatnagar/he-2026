@@ -10,8 +10,8 @@ if('serviceWorker' in navigator){
     //   - HTML navigation requests → NetworkFirst (try network, fall back to cache)
     //   - Other GET requests (JS/CSS/images) → StaleWhileRevalidate
     const swCode=`
-      const CACHE='highenough-v3';
-      const HTML_CACHE='highenough-html-v3';
+      const CACHE='highenough-v4';
+      const HTML_CACHE='highenough-html-v4';
 
       self.addEventListener('install',e=>{
         e.waitUntil(
