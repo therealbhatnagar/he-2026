@@ -3165,7 +3165,6 @@ function App(){
   const activeGroupRef=useRef(null);
   const rateTRef=useRef(null);
   const activeChatRef=useRef(null);
-  const activeGroupRef=useRef(null);
   const settingsRef=useRef(false);
   const showNotifsRef=useRef(false);
   const showAdminRef=useRef(false);
@@ -3177,7 +3176,6 @@ function App(){
   useEffect(()=>{activeGroupRef.current=activeGroup;},[activeGroup]);
   useEffect(()=>{rateTRef.current=rateT;},[rateT]);
   useEffect(()=>{activeChatRef.current=activeChat;},[activeChat]);
-  useEffect(()=>{activeGroupRef.current=activeGroup;},[activeGroup]);
   useEffect(()=>{settingsRef.current=settings;},[settings]);
   useEffect(()=>{showNotifsRef.current=showNotifs;},[showNotifs]);
   useEffect(()=>{showAdminRef.current=showAdmin;},[showAdmin]);
