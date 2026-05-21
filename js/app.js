@@ -1452,9 +1452,34 @@ function GroupChatScreen({group,myProfile,profiles,T,onBack,onSendGroup,onUpdate
   const [editingDesc,setEditingDesc]=useState(false);
   const [descDraft,setDescDraft]=useState(group.description||"");
   const [showEmoji,setShowEmoji]=useState(false);
+  const [emojiCat,setEmojiCat]=useState("smileys");
+  const [recentEmojis,setRecentEmojis]=useState(()=>{try{return JSON.parse(localStorage.getItem("he_recent_emojis")||"[]");}catch{return[];}});
   const inputRef=useRef(null);
-  const EMOJI_QUICK=["😀","😂","🥰","😎","🤔","😢","😡","🔥","👍","👎","❤️","💯","🎉","✅","🙏","💪","🤣","😍","🥳","👏","🫡","💀","🤯","😭","🤝","💬","🚀","⭐","🎯","💡"];
-  function addEmoji(e){setTxt(prev=>prev+e);}  // no focus() — that triggers onFocus close
+  // Same full emoji set as ChatScreen
+  const GRP_ALL_EMOJIS={
+    smileys:["😀","😃","😄","😁","😆","😅","🤣","😂","🙂","🙃","🫠","😉","😊","😇","🥰","😍","🤩","😘","😗","😚","😙","🥲","😋","😛","😜","🤪","😝","🤑","🤗","🫡","🤭","🫢","🫣","🤫","🤔","🫤","🤐","🤨","😐","😑","😶","🫥","😏","😒","🙄","😬","🤥","😌","😔","😪","🤤","😴","😷","🤒","🤕","🤢","🤮","🤧","🥵","🥶","🥴","😵","🤯","🤠","🥳","🥸","😎","🤓","🧐","😕","🫠","😟","🙁","☹️","😮","😯","😲","😳","🥺","🫣","😦","😧","😨","😰","😥","😢","😭","😱","😖","😣","😞","😓","😩","😫","🥱","😤","😡","😠","🤬","😈","👿","💀","☠️","💩","🤡","👹","👺","👻","👽","👾","🤖"],
+    people:["👋","🤚","🖐️","✋","🖖","🫱","🫲","🫳","🫴","👌","🤌","🤏","✌️","🤞","🫰","🤟","🤘","🤙","👈","👉","👆","🖕","👇","☝️","🫵","👍","👎","✊","👊","🤛","🤜","👏","🙌","🫶","👐","🤲","🙏","✍️","💅","🤳","💪","🦾","🦿","🦵","🦶","👂","🦻","👃","🫀","🫁","🧠","🦷","🦴","👀","👁️","👅","👄","🫦","💋"],
+    animals:["🐶","🐱","🐭","🐹","🐰","🦊","🐻","🐼","🐻‍❄️","🐨","🐯","🦁","🐮","🐷","🐸","🐵","🙈","🙉","🙊","🐔","🐧","🐦","🐤","🦆","🦅","🦉","🦇","🐺","🐗","🐴","🦄","🐝","🪱","🐛","🦋","🐌","🐞","🐜","🪲","🦟","🦗","🪳","🕷️","🦂","🐢","🐍","🦎","🦖","🦕","🐙","🦑","🦐","🦞","🦀","🐡","🐠","🐟","🐬","🐳","🐋","🦈","🦭","🐊","🐅","🐆","🦓","🫏","🦍","🦧","🐘","🦛","🦏","🐪","🐫","🦒","🦘","🦬","🐃","🐂","🐄","🐎","🐖","🐏","🐑","🦙","🐐","🦌","🐕","🐩","🦮","🐕‍🦺","🐈","🐈‍⬛","🪶","🐓","🦃","🦤","🦚","🦜","🦢","🦩","🕊️","🐇","🦝","🦨","🦡","🦫","🦦","🦥","🐁","🐀","🐿️","🦔"],
+    food:["🍎","🍐","🍊","🍋","🍋‍🟩","🍌","🍉","🍇","🍓","🫐","🍈","🍒","🍑","🥭","🍍","🥥","🥝","🍅","🍆","🥑","🥦","🥬","🥒","🌶️","🫑","🧄","🧅","🥔","🍠","🫘","🌰","🥜","🍞","🥐","🥖","🫓","🥨","🧀","🥚","🍳","🧈","🥞","🧇","🥓","🥩","🍗","🍖","🦴","🌭","🍔","🍟","🍕","🫔","🌮","🌯","🥙","🧆","🥚","🍱","🍘","🍙","🍚","🍛","🍜","🍝","🍠","🍢","🍣","🍤","🍥","🥮","🍡","🥟","🦪","🍦","🍧","🍨","🍩","🍪","🎂","🍰","🧁","🥧","🍫","🍬","🍭","🍮","🍯","🍼","🥛","☕","🫖","🍵","🧃","🥤","🧋","🍶","🍺","🍻","🥂","🍷","🥃","🍸","🍹","🧉","🍾"],
+    travel:["🚗","🚕","🚙","🚌","🚎","🏎️","🚓","🚑","🚒","🚐","🛻","🚚","🚛","🚜","🏍️","🛵","🚲","🛴","🛹","🛼","🚏","🛣️","🛤️","⛽","🚨","🚥","🚦","🛑","🚧","⚓","🪝","⛵","🛶","🚤","🛳️","⛴️","🛥️","🚢","✈️","🛩️","🛫","🛬","🪂","💺","🚁","🚟","🚠","🚡","🛰️","🚀","🛸","🌍","🌎","🌏","🗺️","🧭","🏔️","⛰️","🌋","🗻","🏕️","🏖️","🏜️","🏝️","🏞️","🏟️","🏛️","🏗️","🧱","🪨","🪵","🛖","🏘️","🏚️","🏠","🏡","🏢","🏣","🏤","🏥","🏦","🏨","🏩","🏪","🏫","🏭","🏯","🏰","💒","🗼","🗽","⛪","🕌","🛕","🕍","⛩️","🕋"],
+    objects:["⌚","📱","💻","⌨️","🖥️","🖨️","🖱️","🖲️","💽","💾","💿","📀","📺","📷","📸","📹","🎥","📽️","🎞️","📞","☎️","📟","📠","📡","🔋","🪫","🔌","💡","🔦","🕯️","🪔","🧯","🛢️","💰","💴","💵","💶","💷","💸","💳","🪙","💹","📈","📉","📊","📋","📌","📍","📎","🖇️","📏","📐","✂️","🗃️","🗄️","🗑️","🔒","🔓","🔏","🔐","🔑","🗝️","🔨","🪓","⛏️","⚒️","🛠️","🗡️","⚔️","🛡️","🪚","🔫","🪃","🏹","🪤","🪝","🔧","🪛","🔩","⚙️","🗜️","⚖️","🦯","🔗","⛓️","🪜","🧲","🪜","🔬","🔭","📡","💉","🩸","💊","🩹","🩺","🩻","🚪","🛗","🪞","🪟","🛏️","🛋️","🪑","🚽","🪠","🚿","🛁","🪤","🪒","🧴","🧷","🧹","🧺","🧻","🪣","🧼","🫧","🪥","🧽","🧯","🛒"],
+    symbols:["❤️","🧡","💛","💚","💙","💜","🖤","🤍","🤎","💔","❣️","💕","💞","💓","💗","💖","💘","💝","💟","☮️","✝️","☪️","🕉️","☸️","✡️","🔯","🕎","☯️","☦️","🛐","⛎","♈","♉","♊","♋","♌","♍","♎","♏","♐","♑","♒","♓","🆔","⚛️","🉑","☢️","☣️","📴","📳","🈶","🈚","🈸","🈺","🈷️","✴️","🆚","💮","🉐","㊙️","㊗️","🈴","🈵","🈹","🈲","🅰️","🅱️","🆎","🆑","🅾️","🆘","❌","⭕","🛑","⛔","📛","🚫","💯","💢","♨️","🚷","🚯","🚳","🚱","🔞","📵","🔕","🔇","🔈","🔉","🔊","📣","📢","🔔","🔕","🎵","🎶","⚠️","🚸","♻️","✅","❎","🆗","🆙","🆒","🆕","🆓","0️⃣","1️⃣","2️⃣","3️⃣","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣","🔟","🔠","🔡","🔢","🔣","🔤","🅰️","🅱️","🆎","🅾️","🆘","⬆️","↗️","➡️","↘️","⬇️","↙️","⬅️","↖️","↕️","↔️","↩️","↪️","⤴️","⤵️","🔃","🔄","🔙","🔚","🔛","🔜","🔝"],
+  };
+  const GRP_EMOJI_CATS=[
+    {id:"recent",label:"🕐",name:"Recent"},
+    {id:"smileys",label:"😀",name:"Smileys"},
+    {id:"people",label:"👋",name:"People"},
+    {id:"animals",label:"🐶",name:"Animals"},
+    {id:"food",label:"🍎",name:"Food"},
+    {id:"travel",label:"✈️",name:"Travel"},
+    {id:"objects",label:"💡",name:"Objects"},
+    {id:"symbols",label:"❤️",name:"Symbols"},
+  ];
+  const grpCurrentEmojis=emojiCat==="recent"?(recentEmojis.length?recentEmojis:GRP_ALL_EMOJIS.smileys):GRP_ALL_EMOJIS[emojiCat]||[];
+  function addEmoji(e){
+    setTxt(prev=>prev+e);
+    setRecentEmojis(prev=>{const u=[e,...prev.filter(x=>x!==e)].slice(0,32);localStorage.setItem("he_recent_emojis",JSON.stringify(u));return u;});
+  }
   function toggleEmoji(){
     if(!showEmoji){inputRef.current?.blur();setShowEmoji(true);}
     else{setShowEmoji(false);setTimeout(()=>inputRef.current?.focus(),50);}
@@ -1599,9 +1624,13 @@ function GroupChatScreen({group,myProfile,profiles,T,onBack,onSendGroup,onUpdate
         <button onClick={send} style={{width:42,height:42,borderRadius:"50%",background:txt.trim()?`linear-gradient(135deg,${myProfile.color}dd,${myProfile.color}99)`:T.faint,display:"flex",alignItems:"center",justifyContent:"center",color:txt.trim()?"#fff":T.mu,flexShrink:0,transition:"background .15s"}}><SendIcon/></button>
       </div>
       {showEmoji&&<div style={{borderTop:`1px solid ${T.b1}`,paddingBottom:"max(8px,env(safe-area-inset-bottom))"}}>
-        <div style={{display:"flex",alignItems:"center",padding:"6px 10px",gap:4,flexWrap:"wrap"}}>
-          {EMOJI_QUICK.map((e,i)=><button key={i} onClick={()=>addEmoji(e)} style={{background:"none",fontSize:24,width:40,height:40,borderRadius:8,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{e}</button>)}
-          <button onClick={()=>setTxt(prev=>prev.slice(0,-1))} style={{fontSize:16,padding:"4px 10px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:8,color:T.mu,marginLeft:"auto",flexShrink:0}}>⌫</button>
+        <div style={{display:"flex",alignItems:"center",overflowX:"auto",borderBottom:`1px solid ${T.b1}`,padding:"4px 8px 0"}}>
+          {GRP_EMOJI_CATS.map(cat=><button key={cat.id} onClick={()=>setEmojiCat(cat.id)} style={{fontSize:18,padding:"4px 8px",borderRadius:"8px 8px 0 0",background:emojiCat===cat.id?T.faint:"transparent",border:"none",borderBottom:emojiCat===cat.id?`2px solid ${myProfile.color}`:"2px solid transparent",flexShrink:0,cursor:"pointer",opacity:cat.id==="recent"&&recentEmojis.length===0?.4:1}}>{cat.label}</button>)}
+          <div style={{flex:1}}/>
+          <button onClick={()=>setTxt(prev=>{try{const s=[...new Intl.Segmenter().segment(prev)].map(x=>x.segment);s.pop();return s.join('');}catch{const a=[...prev];a.pop();return a.join('');}})} style={{fontSize:16,padding:"4px 10px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:8,color:T.mu,flexShrink:0,marginBottom:4}}>⌫</button>
+        </div>
+        <div style={{display:"flex",flexWrap:"wrap",padding:"8px 10px",height:200,overflowY:"auto",gap:2,alignContent:"flex-start"}}>
+          {grpCurrentEmojis.map((e,i)=><button key={i} onClick={()=>addEmoji(e)} style={{background:"none",fontSize:24,width:40,height:40,borderRadius:8,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{e}</button>)}
         </div>
       </div>}
     </div>
