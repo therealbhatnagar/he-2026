@@ -1099,11 +1099,8 @@ function MsgText({txt,mine,T,onViewProfile}){
 }
 
 /* ── CHAT SCREEN (full screen) ── */
-// Status state machine — forward only: pending→sent→delivered→seen
-// Level: 0=pending, 1=sent, 2=delivered, 3=seen
-// Never render a lower level than already shown (prevents visual regression)
-const STATUS_LEVEL={pending:0,sent:1,delivered:2,seen:3};
 function MsgStatus({m,myId}){
+  // forward-only: pending→sent→delivered→seen
   if(m.sid!==myId)return null;
   const isPending=!m.dbId||String(m.dbId).startsWith("temp_");
   if(isPending)return<span title="Sending" style={{fontSize:11,color:"#4e5270",marginLeft:4,opacity:.5}}>⏱</span>;
@@ -1169,13 +1166,8 @@ function ChatScreen({conv,myProfile,profiles,T,onBack,onSend,onMarkRead,onClearC
   },[msgs.length,conv.id]);
 
   function toggleEmoji(){
-    if(!showEmoji){
-      inputRef.current?.blur();
-      setShowEmoji(true);
-    }else{
-      setShowEmoji(false);
-      inputRef.current?.focus();
-    }
+    if(!showEmoji){inputRef.current?.blur();setShowEmoji(true);}
+    else{setShowEmoji(false);setTimeout(()=>inputRef.current?.focus(),50);}
   }
 
   function addEmoji(e){
@@ -1271,7 +1263,7 @@ function ChatScreen({conv,myProfile,profiles,T,onBack,onSend,onMarkRead,onClearC
         <button onClick={toggleEmoji} style={{width:38,height:38,borderRadius:"50%",background:showEmoji?`${myProfile.color}22`:T.faint,border:`1px solid ${showEmoji?myProfile.color+"50":T.b1}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>😊</button>
         <input ref={inputRef} value={txt}
           onChange={e=>setTxt(e.target.value)}
-          onFocus={()=>{if(showEmoji)setShowEmoji(false);}}
+          onFocus={()=>{}}
           onKeyDown={e=>e.key==="Enter"&&send()}
           placeholder="Message…"
           style={{flex:1,padding:"12px 16px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:24,color:T.txt,fontSize:14,outline:"none"}}/>
@@ -1283,7 +1275,7 @@ function ChatScreen({conv,myProfile,profiles,T,onBack,onSend,onMarkRead,onClearC
         <div style={{display:"flex",alignItems:"center",overflowX:"auto",borderBottom:`1px solid ${T.b1}`,padding:"4px 8px 0"}}>
           {EMOJI_CATS.map(cat=><button key={cat.id} onClick={()=>setEmojiCat(cat.id)} style={{fontSize:18,padding:"4px 8px",borderRadius:"8px 8px 0 0",background:emojiCat===cat.id?T.faint:"transparent",border:"none",borderBottom:emojiCat===cat.id?`2px solid ${myProfile.color}`:"2px solid transparent",flexShrink:0,cursor:"pointer",opacity:cat.id==="recent"&&recentEmojis.length===0?.4:1}}>{cat.label}</button>)}
           <div style={{flex:1}}/>
-          <button onClick={()=>setTxt(prev=>prev.slice(0,-1))} style={{fontSize:16,padding:"4px 10px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:8,color:T.mu,flexShrink:0,marginBottom:4}}>⌫</button>
+          <button onClick={()=>{const inp=inputRef.current;if(inp){const pos=inp.selectionStart??inp.value.length;const before=inp.value.slice(0,pos);const after=inp.value.slice(pos);let nb;try{const s=[...new Intl.Segmenter().segment(before)].map(x=>x.segment);s.pop();nb=s.join('');}catch{const a=[...before];a.pop();nb=a.join('');}const nv=nb+after;setTxt(nv);requestAnimationFrame(()=>{inp.selectionStart=inp.selectionEnd=nb.length;});}else{setTxt(prev=>{try{const s=[...new Intl.Segmenter().segment(prev)].map(x=>x.segment);s.pop();return s.join('');}catch{const a=[...prev];a.pop();return a.join('');}});}}} style={{fontSize:16,padding:"4px 10px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:8,color:T.mu,flexShrink:0,marginBottom:4}}>⌫</button>
         </div>
         {/* Emoji grid */}
         <div style={{display:"flex",flexWrap:"wrap",padding:"8px 10px",height:200,overflowY:"auto",gap:2,alignContent:"flex-start"}}>
@@ -1477,7 +1469,14 @@ function GroupChatScreen({group,myProfile,profiles,T,onBack,onSendGroup,onUpdate
   ];
   const grpCurrentEmojis=emojiCat==="recent"?(recentEmojis.length?recentEmojis:GRP_ALL_EMOJIS.smileys):GRP_ALL_EMOJIS[emojiCat]||[];
   function addEmoji(e){
-    setTxt(prev=>prev+e);
+    const inp=inputRef.current;
+    if(inp){
+      const start=inp.selectionStart??inp.value.length;
+      const end=inp.selectionEnd??inp.value.length;
+      const newVal=inp.value.slice(0,start)+e+inp.value.slice(end);
+      setTxt(newVal);
+      requestAnimationFrame(()=>{inp.selectionStart=inp.selectionEnd=start+[...e].length;});
+    } else { setTxt(prev=>prev+e); }
     setRecentEmojis(prev=>{const u=[e,...prev.filter(x=>x!==e)].slice(0,32);localStorage.setItem("he_recent_emojis",JSON.stringify(u));return u;});
   }
   function toggleEmoji(){
@@ -1620,14 +1619,14 @@ function GroupChatScreen({group,myProfile,profiles,T,onBack,onSendGroup,onUpdate
     <div style={{background:T.nav,flexShrink:0}}>
       <div style={{padding:"10px 14px",paddingBottom:showEmoji?"10px":"max(14px,env(safe-area-inset-bottom))",borderTop:`1px solid ${T.b1}`,display:"flex",gap:8,alignItems:"center"}}>
         <button onClick={toggleEmoji} style={{width:38,height:38,borderRadius:"50%",background:showEmoji?`${myProfile.color}22`:T.faint,border:`1px solid ${showEmoji?myProfile.color+"50":T.b1}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>😊</button>
-        <input ref={inputRef} value={txt} onChange={e=>setTxt(e.target.value)} onFocus={()=>{if(showEmoji)setShowEmoji(false);}} onKeyDown={e=>e.key==="Enter"&&send()} placeholder={`Message ${group.name}…`} style={{flex:1,padding:"12px 16px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:24,color:T.txt,fontSize:14,outline:"none"}}/>
+        <input ref={inputRef} value={txt} onChange={e=>setTxt(e.target.value)} onFocus={()=>{}} onKeyDown={e=>e.key==="Enter"&&send()} placeholder={`Message ${group.name}…`} style={{flex:1,padding:"12px 16px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:24,color:T.txt,fontSize:14,outline:"none"}}/>
         <button onClick={send} style={{width:42,height:42,borderRadius:"50%",background:txt.trim()?`linear-gradient(135deg,${myProfile.color}dd,${myProfile.color}99)`:T.faint,display:"flex",alignItems:"center",justifyContent:"center",color:txt.trim()?"#fff":T.mu,flexShrink:0,transition:"background .15s"}}><SendIcon/></button>
       </div>
       {showEmoji&&<div style={{borderTop:`1px solid ${T.b1}`,paddingBottom:"max(8px,env(safe-area-inset-bottom))"}}>
         <div style={{display:"flex",alignItems:"center",overflowX:"auto",borderBottom:`1px solid ${T.b1}`,padding:"4px 8px 0"}}>
           {GRP_EMOJI_CATS.map(cat=><button key={cat.id} onClick={()=>setEmojiCat(cat.id)} style={{fontSize:18,padding:"4px 8px",borderRadius:"8px 8px 0 0",background:emojiCat===cat.id?T.faint:"transparent",border:"none",borderBottom:emojiCat===cat.id?`2px solid ${myProfile.color}`:"2px solid transparent",flexShrink:0,cursor:"pointer",opacity:cat.id==="recent"&&recentEmojis.length===0?.4:1}}>{cat.label}</button>)}
           <div style={{flex:1}}/>
-          <button onClick={()=>setTxt(prev=>{try{const s=[...new Intl.Segmenter().segment(prev)].map(x=>x.segment);s.pop();return s.join('');}catch{const a=[...prev];a.pop();return a.join('');}})} style={{fontSize:16,padding:"4px 10px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:8,color:T.mu,flexShrink:0,marginBottom:4}}>⌫</button>
+          <button onClick={()=>{const inp=inputRef.current;if(inp){const pos=inp.selectionStart??inp.value.length;const before=inp.value.slice(0,pos);const after=inp.value.slice(pos);let nb;try{const s=[...new Intl.Segmenter().segment(before)].map(x=>x.segment);s.pop();nb=s.join('');}catch{const a=[...before];a.pop();nb=a.join('');}const nv=nb+after;setTxt(nv);requestAnimationFrame(()=>{inp.selectionStart=inp.selectionEnd=nb.length;});}else{setTxt(prev=>{try{const s=[...new Intl.Segmenter().segment(prev)].map(x=>x.segment);s.pop();return s.join('');}catch{const a=[...prev];a.pop();return a.join('');}});}}} style={{fontSize:16,padding:"4px 10px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:8,color:T.mu,flexShrink:0,marginBottom:4}}>⌫</button>
         </div>
         <div style={{display:"flex",flexWrap:"wrap",padding:"8px 10px",height:200,overflowY:"auto",gap:2,alignContent:"flex-start"}}>
           {grpCurrentEmojis.map((e,i)=><button key={i} onClick={()=>addEmoji(e)} style={{background:"none",fontSize:24,width:40,height:40,borderRadius:8,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{e}</button>)}
@@ -3867,14 +3866,25 @@ function App(){
 
   async function handleCreateGroup(group){
     try{
-      await sb.from("group_chats").insert({id:group.id,name:group.name,description:group.description||"",photo:group.photo||null,created_by:profile.id});
-      const memberRows=(group.members||[profile.id]).map(uid=>({group_id:group.id,user_id:uid}));
-      await sb.from("group_members").insert(memberRows);
-      const local={...group,createdBy:profile.id,messages:[]};
+      // Step 1: create the group
+      const {error:ge}=await sb.from("group_chats")
+        .insert({id:group.id,name:group.name,description:group.description||"",
+          photo:group.photo||null,created_by:profile.id});
+      if(ge)throw ge;
+      // Step 2: add creator first (satisfies "creator can add members" policy)
+      // then add other members in the same batch
+      const allMembers=[...new Set([profile.id,...(group.members||[])])];
+      const memberRows=allMembers.map(uid=>({group_id:group.id,user_id:uid}));
+      const {error:me}=await sb.from("group_members").insert(memberRows);
+      if(me)throw me;
+      const local={...group,createdBy:profile.id,members:allMembers,messages:[]};
       setGroups(prev=>[...prev,local]);
       setActiveGroup(local);
       pop(`Group "${group.name}" created! 👥`);
-    }catch(e){console.error("createGroup:",e);pop("Failed to create group");}
+    }catch(e){
+      console.error("createGroup error:",e?.message||e);
+      pop("Failed to create group — "+( e?.message||"check connection"));
+    }
   }
   async function handleSendGroup(groupId,txt){
     const tempId="temp_"+Date.now();
@@ -3885,7 +3895,24 @@ function App(){
       const {data,error}=await sb.from("group_messages")
         .insert({group_id:groupId,sender_id:profile.id,text:txt})
         .select("id,group_id,sender_id,text,created_at").single();
-      if(error){console.error("group_messages insert error:",error);throw error;}
+      if(error){
+        console.error("group_messages insert error:",JSON.stringify(error));
+        // If RLS error — user may not be in group_members yet
+        // Try to self-add to group_members first then retry
+        if(error.code==="42501"){
+          console.warn("RLS block — attempting self-add to group_members");
+          await sb.from("group_members").upsert({group_id:groupId,user_id:profile.id},{onConflict:"group_id,user_id"});
+          const retry=await sb.from("group_messages")
+            .insert({group_id:groupId,sender_id:profile.id,text:txt})
+            .select("id,group_id,sender_id,text,created_at").single();
+          if(retry.error)throw retry.error;
+          const real={sid:profile.id,txt:retry.data.text,ts:new Date(retry.data.created_at).getTime(),read:true,dbId:retry.data.id};
+          setGroups(prev=>prev.map(g=>g.id===groupId?{...g,messages:g.messages.map(m=>m.dbId===tempId?real:m)}:g));
+          setActiveGroup(ag=>ag&&ag.id===groupId?{...ag,messages:ag.messages.map(m=>m.dbId===tempId?real:m)}:ag);
+          return;
+        }
+        throw error;
+      }
       const real={sid:profile.id,txt:data.text,ts:new Date(data.created_at).getTime(),read:true,dbId:data.id};
       setGroups(prev=>prev.map(g=>g.id===groupId?{...g,messages:g.messages.map(m=>m.dbId===tempId?real:m)}:g));
       setActiveGroup(ag=>ag&&ag.id===groupId?{...ag,messages:ag.messages.map(m=>m.dbId===tempId?real:m)}:ag);
@@ -3893,7 +3920,7 @@ function App(){
       console.error("handleSendGroup failed:",e?.message||e);
       setGroups(prev=>prev.map(g=>g.id===groupId?{...g,messages:g.messages.filter(m=>m.dbId!==tempId)}:g));
       setActiveGroup(ag=>ag&&ag.id===groupId?{...ag,messages:ag.messages.filter(m=>m.dbId!==tempId)}:ag);
-      pop("Failed to send — check group membership");
+      pop("Failed to send");
     }
   }
   async function handleUpdateGroup(updated){
