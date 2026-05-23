@@ -1105,8 +1105,9 @@ function MsgStatus({m,myId}){
   const isPending=!m.dbId||String(m.dbId).startsWith("temp_");
   if(isPending)return<span title="Sending" style={{fontSize:11,color:"#4e5270",marginLeft:4,opacity:.5}}>⏱</span>;
   const st=m.status||"sent";
-  // Seen: ✓✓ colored
-  if(st==="seen"||m.read===true)
+  // Seen: ✓✓ colored — ONLY when status is explicitly seen
+  // Never derive from m.read (old messages had read=true before status column existed)
+  if(st==="seen")
     return<span title="Seen" style={{fontSize:11,color:"#7864DC",marginLeft:4,letterSpacing:"-2px",fontWeight:600}}>✓✓</span>;
   // Delivered: ✓✓ grey
   if(st==="delivered")
@@ -3237,11 +3238,12 @@ function App(){
   useEffect(()=>{
     window.history.pushState({he:"app"},"");
     function onPop(){
-      if(activeGroupRef.current){setActiveGroup(null);window.history.pushState({he:"app"},"");return;}
-      if((activeChatRef.current||activeGroupRef.current)&&viewTRef.current){setViewT(null);window.history.pushState({he:"app"},"");return;}
-      if(activeChatRef.current){setActiveChat(null);window.history.pushState({he:"app"},"");return;}
+      // Priority: always close overlays before closing underlying screens
       if(viewTRef.current){setViewT(null);window.history.pushState({he:"app"},"");return;}
       if(rateTRef.current){setRateT(null);window.history.pushState({he:"app"},"");return;}
+      if(activeGroupRef.current){setActiveGroup(null);window.history.pushState({he:"app"},"");return;}
+      if(activeChatRef.current){setActiveChat(null);window.history.pushState({he:"app"},"");return;}
+      if(viewTRef.current){setViewT(null);window.history.pushState({he:"app"},"");return;}
       if(settingsRef.current){setSettings(false);window.history.pushState({he:"app"},"");return;}
       if(showNotifsRef.current){setShowNotifs(false);window.history.pushState({he:"app"},"");return;}
       if(showAdminRef.current){setShowAdmin(false);window.history.pushState({he:"app"},"");return;}
@@ -3871,12 +3873,14 @@ function App(){
         .insert({id:group.id,name:group.name,description:group.description||"",
           photo:group.photo||null,created_by:profile.id});
       if(ge)throw ge;
-      // Step 2: add creator first (satisfies "creator can add members" policy)
-      // then add other members in the same batch
+      // Step 2: insert each member individually
+      // Batch insert fails if any member has an RLS conflict — individual inserts are safer
       const allMembers=[...new Set([profile.id,...(group.members||[])])];
-      const memberRows=allMembers.map(uid=>({group_id:group.id,user_id:uid}));
-      const {error:me}=await sb.from("group_members").insert(memberRows);
-      if(me)throw me;
+      for(const uid of allMembers){
+        const {error:me}=await sb.from("group_members")
+          .upsert({group_id:group.id,user_id:uid},{onConflict:"group_id,user_id",ignoreDuplicates:true});
+        if(me)console.warn("member insert warning (non-fatal):",uid,me.message);
+      }
       const local={...group,createdBy:profile.id,members:allMembers,messages:[]};
       setGroups(prev=>[...prev,local]);
       setActiveGroup(local);
