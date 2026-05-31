@@ -1873,6 +1873,7 @@ function App(){
      AUTH SYSTEM — single source of truth, no race conditions
   ───────────────────────────────────────────────────────────────────────── */
   const profileLoadingRef=useRef(false);
+  const dataReadyRef=useRef(false);
   const profileRef=useRef(null);
   const pollRef=useRef(null);
   const profilesRef=useRef([]);
@@ -2746,6 +2747,9 @@ function App(){
   }
 
   useEffect(()=>{document.body.style.background=T.bg;document.body.style.color=T.txt;},[T.bg,T.txt]);
+
+  // Keep dataReadyRef in sync with dataReady state
+  useEffect(()=>{dataReadyRef.current=dataReady;},[dataReady]);
 
   // Dismiss splash once auth resolved
   useEffect(()=>{
