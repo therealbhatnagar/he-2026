@@ -1788,6 +1788,30 @@ function InboxTab({convs,myProfile,T,onOpen,onDeleteConv,onViewProfile}){
 }
 
 
+function parseDeepLink(){
+  const search=window.location.search;
+  const hash=window.location.hash;
+  const path=window.location.pathname;
+  const mPath=path.match(/\/u\/([A-Z0-9]{5,8})/i);
+  if(mPath)return{type:"short_id",val:mPath[1].toUpperCase()};
+  if(hash&&hash.length>1){
+    const hv=hash.slice(1).toUpperCase();
+    if(/^[A-Z0-9]{5,8}$/.test(hv))return{type:"short_id",val:hv};
+  }
+  if(!search||search.length<2)return null;
+  const raw=search.slice(1);
+  if(/^[A-Z0-9]{5,8}$/i.test(raw))return{type:"short_id",val:raw.toUpperCase()};
+  const p=new URLSearchParams(search);
+  if(p.get("invite"))return{type:"invite",val:p.get("invite").toUpperCase()};
+  if(p.get("ref"))return{type:"invite",val:p.get("ref").toUpperCase()};
+  if(p.get("u"))return{type:"short_id",val:p.get("u").toUpperCase()};
+  if(p.get("user"))return{type:"short_id",val:p.get("user").toUpperCase()};
+  if(p.get("uid"))return{type:"uid",val:p.get("uid")};
+  if(raw.startsWith("@"))return{type:"handle",val:decodeURIComponent(raw.slice(1))};
+  return null;
+}
+
+
 function App(){
   const [authUser,setAuthUser]=useState(null);
   const [authError,setAuthError]=useState("");
