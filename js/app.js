@@ -32,6 +32,20 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON, {
     storage: window.localStorage,
   }
 });
+const BASE_URL="https://highenough.in";
+const getProfileUrl=p=>{
+  const handle=(p.handle||"").replace(/^@/,"").trim();
+  if(handle)return`${BASE_URL}/?@${handle}`;
+  return`${BASE_URL}/?${p.short_id||shortId(p.id)}`;
+};
+
+const BASE_URL="https://highenough.in";
+const getProfileUrl=p=>{
+  const handle=(p.handle||"").replace(/^@/,"").trim();
+  if(handle)return`${BASE_URL}/?@${handle}`;
+  return`${BASE_URL}/?${p.short_id||shortId(p.id)}`;
+};
+
 
 // ── PRE-BOOT: Await getSession() BEFORE React mounts ────────────────────────
 // This is the definitive fix for the login flash. React is NOT mounted until
@@ -930,6 +944,2888 @@ function SettingsProfileUrl({me,T}){
 }
 
 /* ── EDIT PROFILE MODAL (profile info only) ── */
+function RateModal({target,raterId,raterName,existing,T,onClose,onSubmit}){
+  const isBiz=target?.account_type==="business";
+  const cats=getCats(target);
+  const tiers=getTiers(target);
+  const isEdit=!!existing;
+  const [vals,setVals]=useState(isEdit?Object.fromEntries(cats.map(c=>[c.id,existing[c.id]||0])):Object.fromEntries(cats.map(c=>[c.id,50])));
+  const [submitting,setSubmitting]=useState(false);
+  // contribution = this rater's avg across categories (matches new pScore formula: sum of per-rater avgs)
+  const contribution=Math.round(cats.reduce((s,c)=>s+(vals[c.id]||0),0)/cats.length);
+  const currentSc=pScore(target)||0;
+  // If editing: replace old rater avg with new rater avg; if new: add rater avg
+  const oldContrib=isEdit?Math.round(cats.reduce((s,c)=>s+(existing[c.id]||0),0)/cats.length):0;
+  const projSc=isEdit?currentSc-oldContrib+contribution:currentSc+contribution;
+  const tBefore=tierOf(currentSc,isBiz),tAfter=tierOf(projSc,isBiz);
+  const tierUp=tiers.indexOf(tAfter)>tiers.indexOf(tBefore);
+
+  async function handleSubmit(){
+    if(submitting)return;
+    setSubmitting(true);
+    try{await onSubmit(target.id,{...vals,raterId,raterName,ts:Date.now()});}
+    finally{setSubmitting(false);}
+  }
+
+  return<Overlay onBg={onClose} T={T} bottom>
+    <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16}}>
+      <Ava p={target} size={48} T={T}/>
+      <div style={{flex:1}}><div style={{fontWeight:600,fontSize:16,color:T.txt}}>{isEdit?"Edit Rating —":"Rate"} {target.name}</div><TierBadge sc={pScore(target)} size="sm" isBiz={isBiz}/></div>
+      <div style={{textAlign:"center"}}><div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:22,fontWeight:700,color:tierUp?tAfter.color:T.txt,transition:"color .3s"}}>{contribution}</div><div style={{fontSize:9,color:T.mu,letterSpacing:.5}}>pts</div></div>
+    </div>
+    {tierUp&&<div style={{background:`${tAfter.color}14`,border:`1px solid ${tAfter.color}30`,borderRadius:10,padding:"8px 12px",marginBottom:12,fontSize:12,color:tAfter.color,fontWeight:600,display:"flex",alignItems:"center",gap:6}}><span>{tAfter.emoji}</span> This will push them to {tAfter.label}!</div>}
+    {isEdit&&<div style={{background:`${AC}10`,border:`1px solid ${AC}28`,borderRadius:10,padding:"8px 12px",marginBottom:12,fontSize:12,color:AC,fontWeight:600}}>✏️ Updating your previous rating</div>}
+    <div style={{display:"flex",flexDirection:"column",gap:18}}>
+      {cats.map(c=>{
+        const v=vals[c.id];
+        const pct=v/100;
+        const col=isBiz?"#10a37f":target.color;
+        return<div key={c.id}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:3}}>
+            <span style={{fontSize:13,color:T.txt,fontWeight:600}}>{c.emoji} {c.label}</span>
+            <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:13,fontWeight:800,color:v>=80?"#4ade80":v>=50?col:T.mu,background:v>=80?"#4ade8018":v>=50?`${col}18`:T.faint,border:`1px solid ${v>=80?"#4ade8030":v>=50?col+"30":T.b1}`,borderRadius:6,padding:"2px 9px",minWidth:40,textAlign:"center",transition:"all .15s"}}>{v}</div>
+          </div>
+          {c.sub&&<div style={{fontSize:11,color:T.mu,marginBottom:6,opacity:.75}}>{c.sub}</div>}
+          <div style={{position:"relative",height:8,background:T.b1,borderRadius:99,overflow:"hidden",cursor:"pointer"}}>
+            <div style={{position:"absolute",left:0,top:0,bottom:0,width:`${pct*100}%`,background:`linear-gradient(90deg,${col}99,${col})`,borderRadius:99,transition:"width .08s"}}/>
+          </div>
+          <input type="range" min={0} max={100} value={v} onChange={e=>setVals(prev=>({...prev,[c.id]:+e.target.value}))} style={{width:"100%",accentColor:col,cursor:"pointer",marginTop:-4,opacity:0,position:"relative",zIndex:2,height:16}}/>
+        </div>;
+      })}
+    </div>
+    <button onClick={handleSubmit} disabled={submitting} style={{marginTop:20,width:"100%",padding:"14px 0",background:submitting?T.faint:`linear-gradient(135deg,${target.color}e0,${target.color}90)`,borderRadius:13,color:submitting?T.mu:"#fff",fontWeight:700,fontSize:15,display:"flex",alignItems:"center",justifyContent:"center",gap:10,transition:"all .2s"}}>
+      {submitting?<><Spinner/>{isEdit?"Updating…":"Submitting…"}</>:isEdit?"Update Rating ✓":"Submit Rating ✓"}
+    </button>
+  </Overlay>;
+}
+
+/* ── FOLLOWERS / FOLLOWING / RATERS LIST ── */
+function PeopleListModal({title,people,T,onClose,onView}){
+  return<Overlay onBg={onClose} T={T} bottom>
+    <div style={{fontWeight:700,fontSize:16,color:T.txt,marginBottom:16}}>{title} <span style={{fontSize:13,color:T.mu,fontWeight:400}}>({people.length})</span></div>
+    {people.length===0?<div style={{textAlign:"center",padding:"32px 0",color:T.mu,fontSize:13}}>Nobody here yet</div>
+      :<div style={{display:"flex",flexDirection:"column",gap:2,maxHeight:"60vh",overflowY:"auto"}}>
+        {people.map((p,i)=><div key={p.id||i} onClick={()=>{onView(p);onClose();}} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 4px",cursor:"pointer",borderBottom:`1px solid ${T.b1}`}}>
+          <Ava p={p} size={44} T={T}/>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontWeight:600,fontSize:14,color:T.txt}}>{p.name}</div>
+            <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:T.mu}}>{p.handle}</div>
+          </div>
+          {p.score!=null&&<div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:12,color:T.color||T.mu,fontWeight:700}}>{p.ratingGiven!=null?`Gave ${p.ratingGiven}pts`:fmtScore(p.score)}</div>}
+        </div>)}
+      </div>}
+  </Overlay>;
+}
+
+/* ── PROFILE VIEW MODAL ── */
+
+function ProfileModal({profile,myId,following,profiles,T,onClose,onRate,onFollow,onUnfollow,onBlock,onReport,onMsg,onViewOther}){
+  const isSelf=profile.id===myId;
+  const isBiz=profile.account_type==="business";
+  const cats=getCats(profile);
+  const isFollowing=following.includes(profile.id);
+  const sc=pScore(profile),n=(profile.ratings||[]).length,t=tierOf(sc??0,isBiz);
+  const pct=tierPct(sc??0,isBiz);
+  const allTiers=getTiers(profile);
+  const next=sc!=null?allTiers[allTiers.indexOf(t)+1]:null;
+  const myR=profile.ratings?.find(r=>r.raterId===myId);
+  const links=profile.links||{};
+  const [peopleList,setPeopleList]=useState(null);
+
+  function showFollowers(){
+    sb.from("follows").select("follower_id").eq("following_id",profile.id).then(({data})=>{
+      const ids=(data||[]).map(r=>r.follower_id);
+      const list=profiles.filter(p=>ids.includes(p.id)).map(p=>({...p,score:pScore(p)}));
+      setPeopleList({title:`Followers of ${profile.name}`,people:list});
+    });
+  }
+  function showFollowing(){
+    sb.from("follows").select("following_id").eq("follower_id",profile.id).then(({data})=>{
+      const ids=(data||[]).map(r=>r.following_id);
+      const list=profiles.filter(p=>ids.includes(p.id)).map(p=>({...p,score:pScore(p)}));
+      setPeopleList({title:`${profile.name} follows`,people:list});
+    });
+  }
+  function showRaters(){
+    const raters=(profile.ratings||[]).map(r=>{
+      const rp=profiles.find(p=>p.id===r.raterId)||{id:r.raterId,name:r.raterName||"Unknown",handle:"",color:AC};
+      const given=Math.round(avg(cats.map(c=>r[c.id]||0)));
+      return{...rp,ratingGiven:given};
+    });
+    setPeopleList({title:`Rated by`,people:raters});
+  }
+
+  if(peopleList) return<PeopleListModal title={peopleList.title} people={peopleList.people} T={T} onClose={()=>setPeopleList(null)} onView={p=>{setPeopleList(null);if(onViewOther)onViewOther(p);else onClose();}} />;
+
+  // ── Full-screen profile view ──
+  return<div style={{position:"fixed",inset:0,zIndex:500,background:T.bg,display:"flex",flexDirection:"column",animation:"slideUp .22s ease",overflowY:"auto"}}>
+    {/* Sticky header bar */}
+    <div style={{position:"sticky",top:0,zIndex:10,background:`${T.nav}f0`,borderBottom:`1px solid ${T.b1}`,padding:"12px 16px",paddingTop:"max(12px,env(safe-area-inset-top))",display:"flex",alignItems:"center",gap:12,backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",flexShrink:0}}>
+      <button onClick={onClose} style={{background:"none",color:T.txt,padding:"4px",display:"flex",alignItems:"center",flexShrink:0}}><BackIcon/></button>
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{fontWeight:700,fontSize:16,color:T.txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{profile.name}</div>
+        <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:T.mu}}>{profile.handle}</div>
+      </div>
+      {!isSelf&&<button onClick={()=>isFollowing?onUnfollow(profile.id):onFollow(profile.id)} style={{padding:"7px 14px",borderRadius:20,background:isFollowing?T.faint:`linear-gradient(135deg,${AC}ee,${AC}aa)`,border:isFollowing?`1.5px solid ${T.b2}`:"none",color:isFollowing?T.txt:"#fff",fontWeight:700,fontSize:12,flexShrink:0}}>{isFollowing?"Following ✓":"+ Follow"}</button>}
+    </div>
+
+    <div style={{flex:1,padding:"0 0 32px",maxWidth:560,margin:"0 auto",width:"100%"}}>
+      {/* ── Profile header — no banner, clean card style ── */}
+      <div style={{padding:"24px 20px 0",background:T.bg}}>
+        {/* Avatar + name row */}
+        <div style={{display:"flex",alignItems:"flex-start",gap:16,marginBottom:18}}>
+          <div style={{position:"relative",flexShrink:0}}>
+            <div style={{width:88,height:88,borderRadius:"50%",padding:3,background:`linear-gradient(135deg,${t.color},${t.grad?.[1]||t.color}88)`,boxShadow:`0 0 0 1px ${T.bg},0 8px 24px ${t.color}40`}}>
+              <Ava p={profile} size={82} T={T}/>
+            </div>
+            {isBiz&&<div style={{position:"absolute",bottom:0,right:0,width:26,height:26,borderRadius:"50%",background:`linear-gradient(135deg,${AC},${AC}99)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,border:`2px solid ${T.bg}`,boxShadow:`0 2px 8px ${AC}40`}}>🏢</div>}
+          </div>
+          <div style={{flex:1,minWidth:0,paddingTop:4}}>
+            <div style={{fontWeight:800,fontSize:21,color:T.txt,letterSpacing:"-.4px",lineHeight:1.15,marginBottom:3}}>{profile.name}</div>
+            <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap",marginBottom:6}}>
+              <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:AC,fontWeight:600}}>{profile.handle}</span>
+              <span style={{color:T.mu,fontSize:11}}>·</span>
+              <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:T.mu}}>#{profile.short_id||shortId(profile.id)}</span>
+              {profile.age&&<><span style={{color:T.mu,fontSize:11}}>·</span><span style={{fontSize:11,color:T.mu}}>{profile.age}</span></>}
+            </div>
+            {profile.bio&&<p style={{color:T.mu,fontSize:12.5,lineHeight:1.55,margin:"0 0 6px"}}>{profile.bio}</p>}
+            {isBiz&&<div style={{marginTop:4}}>
+              <span style={{fontSize:11,color:AC,fontWeight:700,background:`${AC}12`,border:`1px solid ${AC}28`,borderRadius:6,padding:"2px 10px"}}>
+                {BIZ_TYPES.find(b=>b.id===(profile.biz_type||(profile.links?.biz_type)||"general"))?.emoji||"💼"} {BIZ_TYPES.find(b=>b.id===(profile.biz_type||(profile.links?.biz_type)||"general"))?.label||"Business / Professional"}
+              </span>
+            </div>}
+          </div>
+        </div>
+
+        {/* Stats row */}
+        <div style={{display:"flex",gap:8,marginBottom:14}}>
+          <button style={{flex:1,padding:"12px 4px",borderRadius:14,background:T.faint,border:`1px solid ${T.b1}`,cursor:"pointer",textAlign:"center"}} onClick={showFollowers}>
+            <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:17,fontWeight:800,color:T.txt}}>{fmtCount(profile.followers_count||0)}</div>
+            <div style={{fontSize:10,color:T.mu,marginTop:2}}>Followers</div>
+          </button>
+          <button style={{flex:1,padding:"12px 4px",borderRadius:14,background:T.faint,border:`1px solid ${T.b1}`,cursor:"pointer",textAlign:"center"}} onClick={showFollowing}>
+            <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:17,fontWeight:800,color:T.txt}}>{fmtCount(profile.following_count||0)}</div>
+            <div style={{fontSize:10,color:T.mu,marginTop:2}}>Following</div>
+          </button>
+          <button style={{flex:1,padding:"12px 4px",borderRadius:14,background:`linear-gradient(135deg,${t.color}20,${t.color}08)`,border:`1.5px solid ${t.color}35`,cursor:"pointer",textAlign:"center",boxShadow:`0 2px 12px ${t.color}18`}} onClick={showRaters}>
+            <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:17,fontWeight:800,color:t.color,textShadow:`0 0 12px ${t.color}60`}}>{sc!=null?fmtScore(sc):"—"}</div>
+            <div style={{fontSize:10,color:t.color,opacity:.85,marginTop:2}}>{n} {isBiz?"Reviews":"Ratings"}</div>
+          </button>
+        </div>
+
+        {/* Tier progress bar */}
+        <div style={{background:`linear-gradient(135deg,${t.color}14,${t.color}06)`,border:`1.5px solid ${t.color}28`,borderRadius:14,padding:"12px 14px",marginBottom:14,boxShadow:`0 2px 12px ${t.color}10`}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+            <TierBadge sc={sc} size="sm" isBiz={isBiz}/>
+            {next?<span style={{fontSize:11,color:T.mu,fontFamily:"'JetBrains Mono',monospace"}}>{next.emoji} {next.label} at {next.min.toLocaleString()}</span>:<span style={{fontSize:11,color:t.color,fontWeight:600}}>Top tier 🔝</span>}
+          </div>
+          <div style={{height:6,background:T.b1,borderRadius:99,overflow:"hidden"}}><div style={{width:`${pct*100}%`,height:"100%",background:`linear-gradient(90deg,${t.color}88,${t.color})`,borderRadius:99,transition:"width .9s",boxShadow:`0 0 8px ${t.color}60`}}/></div>
+        </div>
+
+        {(profile.interests||[]).length>0&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:14}}>{profile.interests.map(i=><Tag key={i} label={i} color={profile.color}/>)}</div>}
+
+        {(links.instagram||links.twitter||links.tiktok||links.website)&&<div style={{display:"flex",gap:7,flexWrap:"wrap",marginBottom:14}}>
+          {links.instagram&&<a href={`https://instagram.com/${links.instagram.replace("@","")}`} target="_blank" rel="noreferrer" style={{fontSize:11,color:"#c96090",background:"#c9609014",border:"1px solid #c9609028",borderRadius:6,padding:"3px 10px",fontWeight:600}}>📸 {links.instagram}</a>}
+          {links.twitter&&<a href={`https://x.com/${links.twitter.replace("@","")}`} target="_blank" rel="noreferrer" style={{fontSize:11,color:"#6090c8",background:"#6090c814",border:"1px solid #6090c828",borderRadius:6,padding:"3px 10px",fontWeight:600}}>𝕏 {links.twitter}</a>}
+          {links.tiktok&&<a href={`https://tiktok.com/@${links.tiktok.replace("@","")}`} target="_blank" rel="noreferrer" style={{fontSize:11,color:T.mu,background:T.faint,border:`1px solid ${T.b1}`,borderRadius:6,padding:"3px 10px",fontWeight:600}}>🎵 {links.tiktok}</a>}
+          {links.website&&<a href={links.website} target="_blank" rel="noreferrer" style={{fontSize:11,color:AC,background:`${AC}14`,border:`1px solid ${AC}28`,borderRadius:6,padding:"3px 10px",fontWeight:600}}>🔗 Site</a>}
+        </div>}
+      </div>
+
+      <div style={{padding:"0 16px"}}>
+        {/* Category bars */}
+        <div style={{height:1,background:T.b1,marginBottom:14}}/>
+        {n>0?<div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:14}}>{cats.map(c=>{const v=cAvg(profile,c.id);return<div key={c.id}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+            <span style={{fontSize:13,color:T.txt,fontWeight:500}}>{c.emoji} {c.label}</span>
+            <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:12,fontWeight:800,color:v>=80?"#4ade80":v>=60?profile.color:T.mu,background:v>=80?"#4ade8014":v>=60?`${profile.color}14`:T.faint,border:`1px solid ${v>=80?"#4ade8030":v>=60?profile.color+"28":T.b1}`,borderRadius:6,padding:"2px 8px"}}>{v}/100</span>
+          </div>
+          {c.sub&&<div style={{fontSize:10,color:T.mu,opacity:.65,marginBottom:5}}>{c.sub}</div>}
+          <div style={{height:6,background:T.faint,borderRadius:99,overflow:"hidden"}}>
+            <div style={{width:`${v}%`,height:"100%",background:v>=80?`linear-gradient(90deg,#4ade8099,#4ade80)`:`linear-gradient(90deg,${profile.color}80,${profile.color})`,borderRadius:99,transition:"width .7s"}}/>
+          </div>
+        </div>;})}
+        </div>:<div style={{background:`linear-gradient(135deg,${t.grad[0]}30,${t.grad[1]}18)`,border:`1px solid ${t.color}25`,borderRadius:14,padding:"20px 16px",marginBottom:8,textAlign:"center",position:"relative",overflow:"hidden"}}>
+          <div style={{position:"absolute",right:-10,top:-10,fontSize:72,opacity:.07,pointerEvents:"none"}}>👻</div>
+          <div style={{fontSize:22,marginBottom:6}}>👻</div>
+          <div style={{fontWeight:700,fontSize:14,color:T.txt,marginBottom:4}}>Still a Ghost</div>
+          <div style={{fontSize:12,color:T.mu,lineHeight:1.6}}>{isSelf?"Share your profile to get your first rating!":"No ratings yet — be the first to rate them!"}</div>
+          {!isSelf&&<button onClick={()=>{onClose();onRate(profile,myR);}} style={{marginTop:12,padding:"9px 20px",background:`linear-gradient(135deg,${profile.color}cc,${profile.color}80)`,borderRadius:12,color:"#fff",fontWeight:700,fontSize:12,border:"none",boxShadow:`0 4px 14px ${profile.color}40`}}>{isBiz?"✍️ Be first to review":"⭐ Be first to rate"}</button>}
+        </div>}
+
+        {myR&&!isSelf&&<div style={{background:T.faint,border:`1px solid ${T.b1}`,borderRadius:10,padding:"10px 13px",marginBottom:14}}><div style={{fontSize:10,color:T.mu,marginBottom:6,textTransform:"uppercase",letterSpacing:1,fontWeight:600}}>Your Rating</div><div style={{display:"flex",gap:5,flexWrap:"wrap"}}>{cats.map(c=><Tag key={c.id} label={`${c.emoji} ${myR[c.id]}`} color={T.mu}/>)}</div></div>}
+
+        {/* Action buttons */}
+        {isSelf
+          ?<button onClick={onClose} style={{width:"100%",padding:"14px 0",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:14,color:T.txt,fontWeight:600,fontSize:14}}>Close</button>
+          :<div style={{display:"flex",flexDirection:"column",gap:10}}>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={()=>isFollowing?onUnfollow(profile.id):onFollow(profile.id)} style={{flex:2,padding:"14px 0",background:isFollowing?T.faint:`linear-gradient(135deg,${AC}ee,${AC}aa)`,border:isFollowing?`1.5px solid ${T.b2}`:"none",borderRadius:14,color:isFollowing?T.txt:"#fff",fontWeight:700,fontSize:14,boxShadow:isFollowing?"none":`0 6px 20px ${AC}40`,transition:"all .2s"}}>{isFollowing?"Following ✓":"➕ Follow"}</button>
+              <button onClick={()=>{onClose();onRate(profile,myR);}} style={{flex:2,padding:"14px 0",background:`linear-gradient(135deg,${profile.color}cc,${profile.color}80)`,border:"none",borderRadius:14,color:"#fff",fontWeight:700,fontSize:14,boxShadow:`0 6px 20px ${profile.color}40`}}>{myR?`✏️ Edit ${isBiz?"Review":"Rating"}`:isBiz?"✍️ Review":"⭐ Rate"}</button>
+              <button onClick={()=>{onClose();onMsg(profile);}} style={{flex:1,padding:"14px 0",background:T.faint,border:`1.5px solid ${T.b1}`,borderRadius:14,color:T.mu,display:"flex",alignItems:"center",justifyContent:"center"}}><SendIcon/></button>
+            </div>
+            {/* Share + Block + Report row */}
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={()=>{
+                const shareUrl=getProfileUrl(profile);
+                const text=`Check out ${profile.name} on HighEnough 👉 ${shareUrl}`;
+                if(navigator.share){navigator.share({title:profile.name+" on HighEnough",text,url:shareUrl}).catch(()=>navigator.clipboard?.writeText(shareUrl));}
+                else{navigator.clipboard?.writeText(shareUrl);}
+              }} style={{flex:1,padding:"11px 0",background:T.faint,border:`1.5px solid ${T.b1}`,borderRadius:12,color:T.mu,fontSize:12,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+                Share
+              </button>
+              <button onClick={()=>{onBlock(profile.id);onClose();}} style={{flex:1,padding:"11px 0",background:"transparent",border:`1.5px solid ${T.b1}`,borderRadius:12,color:T.mu,fontSize:12,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}><ShieldIcon/>Block</button>
+              <button onClick={()=>{onClose();onReport(profile);}} style={{flex:1,padding:"11px 0",background:"transparent",border:"1.5px solid #8030304a",borderRadius:12,color:"#d07070",fontSize:12,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}><FlagIcon/>Report</button>
+            </div>
+          </div>}
+      </div>
+    </div>
+  </div>;
+}
+
+/* ── MESSAGE TEXT — renders URLs as links, __PROFILE__ as cards ── */
+function MsgText({txt,mine,T,onViewProfile}){
+  // Detect profile share message
+  if(txt&&txt.startsWith("__PROFILE__")){
+    try{
+      const data=JSON.parse(txt.slice("__PROFILE__".length));
+      const isBiz=data.account_type==="business";
+      const t=tierOf(data.sc??0,isBiz);
+      const col=data.color||AC;
+      return<div onClick={()=>onViewProfile&&onViewProfile(data)} style={{cursor:"pointer",background:mine?"rgba(255,255,255,.12)":"rgba(0,0,0,.05)",borderRadius:12,padding:"10px 12px",display:"flex",alignItems:"center",gap:10,minWidth:190,border:`1px solid ${mine?"rgba(255,255,255,.2)":"rgba(0,0,0,.08)"}`}}>
+        {/* Avatar: show photo if available, else initials */}
+        <div style={{width:42,height:42,borderRadius:"50%",background:`${col}28`,border:`2px solid ${col}60`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:13,color:col,flexShrink:0,overflow:"hidden"}}>
+          {data.photo
+            ?<img src={data.photo} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}} onError={e=>{e.target.style.display="none";}}/>
+            :ini(data.name)}
+        </div>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontWeight:700,fontSize:13,color:mine?"#fff":"inherit",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{data.name}</div>
+          <div style={{fontSize:10,color:mine?"rgba(255,255,255,.65)":"inherit",opacity:.85,fontFamily:"'JetBrains Mono',monospace",marginBottom:3}}>{data.handle}</div>
+          <span style={{background:`${t.color}22`,border:`1px solid ${t.color}44`,borderRadius:5,padding:"1px 7px",fontSize:10,fontWeight:700,color:t.color,fontFamily:"'JetBrains Mono',monospace"}}>{t.emoji} {data.tierLabel||t.label}</span>
+        </div>
+        <span style={{fontSize:16,color:mine?"rgba(255,255,255,.5)":"rgba(0,0,0,.3)",flexShrink:0}}>›</span>
+      </div>;
+    }catch{}
+  }
+  const URL_RE=/https?:\/\/[^\s]+|www\.[^\s]+/gi;
+  const parts=[];let last=0,m;
+  URL_RE.lastIndex=0;
+  while((m=URL_RE.exec(txt))!==null){
+    if(m.index>last)parts.push({type:"text",val:txt.slice(last,m.index)});
+    const href=m[0].startsWith("http")?m[0]:`https://${m[0]}`;
+    parts.push({type:"link",val:m[0],href});
+    last=m.index+m[0].length;
+  }
+  if(last<txt.length)parts.push({type:"text",val:txt.slice(last)});
+  if(parts.length===0)parts.push({type:"text",val:txt});
+  return<span>{parts.map((p,i)=>p.type==="link"
+    ?<a key={i} href={p.href} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} style={{color:mine?"#b8d4ff":"#5b9bf8",textDecoration:"underline",wordBreak:"break-all"}}>{p.val}</a>
+    :<span key={i}>{p.val}</span>
+  )}</span>;
+}
+
+/* ── CHAT SCREEN (full screen) ── */
+function MsgStatus({m,myId}){
+  if(m.sid!==myId)return null;
+  const st=m.status||"sent";
+  if(st==="seen")return<span style={{fontSize:11,color:"#4a9eff",marginLeft:4}}>✓✓</span>;
+  if(st==="delivered")return<span style={{fontSize:11,color:"#7a8098",marginLeft:4}}>✓✓</span>;
+  return<span style={{fontSize:11,color:"#4e5270",marginLeft:4}}>✓</span>;
+}
+
+function ChatScreen({conv,myProfile,profiles,T,onBack,onSend,onMarkRead,onClearChat,onBlockUser,onReportUser,onViewProfile}){
+  const [txt,setTxt]=useState("");
+  const [showMenu,setShowMenu]=useState(false);
+  const [showEmoji,setShowEmoji]=useState(false);
+  const [notifMuted,setNotifMuted]=useState(false);
+  const endRef=useRef(null);
+  const inputRef=useRef(null);
+  const msgs=conv.messages||[];
+
+  const EMOJI_CATS=[
+    {id:"recent",label:"🕐",name:"Recent"},
+    {id:"smileys",label:"😀",name:"Smileys"},
+    {id:"people",label:"👋",name:"People"},
+    {id:"nature",label:"🐶",name:"Nature"},
+    {id:"food",label:"🍎",name:"Food"},
+    {id:"travel",label:"✈️",name:"Travel"},
+    {id:"objects",label:"💡",name:"Objects"},
+    {id:"symbols",label:"❤️",name:"Symbols"},
+    {id:"flags",label:"🏳️",name:"Flags"},
+  ];
+  const ALL_EMOJIS={
+    smileys:["😀","😃","😄","😁","😆","😅","🤣","😂","🙂","🙃","🫠","😉","😊","😇","🥰","😍","🤩","😘","😗","☺️","😚","😙","🥲","😋","😛","😜","🤪","😝","🤑","🤗","🤭","🫢","🫣","🤫","🤔","🫡","🤐","🤨","😐","😑","😶","🫥","😏","😒","🙄","😬","🤥","😌","😔","😪","🤤","😴","😷","🤒","🤕","🤢","🤮","🤧","🥵","🥶","🥴","😵","🤯","🤠","🥸","🥳","😎","🤓","🧐","😕","🫤","😟","🙁","☹️","😮","😯","😲","😳","🥺","🥹","😦","😧","😨","😰","😥","😢","😭","😱","😖","😣","😞","😓","😩","😫","🥱","😤","😡","😠","🤬","😈","👿","💀","☠️","💩","🤡","👹","👺","👻","👽","👾","🤖"],
+    people:["👋","🤚","🖐️","✋","🖖","🫱","🫲","🫳","🫴","👌","🤌","🤏","✌️","🤞","🫰","🤟","🤘","🤙","👈","👉","👆","🖕","👇","☝️","🫵","👍","👎","✊","👊","🤛","🤜","👏","🙌","🫶","👐","🤲","🤝","🙏","✍️","💅","🤳","💪","🦾","🦿","🦵","🦶","👂","🦻","👃","🫀","🫁","🧠","🦷","🦴","👀","👁️","👅","👄","🫦","💋","🧑","👶","🧒","👦","👧","🧑","👱","👨","🧔","👩","🧓","👴","👵","🙍","🙎","🙅","🙆","💁","🙋","🧏","🙇","🤦","🤷","👮","🕵️","💂","🥷","👷","🫅","🤴","👸","👳","👲","🧕","🤵","👰","🤰","🫃","🤱","👼","🎅","🤶","🧑‍🎄","🦸","🦹","🧙","🧚","🧛","🧜","🧝","🧞","🧟","🧌","💆","💇","🚶","🧍","🧎","🏃","💃","🕺","🕴️","👯","🧖","🧗","🤺","🏇","⛷️","🏂","🏌️","🏄","🚣","🧘","🤼","🤸","⛹️","🤾","🏋️","🤼","🤺"],
+    nature:["🐶","🐱","🐭","🐹","🐰","🦊","🐻","🐼","🐻‍❄️","🐨","🐯","🦁","🐮","🐷","🐸","🐵","🙈","🙉","🙊","🐔","🐧","🐦","🐤","🦆","🦅","🦉","🦇","🐺","🐗","🐴","🦄","🐝","🪱","🐛","🦋","🐌","🐞","🐜","🪲","🦟","🦗","🪳","🕷️","🦂","🐢","🦎","🐍","🦕","🦖","🦙","🐊","🦈","🐬","🦭","🐳","🐋","🦑","🐙","🦐","🦞","🦀","🐡","🐟","🐠","🐬","🐊","🐅","🐆","��","🦍","🦧","🦣","🐘","🦛","🦏","🐪","🐫","🦒","🦘","🦬","🐃","🐂","🐄","🐎","🐖","🐏","🐑","🦙","🐐","🦌","🐕","🐩","🦮","🐈","🐓","🦃","🦤","🦚","🦜","🦢","🦩","🕊️","🐇","🦝","🦨","🦡","🦫","🦦","🦥","🐿️","🦔","🌵","🎄","🌲","🌳","🌴","🪵","🌱","🌿","☘️","🍀","🎋","🎍","🪴","🌾","🌺","🌸","🌼","🌻","🌞","🌝","🌛","🌚","🌕","🌖","🌗","🌘","🌑","🌒","🌓","🌔","🌙","🌟","⭐","🌠","🌌","☀️","🌤️","⛅","🌥️","☁️","🌦️","🌧️","⛈️","🌩️","🌨️","❄️","☃️","⛄","🌬️","💨","🌀","🌈","🌂","☂️","☔","⛱️","🌊","🌫️","🌁"],
+    food:["🍎","🍐","🍊","🍋","🍌","🍉","🍇","🍓","🫐","🍈","🍒","🍑","🥭","🍍","🥥","🥝","🍅","🍆","🥑","🫑","🥦","🥬","🥒","🌶️","🫒","🧄","🧅","🥔","🍠","🫘","🌽","🫚","🍄","🧅","🥜","🍞","🥐","🥖","🫓","🥨","🧀","🥚","🍳","🧈","🥞","🧇","🥓","🥩","🍗","🍖","🌭","🍔","🍟","🍕","🫔","🌮","🌯","🥙","🧆","🥚","🍲","🫕","🥘","🍛","🍜","🍝","🍠","🍢","🍣","🍤","🍙","🍚","🍘","🍥","🥮","🍡","🧁","🍰","🎂","🍮","🍭","🍬","🍫","🍿","🍩","🍪","🌰","🥜","🍯","🧃","🥤","🧋","☕","🫖","🍵","🧉","🍶","🍺","🍻","🥂","🍷","🫗","🥃","🍸","🍹","🧊","🥄","🍴","🍽️"],
+    travel:["🚗","🚕","🚙","🚌","🚎","🏎️","🚓","🚑","🚒","🚐","🛻","🚚","🚛","🚜","🏍️","🛵","🦽","🦼","🛺","🚲","🛴","🛹","🛼","🚏","🛣️","🛤️","⛽","🚧","🚦","🚥","🗺️","🗿","🗽","🗼","🏰","🏯","🏟️","🎡","🎢","🎠","⛲","⛺","🏕️","🌁","🌃","🌄","🌅","🌆","🌇","🌉","🏙️","🌌","🌠","🎇","🎆","🎑","⛱️","🏖️","🏝️","🏜️","🏞️","🏔️","⛰️","🌋","🗻","🏠","🏡","🏢","🏣","🏤","🏥","🏦","🏨","🏩","🏪","🏫","🏭","🏗️","🧱","🪞","🪟","🪑","🚪","🛏️","🛋️","🚿","🛁","🪠","🧴","🪒","🧽","🧹","🧺","🧻","🪣","🧼","✈️","🛩️","🛫","🛬","💺","🚁","🛸","🚀","🛶","⛵","🚤","🛥️","🛳️","⛴️","🚢","🗺️","🧭","⏱️","🌍","🌎","🌏"],
+    objects:["⌚","📱","💻","🖥️","🖨️","⌨️","🖱️","🖲️","💽","💾","💿","📀","📷","📸","📹","🎥","📽️","🎞️","📞","☎️","📟","📠","📺","📻","🧭","⏱️","⏰","🕰️","⌛","⏳","📡","🔋","🪫","🔌","💡","🔦","🕯️","🪔","🧯","🛢️","💰","💴","💵","💶","💷","💸","💳","🪙","💹","📈","📉","📊","📋","📌","📍","📎","🖇️","📏","📐","✂️","🗃️","🗄️","🗑️","🔒","🔓","🔏","🔐","🔑","🗝️","🔨","🪓","⛏️","⚒️","🛠️","🗡️","⚔️","🛡️","🔧","🔩","⚙️","🗜️","⚖️","🦯","🔗","⛓️","🪝","🧲","🪜","⚗️","🧪","🧫","🧬","🔭","🔬","🕳️","💊","🩺","🩹","🩻","🩼","🩸","💉","🧬","🦠","🧫","🪤","🧲","🎁","🎀","🎊","🎉","🎈","🎏","🎐","🎑","🎃","🎄","🎋","🎍","🎎","🎗️","🎟️","🎫","🎖️","🏆","🥇","🥈","🥉","⚽","🏀","🏈","⚾","🥎","🎾","🏐","🏉","🥏","🎱","🏓","🏸","🥍","🏒","🥌","🛷","🎿","⛷️","🤺","🏹","🎣","🤿","🥊","🎽","🛹","🛼","🎯","🪃","🎮","🎲","♟️","🎭","🎨","🧵","🪡","🧶","🪢","👓","🕶️","🥽","🌂","☂️"],
+    symbols:["❤️","🧡","💛","💚","💙","💜","🖤","🤍","🤎","💔","❤️‍🔥","❤️‍🩹","❣️","💕","💞","💓","💗","💖","💘","💝","💟","☮️","✝️","☪️","🕉️","✡️","🔯","🪯","☸️","🛐","⛎","♈","♉","♊","♋","♌","♍","♎","♏","♐","♑","♒","♓","🆔","⚛️","🉑","☢️","☣️","📴","📳","🈶","🈚","🈸","🈺","🈷️","✴️","🆚","💮","🉐","㊙️","㊗️","🈴","🈵","🈹","🈲","🅰️","🅱️","🆎","🆑","🅾️","🆘","❌","⭕","🛑","⛔","📛","🚫","💯","💢","♨️","🚷","🚯","🚳","🚱","🔞","📵","🔕","🔇","🔈","🔉","🔊","📢","📣","📯","🔔","🔕","🎵","🎶","⚠️","🚸","✅","❎","🔱","⚜️","🔰","♻️","✔️","🔛","🔜","🔚","🔙","🔝","🛐","🔀","🔁","🔂","▶️","⏩","⏭️","⏯️","◀️","⏪","⏮️","🔼","⏫","🔽","⏬","⏸️","⏹️","⏺️","🎦","🔅","🔆","📶","📳","🈶","🈚","🈸","🈺","🈷️","🔣","ℹ️","🔤","🔡","🔠","🆖","🆗","🆙","🆒","🆕","🆓","0️⃣","1️⃣","2️⃣","3️⃣","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣","🔟","🔢","#️⃣","*️⃣","⏏️","▫️","◾","◽","◼️","◻️","🟥","🟧","🟨","🟩","🟦","🟪","⬛","⬜","🔶","🔷","🔸","🔹","🔺","🔻","💠","🔘","🔳","🔲"],
+    flags:["🏁","🚩","🎌","🏴","🏳️","🏳️‍🌈","🏳️‍⚧️","🏴‍☠️","🇦🇫","🇦🇱","🇩🇿","🇦🇩","🇦🇴","🇦🇬","🇦🇷","🇦🇲","🇦🇺","🇦🇹","🇦🇿","🇧🇸","🇧🇭","🇧🇩","🇧🇧","🇧🇾","🇧🇪","🇧🇿","🇧🇯","🇧🇹","🇧🇴","🇧🇦","🇧🇼","🇧🇷","🇧🇳","🇧🇬","🇧🇫","🇧🇮","🇨🇻","🇨🇲","🇨🇦","🇨🇫","🇹🇩","🇨🇱","🇨🇳","🇨🇴","🇨🇬","🇨🇷","🇭🇷","🇨🇺","🇨🇾","🇨🇿","🇩🇰","🇩🇯","🇩🇲","🇩🇴","🇪🇨","🇪🇬","🇸🇻","🇬🇶","🇪🇷","🇪🇪","🇸🇿","🇪🇹","🇫🇯","🇫🇮","🇫🇷","🇬🇦","🇬🇲","🇬🇪","🇩🇪","🇬🇭","🇬🇷","🇬🇩","🇬🇹","🇬🇳","🇬🇼","🇬🇾","🇭🇹","🇭🇳","🇭🇺","🇮🇸","🇮🇳","🇮🇩","🇮🇷","🇮🇶","🇮🇪","🇮🇱","🇮🇹","🇯🇲","🇯🇵","🇯🇴","🇰🇿","🇰🇪","🇰🇮","🇰🇼","🇰🇬","🇱🇦","🇱🇻","🇱🇧","🇱🇸","🇱🇷","🇱🇾","🇱🇮","🇱🇹","🇱🇺","🇲🇬","🇲🇼","🇲🇾","🇲🇻","🇲🇱","🇲🇹","🇲🇭","🇲🇷","🇲🇺","🇲🇽","🇫🇲","🇲🇩","🇲🇨","🇲🇳","🇲🇪","🇲🇦","🇲🇿","🇲🇲","🇳🇦","🇳🇷","🇳🇵","🇳🇱","🇳🇿","🇳🇮","🇳🇪","🇳🇬","🇲🇰","🇳🇴","🇴🇲","🇵🇰","🇵🇼","🇵🇦","🇵🇬","🇵🇾","🇵🇪","🇵🇭","🇵🇱","🇵🇹","🇶🇦","🇷🇴","🇷🇺","🇷🇼","🇰🇳","🇱🇨","🇻🇨","🇼🇸","🇸🇲","🇸🇹","🇸🇦","🇸🇳","🇷🇸","🇸🇱","🇸🇬","🇸🇰","🇸🇮","🇸🇧","🇸🇴","🇿🇦","🇸🇸","🇪🇸","🇱🇰","🇸🇩","🇸🇷","🇸🇪","🇨🇭","🇸🇾","🇹🇼","🇹🇯","🇹🇿","🇹🇭","🇹🇱","🇹🇬","🇹🇴","🇹🇹","🇹🇳","🇹🇷","🇹🇲","🇺🇬","🇺🇦","🇦🇪","🇬🇧","🇺🇸","🇺🇾","🇺🇿","🇻🇺","🇻🇪","🇻🇳","🇾🇪","🇿🇲","🇿🇼"],
+  };
+  const [emojiCat,setEmojiCat]=useState("smileys");
+  const [recentEmojis,setRecentEmojis]=useState(()=>{try{return JSON.parse(localStorage.getItem("he_recent_emojis")||"[]");}catch{return[];}});
+  function addEmoji(e){
+    setTxt(prev=>prev+e);
+    inputRef.current?.focus();
+    setRecentEmojis(prev=>{const updated=[e,...prev.filter(x=>x!==e)].slice(0,32);localStorage.setItem("he_recent_emojis",JSON.stringify(updated));return updated;});
+  }
+  const currentEmojis=emojiCat==="recent"?(recentEmojis.length?recentEmojis:ALL_EMOJIS.smileys):ALL_EMOJIS[emojiCat]||[];
+
+  useEffect(()=>{
+    function onVisible(){if(document.visibilityState==="visible"&&endRef.current)endRef.current.scrollIntoView();}
+    document.addEventListener("visibilitychange",onVisible);
+    return()=>document.removeEventListener("visibilitychange",onVisible);
+  },[]);
+  useEffect(()=>{
+    endRef.current?.scrollIntoView({behavior:"smooth"});
+    onMarkRead(conv.id,conv.other?.id);
+  },[msgs.length,conv.id]);
+
+  function toggleEmoji(){
+    if(!showEmoji){
+      // Dismiss keyboard before showing emoji panel
+      inputRef.current?.blur();
+      setShowEmoji(true);
+    }else{
+      setShowEmoji(false);
+      inputRef.current?.focus();
+    }
+  }
+
+  function addEmoji(e){
+    setTxt(prev=>prev+e);
+    setRecentEmojis(prev=>{const updated=[e,...prev.filter(x=>x!==e)].slice(0,32);localStorage.setItem("he_recent_emojis",JSON.stringify(updated));return updated;});
+  }
+
+  return<div style={{position:"fixed",inset:0,zIndex:400,background:T.bg,display:"flex",flexDirection:"column"}}>
+    {/* Header */}
+    <div style={{background:T.nav,borderBottom:`1px solid ${T.b1}`,padding:"12px 16px",paddingTop:"max(12px,env(safe-area-inset-top))",display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
+      <button onClick={onBack} style={{background:"none",color:T.txt,padding:"4px",display:"flex",alignItems:"center"}}><BackIcon/></button>
+      <div style={{display:"flex",alignItems:"center",gap:10,flex:1,cursor:"pointer",minWidth:0}} onClick={()=>onViewProfile&&onViewProfile(conv.other)}>
+        <Ava p={conv.other} size={38} T={T}/>
+        <div style={{flex:1}}>
+          <div style={{fontWeight:600,fontSize:15,color:T.txt}}>{conv.other?.name}</div>
+          <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:T.mu}}>{conv.other?.handle}</div>
+        </div>
+      </div>
+      <div style={{position:"relative"}}>
+        <button onClick={()=>setShowMenu(v=>!v)} style={{background:"none",color:T.mu,width:34,height:34,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",border:`1px solid ${T.b1}`}}><DotsIcon/></button>
+        {showMenu&&<div onClick={()=>setShowMenu(false)} style={{position:"fixed",inset:0,zIndex:10}}/>}
+        {showMenu&&<div style={{position:"absolute",top:40,right:0,background:T.card,border:`1px solid ${T.b2}`,borderRadius:13,overflow:"hidden",zIndex:20,minWidth:180,boxShadow:"0 8px 32px rgba(0,0,0,.5)"}}>
+          {[
+            {icon:"🔔",label:notifMuted?"Unmute":"Mute Notifications",fn:()=>{setNotifMuted(v=>!v);setShowMenu(false);}},
+            {icon:"🗑️",label:"Clear Chat",fn:()=>{if(window.confirm("Clear all messages?"))onClearChat(conv.id);setShowMenu(false);}},
+            {icon:"🚫",label:"Block User",fn:()=>{onBlockUser(conv.other?.id);onBack();},red:true},
+            {icon:"🚩",label:"Report User",fn:()=>{onReportUser(conv.other);setShowMenu(false);},red:true},
+          ].map(item=><button key={item.label} onClick={item.fn} style={{width:"100%",padding:"12px 16px",background:"none",textAlign:"left",color:item.red?"#c06060":T.txt,fontSize:13,fontWeight:500,borderBottom:`1px solid ${T.b1}`,display:"flex",alignItems:"center",gap:10}}><span>{item.icon}</span>{item.label}</button>)}
+        </div>}
+      </div>
+    </div>
+
+    {/* Messages */}
+    <div onClick={()=>{setShowEmoji(false);}} style={{flex:1,overflowY:"auto",padding:"16px 14px",display:"flex",flexDirection:"column",gap:6}}>
+      {msgs.length===0&&<div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",color:T.mu,fontSize:14,flexDirection:"column",gap:8,marginTop:60}}><Ava p={conv.other} size={56} T={T}/><span>Say hello to {conv.other?.name}!</span></div>}
+      {msgs.map((m,i)=>{
+        // ── Date separator ──
+        const prevMsg=msgs[i-1];
+        const mDate=m.ts?new Date(m.ts):null;
+        const pDate=prevMsg?.ts?new Date(prevMsg.ts):null;
+        const showDate=mDate&&(!pDate||mDate.toDateString()!==pDate.toDateString());
+        const dateLabel=mDate?formatDateLabel(mDate):"";
+        const mine=m.sid===myProfile.id;
+        const showAva=!mine&&(i===0||msgs[i-1]?.sid!==m.sid);
+        const isProfileCard=m.txt?.startsWith("__PROFILE__");
+        return<React.Fragment key={m.dbId||i}>
+          {showDate&&<div style={{display:"flex",alignItems:"center",gap:8,margin:"8px 0"}}>
+            <div style={{flex:1,height:1,background:T.b1}}/>
+            <div style={{fontSize:10,color:T.mu,background:T.faint,borderRadius:8,padding:"3px 10px",fontFamily:"'JetBrains Mono',monospace",fontWeight:600,letterSpacing:".04em",flexShrink:0}}>{dateLabel}</div>
+            <div style={{flex:1,height:1,background:T.b1}}/>
+          </div>}
+          <div style={{display:"flex",flexDirection:mine?"row-reverse":"row",gap:8,alignItems:"flex-end"}}>
+            {!mine&&<div style={{width:28,flexShrink:0}}>{showAva&&<Ava p={conv.other} size={26} T={T}/>}</div>}
+            <div style={{maxWidth:"78%"}}>
+              <div style={{
+                background:isProfileCard?"transparent":mine?`linear-gradient(135deg,${myProfile.color}dd,${myProfile.color}99)`:T.card,
+                border:isProfileCard?`1.5px solid ${T.b2}`:mine?"none":`1px solid ${T.b1}`,
+                borderRadius:mine?"18px 18px 4px 18px":"18px 18px 18px 4px",
+                padding:isProfileCard?"0":"10px 14px",
+                overflow:"hidden",
+                color:mine?"#fff":T.txt,fontSize:14,lineHeight:1.5,wordBreak:"break-word"
+              }}>
+                <MsgText txt={m.txt} mine={mine} T={T} onViewProfile={p=>{
+                  const full=(profiles||[]).find(x=>x.id===(p.profileId||p.id))||p;
+                  onViewProfile&&onViewProfile(full);
+                }}/>
+              </div>
+              <div style={{display:"flex",alignItems:"center",justifyContent:mine?"flex-end":"flex-start",gap:3,marginTop:3}}>
+                <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:9,color:T.mu}}>{fmtTime(m.ts)}</span>
+                {mine&&<MsgStatus m={m} myId={myProfile.id}/>}
+              </div>
+            </div>
+          </div>
+        </React.Fragment>;
+      })}
+      <div ref={endRef}/>
+    </div>
+
+    {/* Input bar — ALWAYS above emoji panel */}
+    <div style={{background:T.nav,flexShrink:0}}>
+      {/* Emoji picker */}
+      {showEmoji&&<div style={{borderTop:`1px solid ${T.b1}`}}>
+        <div style={{display:"flex",overflowX:"auto",borderBottom:`1px solid ${T.b1}`,padding:"6px 8px 0"}}>
+          {EMOJI_CATS.map(c=><button key={c.id} onClick={()=>setEmojiCat(c.id)} style={{fontSize:18,padding:"4px 8px",borderRadius:"8px 8px 0 0",background:emojiCat===c.id?T.faint:"transparent",border:"none",borderBottom:emojiCat===c.id?`2px solid ${myProfile.color}`:"2px solid transparent",flexShrink:0,cursor:"pointer",opacity:c.id==="recent"&&recentEmojis.length===0?.4:1}}>{c.label}</button>)}
+        </div>
+        <div style={{display:"flex",flexWrap:"wrap",padding:"8px 10px",height:180,overflowY:"auto",gap:2,alignContent:"flex-start"}}>
+          {currentEmojis.map((e,i)=><button key={i} onClick={()=>addEmoji(e)} style={{background:"none",fontSize:24,width:40,height:40,borderRadius:8,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{e}</button>)}
+        </div>
+      </div>}
+      {/* Text input row */}
+      <div style={{padding:"10px 14px",paddingBottom:"max(14px,env(safe-area-inset-bottom))",borderTop:`1px solid ${T.b1}`,display:"flex",gap:8,alignItems:"center"}}>
+        <button onClick={toggleEmoji} style={{width:38,height:38,borderRadius:"50%",background:showEmoji?`${myProfile.color}22`:T.faint,border:`1px solid ${showEmoji?myProfile.color+"50":T.b1}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>😊</button>
+        <input ref={inputRef} value={txt}
+          onChange={e=>{setTxt(e.target.value);if(showEmoji)setShowEmoji(false);}}
+          onFocus={()=>setShowEmoji(false)}
+          onKeyDown={e=>e.key==="Enter"&&send()}
+          placeholder="Message…"
+          style={{flex:1,padding:"12px 16px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:24,color:T.txt,fontSize:14,outline:"none"}}/>
+        <button onClick={send} style={{width:42,height:42,borderRadius:"50%",background:txt.trim()?`linear-gradient(135deg,${myProfile.color}dd,${myProfile.color}99)`:T.faint,display:"flex",alignItems:"center",justifyContent:"center",color:txt.trim()?"#fff":T.mu,flexShrink:0,transition:"background .15s"}}><SendIcon/></button>
+      </div>
+    </div>
+  </div>;
+}
+
+/* ── GROUP HELPERS (localStorage — no DB schema change needed) ── */
+const GRP_KEY=uid=>`he_groups_${uid}`;
+function loadGroups(uid){try{return JSON.parse(localStorage.getItem(GRP_KEY(uid))||"[]");}catch{return[];}}
+function saveGroups(uid,groups){try{localStorage.setItem(GRP_KEY(uid),JSON.stringify(groups));}catch{}}
+function newGroupId(){return"grp_"+Math.random().toString(36).slice(2,10);}
+
+/* ── CREATE GROUP MODAL ── */
+function CreateGroupModal({profiles,myProfile,following,T,onClose,onCreate}){
+  const [name,setName]=useState("");
+  const [selected,setSelected]=useState([]);
+  const [q,setQ]=useState("");
+  const [searchResult,setSearchResult]=useState(null); // {found:profile|null,searched:bool}
+  const [searching,setSearching]=useState(false);
+  const [extraProfiles,setExtraProfiles]=useState([]); // profiles added via search outside following
+
+  // Followed profiles (excluding self AND business accounts — groups are personal only)
+  const followedProfiles=profiles.filter(p=>p.id!==myProfile.id&&(following||[]).includes(p.id)&&p.account_type!=="business");
+
+  // When search bar has input: search among all profiles by @handle or UID
+  const isSearchMode=q.trim().length>0;
+  const searchQ=q.trim().toLowerCase().replace(/^@/,"");
+
+  // Live filter within followed list (if not a UID-style search)
+  const filteredFollowed=followedProfiles.filter(p=>
+    p.name.toLowerCase().includes(searchQ)||
+    (p.handle||"").toLowerCase().replace(/^@/,"").includes(searchQ)
+  );
+
+  async function searchOutside(){
+    if(!q.trim())return;
+    setSearching(true);
+    setSearchResult(null);
+    const clean=q.trim().replace(/^@/,"").toLowerCase();
+    try{
+      // Try handle first, then short_id
+      let {data}=await sb.from("profiles").select("*").ilike("handle",`@${clean}`).neq("id",myProfile.id).limit(1);
+      if(!data||!data[0]){
+        const res2=await sb.from("profiles").select("*").eq("short_id",clean.toUpperCase()).neq("id",myProfile.id).limit(1);
+        data=res2.data;
+      }
+      setSearchResult({found:(data&&data[0])||null,searched:true});
+    }catch(e){console.error("searchOutside error:",e);setSearchResult({found:null,searched:true});}
+    setSearching(false);
+  }
+
+  function toggle(id){setSelected(prev=>prev.includes(id)?prev.filter(x=>x!==id):[...prev,id]);}
+
+  function addOutside(p){
+    if(!selected.includes(p.id))setSelected(prev=>[...prev,p.id]);
+    // Track externally found profiles in local state (never mutate the prop array)
+    if(!profiles.find(x=>x.id===p.id)&&!extraProfiles.find(x=>x.id===p.id)){
+      setExtraProfiles(prev=>[...prev,p]);
+    }
+    setQ("");setSearchResult(null);
+  }
+
+  function create(){
+    if(!name.trim()||selected.length<1)return;
+    const group={id:newGroupId(),name:name.trim(),members:[myProfile.id,...selected],adminId:myProfile.id,createdAt:Date.now(),messages:[]};
+    onCreate(group);onClose();
+  }
+
+  // Profiles pool (extra members added via search that are not in following)
+  const allKnown=[...profiles,...extraProfiles];
+  const pool=allKnown.filter(p=>selected.includes(p.id)&&!(following||[]).includes(p.id)&&p.id!==myProfile.id);
+
+  // What to render in the list
+  const listItems=isSearchMode?filteredFollowed:followedProfiles;
+
+  return<Overlay onBg={onClose} T={T} bottom>
+    <div style={{fontWeight:700,fontSize:17,color:T.txt,marginBottom:14}}>Create Group Chat</div>
+
+    {/* Group name */}
+    <input value={name} onChange={e=>setName(e.target.value)} placeholder="Group name…"
+      style={{width:"100%",padding:"12px 14px",background:T.inp,border:`1px solid ${T.b1}`,borderRadius:12,color:T.txt,fontSize:14,outline:"none",boxSizing:"border-box",marginBottom:12,fontFamily:"'Inter',sans-serif"}}/>
+
+    {/* Search bar */}
+    <div style={{position:"relative",marginBottom:10}}>
+      <input value={q} onChange={e=>{setQ(e.target.value);setSearchResult(null);}}
+        onKeyDown={e=>e.key==="Enter"&&searchOutside()}
+        placeholder="Search by @username or UID…"
+        style={{width:"100%",padding:"10px 46px 10px 14px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:11,color:T.txt,fontSize:13,outline:"none",boxSizing:"border-box",fontFamily:"'Inter',sans-serif"}}/>
+      {q.trim()&&<button onClick={searchOutside}
+        style={{position:"absolute",right:6,top:"50%",transform:"translateY(-50%)",background:`${AC}22`,border:"none",borderRadius:7,padding:"4px 9px",color:AC,fontWeight:700,fontSize:11}}>
+        {searching?"…":"Find"}
+      </button>}
+    </div>
+
+    {/* Selected count */}
+    {selected.length>0&&<div style={{fontSize:11,color:AC,marginBottom:8,fontWeight:600}}>
+      {selected.length} member{selected.length!==1?"s":""} selected
+    </div>}
+
+    {/* Search result (outside following) */}
+    {searchResult&&searchResult.searched&&(()=>{
+      const p=searchResult.found;
+      if(!p)return<div style={{textAlign:"center",padding:"14px",color:T.mu,fontSize:13,background:T.faint,borderRadius:10,marginBottom:10}}>No profile found for "{q}"</div>;
+      const alreadyIn=selected.includes(p.id);
+      return<div style={{display:"flex",alignItems:"center",gap:11,padding:"9px 10px",borderRadius:10,background:`${AC}10`,border:`1px solid ${AC}30`,marginBottom:10}}>
+        <Ava p={p} size={38} T={T}/>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontWeight:600,fontSize:13,color:T.txt}}>{p.name}</div>
+          <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:T.mu}}>@{p.handle}</div>
+        </div>
+        <button onClick={()=>alreadyIn?null:addOutside(p)}
+          style={{padding:"5px 12px",borderRadius:8,background:alreadyIn?T.faint:`${AC}dd`,border:"none",color:alreadyIn?T.mu:"#fff",fontWeight:700,fontSize:11,flexShrink:0}}>
+          {alreadyIn?"Added":"+ Add"}
+        </button>
+      </div>;
+    })()}
+
+    {/* Following list */}
+    <div style={{maxHeight:230,overflowY:"auto",display:"flex",flexDirection:"column",gap:2,marginBottom:14}}>
+      {!isSearchMode&&followedProfiles.length===0&&<div style={{textAlign:"center",padding:"20px",color:T.mu,fontSize:13}}>
+        You're not following anyone yet.<br/>Search by @username or UID above to add members.
+      </div>}
+      {/* Extra members added via search (not in following) */}
+      {pool.map(p=>{
+        const sel=selected.includes(p.id);
+        return<MemberRow key={p.id} p={p} sel={sel} T={T} onToggle={toggle} badge="Added"/>;
+      })}
+      {listItems.map(p=>{
+        const sel=selected.includes(p.id);
+        return<MemberRow key={p.id} p={p} sel={sel} T={T} onToggle={toggle}/>;
+      })}
+      {isSearchMode&&listItems.length===0&&!searchResult&&<div style={{textAlign:"center",padding:"16px",color:T.mu,fontSize:12}}>
+        No match in following. Tap <b style={{color:AC}}>Find</b> to search all users.
+      </div>}
+    </div>
+
+    <button disabled={!name.trim()||selected.length<1} onClick={create}
+      style={{width:"100%",padding:"13px 0",background:name.trim()&&selected.length>=1?`linear-gradient(135deg,${AC}e0,${AC}90)`:"transparent",border:name.trim()&&selected.length>=1?"none":`1px solid ${T.b1}`,borderRadius:12,color:name.trim()&&selected.length>=1?"#fff":T.mu,fontWeight:700,fontSize:14}}>
+      Create Group →
+    </button>
+  </Overlay>;
+}
+
+function MemberRow({p,sel,T,onToggle,badge}){
+  return<div onClick={()=>onToggle(p.id)} style={{display:"flex",alignItems:"center",gap:11,padding:"9px 10px",borderRadius:10,cursor:"pointer",background:sel?`${AC}12`:T.faint,border:`1px solid ${sel?AC+"40":T.b1}`,transition:"all .12s"}}>
+    <Ava p={p} size={38} T={T}/>
+    <div style={{flex:1,minWidth:0}}>
+      <div style={{display:"flex",alignItems:"center",gap:6}}>
+        <span style={{fontWeight:600,fontSize:13,color:T.txt}}>{p.name}</span>
+        {badge&&<span style={{fontSize:9,background:`${AC}20`,color:AC,borderRadius:5,padding:"1px 5px",fontWeight:700}}>{badge}</span>}
+      </div>
+      <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:T.mu}}>@{p.handle}</div>
+    </div>
+    <div style={{width:20,height:20,borderRadius:"50%",border:`2px solid ${sel?AC:T.b2}`,background:sel?AC:"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"all .12s"}}>
+      {sel&&<svg width="10" height="10" viewBox="0 0 10 10" fill="none"><polyline points="1.5,5 4,7.5 8.5,2.5" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+    </div>
+  </div>;
+}
+
+/* ── GROUP CHAT SCREEN ── */
+function GroupChatScreen({group,myProfile,profiles,T,onBack,onSendGroup,onUpdateGroup,onDeleteGroup,onViewProfile}){
+  const [txt,setTxt]=useState("");
+  const [showMenu,setShowMenu]=useState(false);
+  const [showMembers,setShowMembers]=useState(false);
+  const [showAddModal,setShowAddModal]=useState(false);
+  const [editingDesc,setEditingDesc]=useState(false);
+  const [descDraft,setDescDraft]=useState(group.description||"");
+  const endRef=useRef(null);
+  const msgs=group.messages||[];
+  const members=(group.members||[]).map(id=>profiles.find(p=>p.id===id)||{id,name:"Unknown",color:AC});
+  const isAdmin=group.adminId===myProfile.id;
+  const MAX_MEMBERS=100;
+
+  useEffect(()=>{endRef.current?.scrollIntoView({behavior:"smooth"});},[msgs.length]);
+  function send(){if(!txt.trim())return;onSendGroup(group.id,txt.trim());setTxt("");}
+
+  function saveDescription(){
+    const updated={...group,description:descDraft.trim()};
+    onUpdateGroup(updated);
+    setEditingDesc(false);
+  }
+
+  function leaveGroup(){
+    if(!window.confirm("Leave this group?"))return;
+    const updated={...group,members:group.members.filter(id=>id!==myProfile.id)};
+    onUpdateGroup(updated);
+    onBack();
+  }
+
+  function deleteGroup(){
+    if(!window.confirm(`Delete "${group.name}"? This cannot be undone.`))return;
+    onDeleteGroup(group.id);
+    onBack();
+  }
+
+  function removeMember(uid){
+    if(!window.confirm(`Remove this member from the group?`))return;
+    onUpdateGroup({...group,members:group.members.filter(id=>id!==uid)});
+  }
+
+  return<div style={{position:"fixed",inset:0,zIndex:400,background:T.bg,display:"flex",flexDirection:"column"}}>
+    {/* Header */}
+    <div style={{background:T.nav,borderBottom:`1px solid ${T.b1}`,padding:"12px 16px",paddingTop:"max(12px,env(safe-area-inset-top))",display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
+      <button onClick={onBack} style={{background:"none",color:T.txt,padding:"4px",display:"flex",alignItems:"center",flexShrink:0}}><BackIcon/></button>
+      {/* Group avatar */}
+      <div style={{width:40,height:40,borderRadius:"50%",background:`linear-gradient(135deg,${AC}40,${AC}18)`,border:`1.5px solid ${AC}50`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0,cursor:"pointer"}} onClick={()=>setShowMembers(v=>!v)}>👥</div>
+      <div style={{flex:1,minWidth:0,cursor:"pointer"}} onClick={()=>setShowMembers(v=>!v)}>
+        <div style={{fontWeight:700,fontSize:15,color:T.txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{group.name}</div>
+        <div style={{fontSize:10,color:T.mu,marginTop:1}}>
+          {group.description
+            ?<span style={{color:T.mu,fontStyle:"italic"}}>{group.description}</span>
+            :<span>{members.length} member{members.length!==1?"s":""} · tap to view</span>}
+        </div>
+      </div>
+      {/* 3-dot menu */}
+      <div style={{position:"relative"}}>
+        <button onClick={()=>setShowMenu(v=>!v)} style={{background:"none",color:T.mu,width:34,height:34,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",border:`1px solid ${T.b1}`,flexShrink:0}}><DotsIcon/></button>
+        {showMenu&&<div onClick={()=>setShowMenu(false)} style={{position:"fixed",inset:0,zIndex:10}}/>}
+        {showMenu&&<div style={{position:"absolute",top:40,right:0,background:T.card,border:`1px solid ${T.b2}`,borderRadius:14,overflow:"hidden",zIndex:20,minWidth:200,boxShadow:"0 8px 32px rgba(0,0,0,.5)"}}>
+          <button onClick={()=>{setShowMembers(true);setShowMenu(false);}} style={{width:"100%",padding:"12px 16px",background:"none",textAlign:"left",color:T.txt,fontSize:13,fontWeight:500,borderBottom:`1px solid ${T.b1}`,display:"flex",alignItems:"center",gap:10}}>👥 View Members</button>
+          {isAdmin&&<button onClick={()=>{setEditingDesc(true);setDescDraft(group.description||"");setShowMenu(false);}} style={{width:"100%",padding:"12px 16px",background:"none",textAlign:"left",color:T.txt,fontSize:13,fontWeight:500,borderBottom:`1px solid ${T.b1}`,display:"flex",alignItems:"center",gap:10}}>✏️ Edit Description</button>}
+          {isAdmin&&group.members.length<MAX_MEMBERS&&<button onClick={()=>{setShowAddModal(true);setShowMenu(false);}} style={{width:"100%",padding:"12px 16px",background:"none",textAlign:"left",color:T.txt,fontSize:13,fontWeight:500,borderBottom:`1px solid ${T.b1}`,display:"flex",alignItems:"center",gap:10}}>➕ Add Members</button>}
+          {!isAdmin&&<button onClick={()=>{leaveGroup();setShowMenu(false);}} style={{width:"100%",padding:"12px 16px",background:"none",textAlign:"left",color:"#e07060",fontSize:13,fontWeight:500,borderBottom:`1px solid ${T.b1}`,display:"flex",alignItems:"center",gap:10}}>🚪 Leave Group</button>}
+          {isAdmin&&<button onClick={()=>{deleteGroup();setShowMenu(false);}} style={{width:"100%",padding:"12px 16px",background:"none",textAlign:"left",color:"#e05050",fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:10}}>🗑️ Delete Group</button>}
+        </div>}
+      </div>
+    </div>
+
+    {/* Edit Description Panel */}
+    {editingDesc&&<div style={{background:T.surf,borderBottom:`1px solid ${T.b1}`,padding:"12px 16px",flexShrink:0,animation:"ci .15s ease"}}>
+      <div style={{fontWeight:600,fontSize:13,color:T.txt,marginBottom:8}}>Group Description</div>
+      <input value={descDraft} onChange={e=>setDescDraft(e.target.value)} placeholder="Add a description…" maxLength={120}
+        style={{width:"100%",padding:"10px 13px",background:T.inp,border:`1px solid ${T.b1}`,borderRadius:10,color:T.txt,fontSize:13,outline:"none",boxSizing:"border-box",marginBottom:8}}/>
+      <div style={{display:"flex",gap:7}}>
+        <button onClick={saveDescription} style={{flex:1,padding:"8px 0",background:`linear-gradient(135deg,${AC}e0,${AC}90)`,borderRadius:9,color:"#fff",fontWeight:700,fontSize:13}}>Save</button>
+        <button onClick={()=>setEditingDesc(false)} style={{flex:1,padding:"8px 0",background:"transparent",border:`1px solid ${T.b1}`,borderRadius:9,color:T.mu,fontSize:13}}>Cancel</button>
+      </div>
+    </div>}
+
+    {/* Members panel (collapsible slide-down) */}
+    {showMembers&&<div style={{background:T.surf,borderBottom:`1px solid ${T.b1}`,padding:"12px 16px 14px",flexShrink:0,animation:"ci .15s ease"}}>
+      <div style={{fontWeight:700,fontSize:12,color:T.mu,letterSpacing:".06em",textTransform:"uppercase",marginBottom:10}}>Members ({members.length})</div>
+      <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:200,overflowY:"auto"}}>
+        {members.map(m=><div key={m.id} style={{display:"flex",alignItems:"center",gap:10,padding:"6px 4px",borderRadius:10}}>
+          <div onClick={()=>{if(m.id!==myProfile.id&&onViewProfile){setShowMembers(false);onViewProfile(m);}}} style={{cursor:m.id!==myProfile.id?"pointer":"default",display:"flex",alignItems:"center",gap:10,flex:1,minWidth:0}}>
+            <div style={{width:34,height:34,borderRadius:"50%",background:`${m.color||AC}18`,border:`1.5px solid ${m.color||AC}40`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:m.color||AC,overflow:"hidden",flexShrink:0}}>
+              {m.photo?<img src={m.photo} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:ini(m.name)}
+            </div>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:13,fontWeight:600,color:T.txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.name}{m.id===myProfile.id?" (you)":""}</div>
+              {m.id===group.adminId&&<div style={{fontSize:9,color:AC,fontWeight:700,letterSpacing:".06em"}}>ADMIN</div>}
+            </div>
+          </div>
+          {isAdmin&&m.id!==myProfile.id&&m.id!==group.adminId&&<button onClick={()=>removeMember(m.id)} style={{padding:"4px 10px",background:"#c0404018",border:"1px solid #c0404030",borderRadius:7,color:"#c06060",fontSize:11,fontWeight:600,flexShrink:0}}>Remove</button>}
+        </div>)}
+      </div>
+      {!isAdmin&&<button onClick={leaveGroup} style={{marginTop:10,width:"100%",padding:"9px 0",background:"transparent",border:"1px solid #c0404040",borderRadius:10,color:"#c06060",fontSize:12,fontWeight:600}}>🚪 Leave Group</button>}
+      {isAdmin&&group.members.length<MAX_MEMBERS&&<button onClick={()=>{setShowMembers(false);setShowAddModal(true);}} style={{marginTop:10,width:"100%",padding:"9px 0",background:`${AC}14`,border:`1px solid ${AC}30`,borderRadius:10,color:AC,fontSize:12,fontWeight:600}}>➕ Add Members</button>}
+    </div>}
+
+    {/* Messages */}
+    <div style={{flex:1,overflowY:"auto",padding:"14px 14px",display:"flex",flexDirection:"column",gap:6}}>
+      {msgs.length===0&&<div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:8,color:T.mu,marginTop:60,textAlign:"center"}}>
+        <div style={{fontSize:36,opacity:.3}}>👥</div>
+        <div style={{fontWeight:600,color:T.txt}}>Start the group conversation!</div>
+        <div style={{fontSize:12,opacity:.6}}>{members.length} members ready</div>
+      </div>}
+      {msgs.map((m,i)=>{
+        const mine=m.sid===myProfile.id;
+        const sender=members.find(p=>p.id===m.sid)||{name:"?",color:AC};
+        const showName=!mine&&(i===0||msgs[i-1]?.sid!==m.sid);
+        return<div key={i} style={{display:"flex",flexDirection:mine?"row-reverse":"row",gap:8,alignItems:"flex-end"}}>
+          {!mine&&<div style={{width:28,flexShrink:0}}>
+            {showName&&<div onClick={()=>sender.id&&onViewProfile&&onViewProfile(sender)} style={{width:28,height:28,borderRadius:"50%",background:`${sender.color||AC}18`,border:`1.5px solid ${sender.color||AC}40`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:8,fontWeight:700,color:sender.color||AC,overflow:"hidden",cursor:"pointer"}}>
+              {sender.photo?<img src={sender.photo} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:ini(sender.name)}
+            </div>}
+          </div>}
+          <div style={{maxWidth:"74%"}}>
+            {showName&&<div style={{fontSize:10,color:sender.color||AC,fontWeight:600,marginBottom:2,paddingLeft:4}}>{sender.name}</div>}
+            <div style={{background:mine?`linear-gradient(135deg,${myProfile.color}dd,${myProfile.color}99)`:T.card,border:mine?"none":`1px solid ${T.b1}`,borderRadius:mine?"18px 18px 4px 18px":"18px 18px 18px 4px",padding:"10px 14px",color:mine?"#fff":T.txt,fontSize:14,lineHeight:1.5,wordBreak:"break-word"}}>{m.txt}</div>
+            <div style={{fontSize:9,color:T.mu,marginTop:3,textAlign:mine?"right":"left",fontFamily:"'JetBrains Mono',monospace",paddingLeft:4,paddingRight:4}}>{ago(m.ts)}</div>
+          </div>
+        </div>;
+      })}
+      <div ref={endRef}/>
+    </div>
+
+    {/* Input */}
+    <div style={{padding:"10px 14px",paddingBottom:"max(14px,env(safe-area-inset-bottom))",borderTop:`1px solid ${T.b1}`,background:T.nav,display:"flex",gap:10,alignItems:"center",flexShrink:0}}>
+      <input value={txt} onChange={e=>setTxt(e.target.value)} onKeyDown={e=>e.key==="Enter"&&send()} placeholder={`Message ${group.name}…`} style={{flex:1,padding:"12px 16px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:24,color:T.txt,fontSize:14,outline:"none"}}/>
+      <button onClick={send} style={{width:42,height:42,borderRadius:"50%",background:txt.trim()?`linear-gradient(135deg,${myProfile.color}dd,${myProfile.color}99)`:T.faint,display:"flex",alignItems:"center",justifyContent:"center",color:txt.trim()?"#fff":T.mu,flexShrink:0,transition:"background .15s"}}><SendIcon/></button>
+    </div>
+
+    {/* Add Members Modal */}
+    {showAddModal&&<AddMembersModal group={group} profiles={profiles} myProfile={myProfile} T={T} onClose={()=>setShowAddModal(false)} onAdd={newIds=>{onUpdateGroup({...group,members:[...group.members,...newIds]});}}/>}
+  </div>;
+}
+
+/* ── ADD MEMBERS MODAL (for existing group) ── */
+function AddMembersModal({group,profiles,myProfile,T,onClose,onAdd}){
+  const [selected,setSelected]=useState([]);
+  const [q,setQ]=useState("");
+  const MAX_MEMBERS=100;
+  const available=profiles.filter(p=>!group.members.includes(p.id)&&p.id!==myProfile.id);
+  const filtered=q.trim()?available.filter(p=>p.name.toLowerCase().includes(q.toLowerCase())||(p.handle||"").toLowerCase().includes(q.toLowerCase())):available;
+  const canAdd=group.members.length+selected.length<MAX_MEMBERS;
+
+  function toggle(id){setSelected(prev=>prev.includes(id)?prev.filter(x=>x!==id):[...prev,id]);}
+  function confirm(){if(!selected.length)return;onAdd(selected);onClose();}
+
+  return<Overlay onBg={onClose} T={T} bottom>
+    <div style={{fontWeight:700,fontSize:17,color:T.txt,marginBottom:14}}>Add Members</div>
+    {!canAdd&&<div style={{fontSize:12,color:"#e07060",marginBottom:10,background:"#e0706018",borderRadius:8,padding:"8px 12px"}}>Group is nearly full ({group.members.length}/{MAX_MEMBERS})</div>}
+    <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search…" style={{width:"100%",padding:"10px 14px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:11,color:T.txt,fontSize:13,outline:"none",boxSizing:"border-box",marginBottom:10}}/>
+    {selected.length>0&&<div style={{fontSize:11,color:AC,marginBottom:8,fontWeight:600}}>{selected.length} selected</div>}
+    <div style={{maxHeight:260,overflowY:"auto",display:"flex",flexDirection:"column",gap:4,marginBottom:14}}>
+      {filtered.length===0&&<div style={{textAlign:"center",padding:"20px",color:T.mu,fontSize:13}}>No users available to add</div>}
+      {filtered.map(p=>{
+        const sel=selected.includes(p.id);
+        return<div key={p.id} onClick={()=>{if(canAdd||sel)toggle(p.id);}} style={{display:"flex",alignItems:"center",gap:11,padding:"9px 10px",borderRadius:10,cursor:"pointer",background:sel?`${AC}12`:T.faint,border:`1px solid ${sel?AC+"40":T.b1}`,transition:"all .12s"}}>
+          <Ava p={p} size={38} T={T}/>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontWeight:600,fontSize:13,color:T.txt}}>{p.name}</div>
+            <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:T.mu}}>@{p.handle}</div>
+          </div>
+          <div style={{width:20,height:20,borderRadius:"50%",border:`2px solid ${sel?AC:T.b2}`,background:sel?AC:"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+            {sel&&<svg width="10" height="10" viewBox="0 0 10 10" fill="none"><polyline points="1.5,5 4,7.5 8.5,2.5" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+          </div>
+        </div>;
+      })}
+    </div>
+    <button disabled={!selected.length} onClick={confirm} style={{width:"100%",padding:"13px 0",background:selected.length?`linear-gradient(135deg,${AC}e0,${AC}90)`:"transparent",border:selected.length?"none":`1px solid ${T.b1}`,borderRadius:12,color:selected.length?"#fff":T.mu,fontWeight:700,fontSize:14}}>
+      Add {selected.length>0?`${selected.length} Member${selected.length!==1?"s":""}`:""} →
+    </button>
+  </Overlay>;
+}
+
+/* ── INBOX TAB ── */
+function InboxTab({convs,profiles,myProfile,following,T,onOpen,onDeleteConv,onViewProfile,groups,onOpenGroup,onCreateGroup}){
+  const sorted=[...convs].sort((a,b)=>(b.messages?.at(-1)?.ts||0)-(a.messages?.at(-1)?.ts||0));
+  const [menuId,setMenuId]=useState(null);
+  const [showCreateGroup,setShowCreateGroup]=useState(false);
+  const myGroups=(groups||[]).filter(g=>g.members?.includes(myProfile.id));
+  const isPersonal=myProfile.account_type!=="business"; // business cannot create/see groups
+
+  return<div>
+    {/* Header row — New Group only for personal accounts */}
+    <div style={{padding:"14px 16px 10px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+      <div style={{fontWeight:700,fontSize:18,color:T.txt}}>{myProfile.name}</div>
+      {isPersonal&&<button onClick={()=>setShowCreateGroup(true)} style={{display:"flex",alignItems:"center",gap:6,padding:"7px 12px",background:`${AC}18`,border:`1px solid ${AC}30`,borderRadius:10,color:AC,fontWeight:600,fontSize:12}}>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        New Group
+      </button>}
+    </div>
+    <div style={{height:1,background:T.b1}}/>
+
+    {/* Group chats — personal only */}
+    {isPersonal&&myGroups.length>0&&<>
+      <div style={{padding:"10px 16px 6px",fontSize:11,fontWeight:700,color:T.mu,letterSpacing:".06em",textTransform:"uppercase"}}>Group Chats</div>
+      {myGroups.map(g=>{
+        const last=g.messages?.at(-1);
+        const memberNames=(g.members||[]).slice(0,3).map(id=>{const p=profiles.find(x=>x.id===id);return p?.name?.split(" ")[0]||"?";}).join(", ");
+        const unread=(g.messages||[]).filter(m=>m.sid!==myProfile.id&&!m.read).length||0;
+        return<div key={g.id} onClick={()=>onOpenGroup(g)} style={{display:"flex",alignItems:"center",gap:13,padding:"12px 16px",borderBottom:`1px solid ${T.b1}`,cursor:"pointer",transition:"background .12s"}} onMouseEnter={e=>e.currentTarget.style.background=T.faint} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+          {/* Group icon */}
+          <div style={{width:52,height:52,borderRadius:"50%",background:`linear-gradient(135deg,${AC}30,${AC}14)`,border:`1.5px solid ${AC}40`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0,position:"relative"}}>
+            👥
+            {unread>0&&<div style={{position:"absolute",top:-2,right:-2,minWidth:18,height:18,borderRadius:99,background:"#e0304a",border:`2px solid ${T.nav}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,color:"#fff",fontWeight:700,padding:"0 4px"}}>{unread}</div>}
+          </div>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontWeight:unread>0?700:600,fontSize:15,color:T.txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{g.name}</div>
+            <div style={{fontSize:11,color:T.mu,marginTop:1}}>
+              {g.description
+                ?<span style={{fontStyle:"italic"}}>{g.description}</span>
+                :<span>{memberNames}{g.members.length>3?` +${g.members.length-3} more`:""}</span>}
+            </div>
+            {last&&<div style={{fontSize:12,color:unread>0?T.txt:T.mu,marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{last.txt}</div>}
+          </div>
+          {last&&<div style={{fontSize:10,color:T.mu,fontFamily:"'JetBrains Mono',monospace",flexShrink:0}}>{ago(last.ts)}</div>}
+        </div>;
+      })}
+      {sorted.length>0&&<div style={{padding:"10px 16px 6px",fontSize:11,fontWeight:700,color:T.mu,letterSpacing:".06em",textTransform:"uppercase"}}>Direct Messages</div>}
+    </>}
+
+    {sorted.length===0&&myGroups.length===0&&<div style={{textAlign:"center",padding:"80px 20px",color:T.mu}}><div style={{fontSize:48,marginBottom:16,opacity:.3}}>💬</div><div style={{fontWeight:600,fontSize:16}}>No messages yet</div><div style={{fontSize:13,marginTop:8,opacity:.7}}>Tap the send icon on a profile to start chatting</div></div>}
+    {sorted.map((conv,i)=>{
+      const other=profiles.find(p=>p.id===conv.oid);if(!other)return null;
+      const last=conv.messages?.at(-1);
+      const unread=conv.messages?.filter(m=>m.sid!==myProfile.id&&!m.read).length||0;
+      const isMenuOpen=menuId===conv.id;
+      return<div key={conv.id} style={{position:"relative",borderBottom:`1px solid ${T.b1}`}}>
+        {isMenuOpen&&<div onClick={()=>setMenuId(null)} style={{position:"fixed",inset:0,zIndex:10}}/>}
+        <div style={{display:"flex",alignItems:"center",gap:13,padding:"13px 16px",transition:"background .12s"}} onMouseEnter={e=>e.currentTarget.style.background=T.faint} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+          <div onClick={()=>onViewProfile&&onViewProfile(other)} style={{cursor:"pointer",flexShrink:0}}>
+            <Ava p={other} size={52} T={T} badge={unread}/>
+          </div>
+          <div onClick={()=>onOpen(conv,other)} style={{flex:1,minWidth:0,cursor:"pointer"}}>
+            <div style={{fontWeight:unread>0?700:500,fontSize:15,color:T.txt}}>{other.name}</div>
+            <div style={{fontSize:13,color:unread>0?T.txt:T.mu,marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontWeight:unread>0?500:400}}>{last?`${last.sid===myProfile.id?"You: ":""}${last.txt}`:"Start a conversation"}</div>
+          </div>
+          <div style={{textAlign:"right",flexShrink:0,display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4}}>
+            {last&&<div style={{fontSize:11,color:T.mu,fontFamily:"'JetBrains Mono',monospace"}}>{ago(last.ts)}</div>}
+            {unread>0&&<div style={{background:AC,borderRadius:99,minWidth:20,height:20,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,color:"#fff",fontWeight:700,padding:"0 5px"}}>{unread}</div>}
+            <div style={{position:"relative"}}>
+              <button onClick={e=>{e.stopPropagation();setMenuId(isMenuOpen?null:conv.id);}} style={{background:"none",color:T.mu,padding:"3px",display:"flex",alignItems:"center",borderRadius:6}}><DotsIcon/></button>
+              {isMenuOpen&&<div style={{position:"absolute",top:28,right:0,background:T.card,border:`1px solid ${T.b2}`,borderRadius:12,overflow:"hidden",zIndex:20,minWidth:160,boxShadow:"0 8px 28px rgba(0,0,0,.5)"}}>
+                <button onClick={e=>{e.stopPropagation();onViewProfile&&onViewProfile(other);setMenuId(null);}} style={{width:"100%",padding:"11px 14px",background:"none",textAlign:"left",color:T.txt,fontSize:13,fontWeight:500,borderBottom:`1px solid ${T.b1}`,display:"flex",alignItems:"center",gap:9}}>👤 View Profile</button>
+                <button onClick={e=>{e.stopPropagation();onOpen(conv,other);setMenuId(null);}} style={{width:"100%",padding:"11px 14px",background:"none",textAlign:"left",color:T.txt,fontSize:13,fontWeight:500,borderBottom:`1px solid ${T.b1}`,display:"flex",alignItems:"center",gap:9}}>💬 Open Chat</button>
+                <button onClick={e=>{e.stopPropagation();if(window.confirm("Delete this conversation?"))onDeleteConv(conv.id);setMenuId(null);}} style={{width:"100%",padding:"11px 14px",background:"none",textAlign:"left",color:"#c06060",fontSize:13,fontWeight:500,display:"flex",alignItems:"center",gap:9}}>🗑️ Delete Chat</button>
+              </div>}
+            </div>
+          </div>
+        </div>
+      </div>;
+    })}
+    {showCreateGroup&&<CreateGroupModal profiles={profiles} myProfile={myProfile} following={following} T={T} onClose={()=>setShowCreateGroup(false)} onCreate={onCreateGroup}/>}
+  </div>;
+}
+
+/* ── SEARCH TAB ── */
+function SearchTab({profiles,myId,following,T,onView,onFollow,onUnfollow,onRate,myProfile}){
+  const [q,setQ]=useState("");
+  const [filter,setFilter]=useState("all");
+  const [focused,setFocused]=useState(false);
+  const [scanning,setScanning]=useState(false);
+  const videoRef=useRef(null);
+  const streamRef=useRef(null);
+
+  const allSorted=[...profiles].sort((a,b)=>a.name.localeCompare(b.name));
+  const filtered=filter==="all"?allSorted:allSorted.filter(p=>(p.account_type||"personal")===filter);
+  // Search all profiles (including followed ones) — just exclude self
+  const results=q.trim().length>0?filtered.filter(p=>p.id!==myId&&(
+    p.name.toLowerCase().includes(q.toLowerCase())||
+    (p.handle||"").toLowerCase().replace(/^@/,"").includes(q.toLowerCase().replace(/^@/,""))||
+    (p.short_id||shortId(p.id)).toLowerCase().includes(q.toLowerCase().replace(/^#/,""))||
+    (p.bio||"").toLowerCase().includes(q.toLowerCase())
+  )):[];
+  // Suggested = people you haven't followed yet
+  const suggested=filtered.filter(p=>p.id!==myId&&!following.includes(p.id)).slice(0,20);
+
+  async function startScan(){
+    setScanning(true);
+    try{
+      const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}});
+      streamRef.current=stream;
+      setTimeout(()=>{if(videoRef.current){videoRef.current.srcObject=stream;videoRef.current.play();}},100);
+      loadScript("https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js",()=>{
+        const canvas=document.createElement("canvas");const ctx=canvas.getContext("2d");
+        let active=true;
+        function tick(){
+          if(!active)return;
+          const v=videoRef.current;
+          if(v&&v.readyState===v.HAVE_ENOUGH_DATA){
+            canvas.width=v.videoWidth;canvas.height=v.videoHeight;
+            ctx.drawImage(v,0,0);
+            const img=ctx.getImageData(0,0,canvas.width,canvas.height);
+            const code=window.jsQR&&window.jsQR(img.data,img.width,img.height,{inversionAttempts:"dontInvert"});
+            if(code?.data){
+              active=false;stopScan();
+              const url=code.data;
+              if(url.includes("highenough.in")){window.location.href=url;}
+              else{alert("Not a HighEnough QR code: "+url);}
+              return;
+            }
+          }
+          requestAnimationFrame(tick);
+        }
+        requestAnimationFrame(tick);
+      });
+    }catch(e){setScanning(false);alert("Camera unavailable. Please allow camera access.");}
+  }
+  function stopScan(){
+    streamRef.current?.getTracks().forEach(t=>t.stop());
+    streamRef.current=null;setScanning(false);
+  }
+
+  if(scanning) return<div style={{position:"fixed",inset:0,zIndex:500,background:"#000",display:"flex",flexDirection:"column"}}>
+    <div style={{padding:"14px 18px",display:"flex",alignItems:"center",background:"rgba(0,0,0,.8)",gap:12}}>
+      <button onClick={stopScan} style={{background:"rgba(255,255,255,.15)",border:"1px solid rgba(255,255,255,.2)",color:"#fff",borderRadius:9,padding:"8px 16px",fontWeight:600,fontSize:14}}>✕ Cancel</button>
+      <div style={{flex:1,textAlign:"center",color:"#fff",fontWeight:600,fontSize:14}}>Point at a HighEnough QR</div>
+    </div>
+    <video ref={videoRef} style={{flex:1,objectFit:"cover",width:"100%"}} playsInline muted/>
+    <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",width:230,height:230,border:"2px solid #7b72e9",borderRadius:18,boxShadow:"0 0 0 9999px rgba(0,0,0,.55)"}}/>
+    <div style={{position:"absolute",top:"calc(50% + 130px)",left:"50%",transform:"translateX(-50%)",color:"rgba(255,255,255,.6)",fontSize:12}}>Scanning…</div>
+  </div>;
+
+  return<div>
+    <div style={{padding:"12px 14px 8px",position:"sticky",top:56,background:`${T.bg}f0`,zIndex:10,backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)"}}>
+      <div style={{display:"flex",alignItems:"center",background:T.faint,borderRadius:14,padding:"12px 16px",gap:10,border:`1.5px solid ${focused?AC+"60":T.b1}`,transition:"border-color .2s",marginBottom:10,boxShadow:focused?`0 0 0 3px ${AC}14`:"none"}}>
+        <SearchIcon active={false}/>
+        <input value={q} onChange={e=>setQ(e.target.value)} onFocus={()=>setFocused(true)} onBlur={()=>setFocused(false)} placeholder="Search name, @handle or #ID…" style={{flex:1,background:"none",border:"none",outline:"none",color:T.txt,fontSize:15,fontFamily:"'Inter',sans-serif"}}/>
+        {q?<button onClick={()=>setQ("")} style={{background:"none",color:T.mu,display:"flex",alignItems:"center"}}><XIcon/></button>
+          :<button onClick={startScan} style={{background:"none",color:T.mu,display:"flex",alignItems:"center",padding:2}} title="Scan QR">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="3" height="3"/><rect x="19" y="14" width="2" height="2"/><rect x="14" y="19" width="2" height="2"/><rect x="18" y="18" width="3" height="3" rx=".5"/></svg>
+          </button>}
+      </div>
+      <div style={{display:"flex",gap:6}}>
+        {[["all","🌐 All"],["personal","👤 People"],["business","🏢 Business"]].map(([id,label])=>
+          <button key={id} onClick={()=>setFilter(id)} style={{padding:"6px 14px",borderRadius:20,fontSize:11,fontWeight:filter===id?700:500,background:filter===id?`linear-gradient(135deg,${AC}cc,${AC}80)`:"transparent",border:`1.5px solid ${filter===id?"transparent":T.b1}`,color:filter===id?"#fff":T.mu,transition:"all .15s",boxShadow:filter===id?`0 3px 10px ${AC}40`:"none"}}>{label}</button>)}
+      </div>
+    </div>
+
+    {!q.trim()&&<>
+      <div style={{padding:"14px 16px 8px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+        <span style={{fontSize:14,fontWeight:700,color:T.txt}}>Discover</span>
+        <span style={{fontSize:11,color:T.mu}}>{suggested.length} people</span>
+      </div>
+      {suggested.map((p,i)=><PersonRow key={p.id} p={p} myId={myId} following={following} T={T} onView={onView} onFollow={onFollow} onUnfollow={onUnfollow} idx={i}/>)}
+      {suggested.length===0&&<div style={{textAlign:"center",padding:"48px 20px",color:T.mu,fontSize:13}}>You're following everyone here!</div>}
+      <div style={{height:80}}/>
+    </>}
+
+    {q.trim().length>0&&<>
+      <div style={{padding:"10px 16px 4px",fontSize:12,color:T.mu}}>{results.length} result{results.length!==1?"s":""} for "{q}"</div>
+      {results.length===0&&<div style={{textAlign:"center",padding:"48px 20px",color:T.mu}}><div style={{fontSize:32,marginBottom:12,opacity:.3}}>🔍</div><div style={{fontWeight:600,marginBottom:4}}>No results for "{q}"</div><div style={{fontSize:13,opacity:.7}}>Try name, @handle or #ID</div></div>}
+      {results.map((p,i)=><PersonRow key={p.id} p={p} myId={myId} following={following} T={T} onView={onView} onFollow={onFollow} onUnfollow={onUnfollow} idx={i}/>)}
+      <div style={{height:80}}/>
+    </>}
+  </div>;
+}
+
+function PersonRow({p,myId,following,T,onView,onFollow,onUnfollow,idx}){
+  const sc=pScore(p);const isFollowing=following.includes(p.id);const isBiz=p.account_type==="business";
+  return<div style={{display:"flex",alignItems:"center",gap:12,padding:"11px 16px",borderBottom:`1px solid ${T.b1}28`,animation:"ci .2s ease both",animationDelay:`${idx*25}ms`}}>
+    <div style={{position:"relative",cursor:"pointer"}} onClick={()=>onView(p)}>
+      <Ava p={p} size={48} T={T}/>
+      {isBiz&&<div style={{position:"absolute",bottom:-1,right:-1,width:16,height:16,borderRadius:"50%",background:AC,fontSize:8,display:"flex",alignItems:"center",justifyContent:"center",border:`1.5px solid ${T.bg}`}}>🏢</div>}
+    </div>
+    <div style={{flex:1,minWidth:0,cursor:"pointer"}} onClick={()=>onView(p)}>
+      <div style={{fontWeight:700,fontSize:14,color:T.txt}}>{p.name}</div>
+      <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:T.mu,marginTop:1}}>{p.handle}</div>
+      {sc!=null&&<div style={{marginTop:4}}><TierBadge sc={sc} size="sm" isBiz={isBiz}/></div>}
+    </div>
+    <button onClick={()=>isFollowing?onUnfollow(p.id):onFollow(p.id)} style={{padding:"8px 16px",background:isFollowing?T.faint:`linear-gradient(135deg,${AC}ee,${AC}99)`,border:isFollowing?`1.5px solid ${T.b2}`:"none",borderRadius:20,color:isFollowing?T.mu:"#fff",fontWeight:700,fontSize:12,flexShrink:0,transition:"all .15s",boxShadow:isFollowing?"none":`0 4px 12px ${AC}40`}}>{isFollowing?"✓":"Follow"}</button>
+  </div>;
+}
+
+/* ── LEADERBOARD ── */
+function BoardTab({profiles,myId,T,onView}){
+  const [sub,setSub]=useState("all");
+  const [acFilter,setAcFilter]=useState("personal");
+  const [bizFilter,setBizFilter]=useState("all");
+  const now=Date.now(),week=7*24*60*60*1000;
+
+  // All biz types including "all"
+  const BIZ_TABS=[{id:"all",label:"All",emoji:"🏢"},...BIZ_TYPES];
+
+  const getBizType=p=>p?.biz_type||(p?.links?.biz_type)||"general";
+
+  const filteredByType=profiles.filter(p=>{
+    if((p.account_type||"personal")!==acFilter)return false;
+    if(acFilter==="business"&&bizFilter!=="all"&&getBizType(p)!==bizFilter)return false;
+    return true;
+  });
+
+  // Scored profiles sorted descending, then unscored at bottom
+  const allR=[...filteredByType].map(p=>({...p,sc:pScore(p)??-1})).sort((a,b)=>{
+    if(a.sc>=0&&b.sc>=0)return b.sc-a.sc;
+    if(a.sc>=0)return -1;
+    if(b.sc>=0)return 1;
+    return a.name.localeCompare(b.name);
+  });
+  const trending=[...filteredByType].map(p=>{
+    const rc=(p.ratings||[]).filter(r=>r.ts&&now-r.ts<week);
+    return{...p,sc:pScore(p)??-1,tC:rc.length};
+  }).filter(p=>p.tC>0).sort((a,b)=>b.tC-a.tC);
+  const rising=[...filteredByType].map(p=>{
+    const cats2=getCats(p);
+    const rc=(p.ratings||[]).filter(r=>r.ts&&now-r.ts<week);
+    const gain=rc.length?Math.round(rc.reduce((s,r)=>s+cats2.reduce((cs,c)=>cs+(r[c.id]||0),0)/cats2.length,0)):0;
+    return{...p,sc:pScore(p)??-1,gain};
+  }).filter(p=>p.gain>0).sort((a,b)=>b.gain-a.gain);
+  const list=sub==="all"?allR:sub==="trending"?trending:rising;
+
+  // Count per biz_type for badge numbers
+  const bizCounts=BIZ_TYPES.reduce((acc,bt)=>{
+    acc[bt.id]=profiles.filter(p=>p.account_type==="business"&&getBizType(p)===bt.id).length;
+    return acc;
+  },{});
+
+  return<div style={{paddingBottom:8}}>
+
+    {/* ── Main toggle: People / Business·Professional ── */}
+    <div style={{display:"flex",gap:8,padding:"14px 14px 0"}}>
+      {[["personal","👤","People"],["business","💼","Business · Pro"]].map(([id,em,label])=>
+        <button key={id} onClick={()=>{setAcFilter(id);setSub("all");setBizFilter("all");}} style={{flex:1,padding:"11px 0",borderRadius:22,fontSize:13,fontWeight:acFilter===id?700:500,background:acFilter===id?`linear-gradient(135deg,${AC}e0,${AC}90)`:"transparent",border:`1.5px solid ${acFilter===id?"transparent":T.b2}`,color:acFilter===id?"#fff":T.mu,transition:"all .18s",boxShadow:acFilter===id?`0 4px 16px ${AC}40`:"none"}}>
+          {em} {label}
+        </button>
+      )}
+    </div>
+
+    {/* ── Business sub-category tabs (scrollable) ── */}
+    {acFilter==="business"&&<div style={{overflowX:"auto",paddingBottom:4,marginTop:12}}>
+      <div style={{display:"flex",gap:6,padding:"0 14px",width:"max-content"}}>
+        {BIZ_TABS.map(bt=>{
+          const count=bt.id==="all"
+            ?profiles.filter(p=>p.account_type==="business").length
+            :bizCounts[bt.id]||0;
+          const active=bizFilter===bt.id;
+          return<button key={bt.id} onClick={()=>{setBizFilter(bt.id);setSub("all");}} style={{
+            display:"flex",alignItems:"center",gap:5,
+            padding:"7px 12px",borderRadius:20,whiteSpace:"nowrap",
+            background:active?`${AC}18`:"transparent",
+            border:`1.5px solid ${active?AC+"80":T.b2}`,
+            color:active?AC:T.mu,
+            fontWeight:active?700:400,fontSize:12,
+            transition:"all .15s",flexShrink:0
+          }}>
+            <span style={{fontSize:14}}>{bt.emoji}</span>
+            <span>{bt.id==="all"?"All":bt.label.split(" /")[0].split(" ·")[0]}</span>
+            {count>0&&<span style={{
+              background:active?AC:T.faint,color:active?"#fff":T.mu,
+              borderRadius:10,padding:"0px 6px",fontSize:10,fontWeight:700,
+              minWidth:16,textAlign:"center",
+              border:`1px solid ${active?"transparent":T.b1}`
+            }}>{count}</span>}
+          </button>;
+        })}
+      </div>
+    </div>}
+
+    {/* ── Sub-filter: All Time / Trending / Rising ── */}
+    <div style={{display:"flex",background:T.faint,margin:"16px 14px 12px",borderRadius:12,padding:3,border:`1px solid ${T.b1}`}}>
+      {[["all","All Time"],["trending","🔥 Trending"],["rising","📈 Rising"]].map(([t,l])=>
+        <button key={t} onClick={()=>setSub(t)} style={{flex:1,padding:"8px 0",borderRadius:10,border:sub===t?`1px solid ${T.b1}`:"1px solid transparent",background:sub===t?T.card:"transparent",color:sub===t?T.txt:T.mu,fontWeight:sub===t?600:400,fontSize:12,transition:"all .12s"}}>{l}</button>)}
+    </div>
+
+    <div style={{padding:"0 14px"}}>
+      {list.length===0&&<div style={{textAlign:"center",padding:"40px 0",color:T.mu,fontSize:13}}>
+        {sub==="trending"?"No activity this week yet":sub==="rising"?"No rising profiles this week":acFilter==="business"&&bizFilter!=="all"?`No ${BIZ_TYPES.find(b=>b.id===bizFilter)?.label||""} profiles yet`:"Nothing here yet"}
+      </div>}
+      {list.map((p,i)=>{
+        const isBiz2=acFilter==="business";
+        const hasScore=p.sc>=0;
+        const t=tierOf(hasScore?p.sc:0,isBiz2);
+        const rank=i+1;
+        const isTop=rank<=3&&hasScore;
+        const bizType=isBiz2?BIZ_TYPES.find(b=>b.id===getBizType(p)):null;
+        return<div key={p.id} onClick={()=>onView(p)} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 14px",background:isTop?`linear-gradient(135deg,${t.color}18,${t.color}08)`:`linear-gradient(135deg,${T.card},${T.surf})`,border:`1px solid ${isTop?t.color+"40":T.b1}`,borderRadius:16,marginBottom:8,cursor:"pointer",transition:"all .14s",animation:`ci .28s ease ${i*35}ms both`,boxShadow:isTop?`0 4px 20px ${t.color}18`:"0 2px 12px rgba(0,0,0,.08)",opacity:hasScore?1:.65}}>
+          <div style={{width:28,textAlign:"center",fontFamily:"'JetBrains Mono',monospace",fontSize:isTop?14:12,fontWeight:800,color:isTop?t.color:T.mu}}>#{rank}</div>
+          <Ava p={p} size={isTop?46:42} T={T}/>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontWeight:isTop?800:700,fontSize:isTop?15:14,color:T.txt,marginBottom:3}}>
+              {p.name}
+              {p.id===myId&&<span style={{fontSize:9,marginLeft:6,background:`${AC}18`,color:AC,borderRadius:10,padding:"1px 7px",fontFamily:"'JetBrains Mono',monospace"}}>you</span>}
+            </div>
+            <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
+              <TierBadge sc={hasScore?p.sc:null} size="sm" isBiz={isBiz2}/>
+              {bizType&&bizFilter==="all"&&<span style={{fontSize:10,color:T.mu,background:T.faint,borderRadius:8,padding:"1px 7px",border:`1px solid ${T.b1}`}}>{bizType.emoji} {bizType.label.split(" /")[0]}</span>}
+            </div>
+          </div>
+          <div style={{textAlign:"right",flexShrink:0}}>
+            <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:isTop?19:17,fontWeight:800,color:hasScore?t.color:T.mu,textShadow:isTop?`0 0 12px ${t.color}50`:"none"}}>{hasScore?fmtScore(p.sc):"—"}</div>
+            {sub==="trending"&&p.tC&&<div style={{fontSize:10,color:"#10a37f",marginTop:2}}>+{p.tC} this week</div>}
+            {sub==="rising"&&p.gain&&<div style={{fontSize:10,color:"#c08a2e",marginTop:2}}>+{p.gain} pts</div>}
+          </div>
+        </div>;
+      })}
+    </div>
+  </div>;
+}
+
+/* ── FEED CARD ── */
+function FeedCard({p,myId,following,T,onView,onFollow,onUnfollow,onRate,onMsg,idx}){
+  const myR=p.ratings?.find(r=>r.raterId===myId);
+  const isBiz=p.account_type==="business";
+  const sc=pScore(p);const t=tierOf(sc??0,isBiz);
+  const isFollowing=following.includes(p.id);
+  const {level}=tierLevel(sc??0,isBiz);
+  const levelStr=sc&&sc>0&&t.label!=="Ghost"?` L${level}`:"";
+
+  return<div onClick={()=>onView(p)} style={{background:`linear-gradient(135deg,${T.card},${T.surf})`,border:`1px solid ${T.b1}`,borderRadius:16,padding:"12px 14px",marginBottom:2,animation:"ci .3s ease both",animationDelay:`${idx*30}ms`,cursor:"pointer",display:"flex",alignItems:"center",gap:12}}>
+    <div style={{position:"relative",flexShrink:0}}>
+      <Ava p={p} size={46} T={T}/>
+      {isBiz&&<div style={{position:"absolute",bottom:-2,right:-2,width:16,height:16,borderRadius:"50%",background:"#7b72e9",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,border:`2px solid ${T.card}`}}>🏢</div>}
+    </div>
+    <div style={{flex:1,minWidth:0}}>
+      <div style={{fontWeight:700,fontSize:14,color:T.txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</div>
+      <div style={{display:"flex",alignItems:"center",gap:6,marginTop:2,flexWrap:"wrap"}}>
+        <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:9,color:T.mu}}>{p.handle}</span>
+        {sc!=null&&<span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:t.color,fontWeight:700}}>{t.emoji} {t.label}{levelStr}</span>}
+      </div>
+    </div>
+    <div style={{display:"flex",flexDirection:"column",gap:6,alignItems:"flex-end",flexShrink:0}} onClick={e=>e.stopPropagation()}>
+      <button onClick={()=>isFollowing?onUnfollow(p.id):onFollow(p.id)} style={{padding:"5px 12px",background:isFollowing?T.faint:`linear-gradient(135deg,${AC}ee,${AC}99)`,border:isFollowing?`1px solid ${T.b2}`:"none",borderRadius:14,color:isFollowing?T.mu:"#fff",fontWeight:600,fontSize:11,transition:"all .15s"}}>{isFollowing?"✓":"Follow"}</button>
+      <button onClick={()=>onRate(p,myR)} style={{padding:"5px 12px",background:myR?T.faint:`${p.color}22`,border:`1px solid ${myR?T.b1:p.color+"40"}`,borderRadius:14,color:myR?T.mu:p.color,fontSize:11,fontWeight:600}}>{myR?"Edit ✏️":isBiz?"Review":"Rate ⭐"}</button>
+    </div>
+  </div>;
+}
+
+/* ── PROFILE TAB (own) ── */
+function ProfileTab({myProfile,myP,T,onQR,onSettings,onEditProfile,onEditPhoto,onScoreCard,following,profiles,onViewProfile}){
+  const isBiz=myProfile.account_type==="business";
+  const cats=getCats(myP);
+  const sc=pScore(myP),t=tierOf(sc??0,isBiz),pct=tierPct(sc??0,isBiz);
+  const allTiers=getTiers(myP);
+  const next=sc!=null?allTiers[allTiers.indexOf(t)+1]:null;
+  const n=(myP.ratings||[]).length;
+  const [peopleList,setPeopleList]=useState(null);
+  const profileUrl=getProfileUrl(myProfile);
+
+  function shareMyProfile(){
+    const sc2=pScore(myP);
+    const isBiz2=myProfile.account_type==="business";
+    const tier=tierOf(sc2??0,isBiz2);
+    const text=`Check out my ${isBiz2?"business profile":"profile"} on HighEnough — ${myProfile.name} ${tier.emoji} ${tier.label}${sc2!=null?" ("+fmtScore(sc2)+" pts)":""} 👉 ${profileUrl}`;
+    if(navigator.share){
+      navigator.share({title:myProfile.name+" on HighEnough",text,url:profileUrl}).catch(()=>{
+        navigator.clipboard?.writeText(profileUrl);
+      });
+    } else {
+      navigator.clipboard?.writeText(profileUrl);
+    }
+  }
+
+  if(peopleList) return<div style={{paddingBottom:80}}>
+    <div style={{padding:"14px 16px 0",display:"flex",alignItems:"center",gap:12}}>
+      <button onClick={()=>setPeopleList(null)} style={{background:"none",color:T.txt,padding:"4px",display:"flex",alignItems:"center"}}><BackIcon/></button>
+      <div style={{fontWeight:700,fontSize:16,color:T.txt}}>{peopleList.title} <span style={{fontSize:13,color:T.mu,fontWeight:400}}>({peopleList.people.length})</span></div>
+    </div>
+    <div style={{padding:"12px 16px",display:"flex",flexDirection:"column",gap:2}}>
+      {peopleList.people.length===0?<div style={{textAlign:"center",padding:"32px 0",color:T.mu}}>Nobody here yet</div>
+        :peopleList.people.map((p,i)=><div key={p.id||i} onClick={()=>{if(p.id&&p.id!==myProfile.id&&onViewProfile){setPeopleList(null);onViewProfile(p);}}} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 0",borderBottom:`1px solid ${T.b1}`,cursor:p.id&&p.id!==myProfile.id?"pointer":"default"}}>
+          <Ava p={p} size={44} T={T}/>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontWeight:600,fontSize:14,color:T.txt}}>{p.name}</div>
+            <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:T.mu}}>{p.handle}</div>
+          </div>
+          {p.ratingGiven!=null&&<div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:12,color:t.color,fontWeight:700}}>{p.ratingGiven} pts</div>}
+        </div>)}
+    </div>
+  </div>;
+
+  return<div>
+    {/* Header row */}
+    <div style={{padding:"14px 16px 0",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+      <div>
+        <div style={{fontWeight:800,fontSize:18,color:T.txt,letterSpacing:"-.3px"}}>{myProfile.name}</div>
+        <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:AC,marginTop:2,fontWeight:600,letterSpacing:.8}}>UID #{myProfile.short_id||shortId(myProfile.id)}</div>
+      </div>
+      <button onClick={onSettings} style={{padding:"7px 14px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:10,color:T.txt,fontWeight:600,fontSize:13}}>⚙️ Settings</button>
+    </div>
+    <div style={{padding:"16px 16px 0"}}>
+      {/* Avatar + stats */}
+      <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:14}}>
+        <div style={{position:"relative",cursor:"pointer",flexShrink:0}} onClick={onEditPhoto}>
+          <div style={{width:88,height:88,borderRadius:"50%",padding:3,background:`linear-gradient(135deg,${t.color},${t.grad?.[1]||t.color}88)`,boxShadow:`0 0 0 1px ${T.bg},0 6px 20px ${t.color}40`}}>
+            <Ava p={myP} size={82} T={T}/>
+          </div>
+          <div style={{position:"absolute",bottom:0,right:0,width:26,height:26,borderRadius:"50%",background:`linear-gradient(135deg,${myProfile.color}dd,${myProfile.color}99)`,border:`2px solid ${T.bg}`,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:`0 2px 8px ${myProfile.color}50`}}><EditIcon/></div>
+        </div>
+        {/* Stats */}
+        <div style={{flex:1,display:"flex",gap:6}}>
+          <button onClick={()=>{sb.from("follows").select("follower_id").eq("following_id",myProfile.id).then(({data})=>{const ids=(data||[]).map(r=>r.follower_id);const list=(profiles||[]).filter(p=>ids.includes(p.id)).map(p=>({...p,score:pScore(p)}));setPeopleList({title:"Followers",people:list});});}} style={{flex:1,background:T.faint,borderRadius:13,padding:"11px 0",textAlign:"center",border:`1px solid ${T.b1}`,cursor:"pointer"}}>
+            <div style={{fontFamily:"'JetBrains Mono',monospace",fontWeight:800,fontSize:16,color:T.txt}}>{fmtCount(myProfile.followers_count||0)}</div>
+            <div style={{fontSize:10,color:T.mu,marginTop:2}}>Followers</div>
+          </button>
+          <button onClick={()=>{const list=(profiles||[]).filter(p=>following.includes(p.id)).map(p=>({...p,score:pScore(p)}));setPeopleList({title:"Following",people:list});}} style={{flex:1,background:T.faint,borderRadius:13,padding:"11px 0",textAlign:"center",border:`1px solid ${T.b1}`,cursor:"pointer"}}>
+            <div style={{fontFamily:"'JetBrains Mono',monospace",fontWeight:800,fontSize:16,color:T.txt}}>{fmtCount(myProfile.following_count||0)}</div>
+            <div style={{fontSize:10,color:T.mu,marginTop:2}}>Following</div>
+          </button>
+          <button onClick={()=>{
+            const cats2=getCats(myP);
+            const raters=(myP.ratings||[]).map(r=>{
+              const given=Math.round(cats2.reduce((s,c)=>s+(r[c.id]||0),0)/cats2.length);
+              const rp=(profiles||[]).find(p=>p.id===r.raterId);
+              return rp?{...rp,score:pScore(rp),ratingGiven:given}:{id:r.raterId,name:r.raterName||"?",handle:"",color:AC,ratingGiven:given};
+            });
+            setPeopleList({title:"Rated by",people:raters});
+          }} style={{flex:1,background:`linear-gradient(135deg,${t.color}20,${t.color}08)`,borderRadius:13,padding:"11px 0",textAlign:"center",border:`1.5px solid ${t.color}35`,cursor:"pointer",boxShadow:`0 2px 12px ${t.color}18`}}>
+            <div style={{fontFamily:"'JetBrains Mono',monospace",fontWeight:800,fontSize:16,color:t.color,textShadow:`0 0 10px ${t.color}60`}}>{sc!=null?fmtScore(sc):"—"}</div>
+            <div style={{fontSize:10,color:t.color,opacity:.8,marginTop:2}}>Score</div>
+          </button>
+        </div>
+      </div>
+      {myProfile.bio&&<p style={{color:T.mu,fontSize:13,lineHeight:1.55,marginBottom:10}}>{myProfile.bio}</p>}
+      {isBiz&&<div style={{marginBottom:8}}>
+        <span style={{fontSize:12,color:AC,fontWeight:700,background:`${AC}12`,border:`1px solid ${AC}28`,borderRadius:7,padding:"3px 11px"}}>
+          {BIZ_TYPES.find(b=>b.id===(myProfile.biz_type||(myProfile.links?.biz_type)||"general"))?.emoji||"💼"} {BIZ_TYPES.find(b=>b.id===(myProfile.biz_type||(myProfile.links?.biz_type)||"general"))?.label||"Business / Professional"}
+        </span>
+      </div>}
+      <div style={{marginBottom:12}}><TierBadge sc={sc} size="md" isBiz={isBiz}/></div>
+      {/* Action buttons */}
+      <div style={{display:"flex",gap:8,marginBottom:16}}>
+        <button onClick={onEditProfile} style={{flex:1,padding:"10px 0",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:11,color:T.txt,fontWeight:600,fontSize:12}}>✏️ Edit Profile</button>
+        <button onClick={onScoreCard} style={{flex:1,padding:"10px 0",background:`linear-gradient(135deg,${AC}22,${AC}0e)`,border:`1.5px solid ${AC}35`,borderRadius:11,color:AC,fontWeight:700,fontSize:12,boxShadow:`0 2px 10px ${AC}20`}}>Score Card</button>
+        <button onClick={shareMyProfile} style={{flex:1,padding:"10px 0",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:11,color:T.txt,fontWeight:600,fontSize:12,display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+          Share
+        </button>
+      </div>
+    </div>
+    <div style={{height:1,background:T.b1}}/>
+    <div style={{padding:"14px 16px"}}>
+      <div style={{fontWeight:600,fontSize:14,color:T.txt,marginBottom:12}}>{isBiz?"Review Breakdown":"Rating Breakdown"} <span style={{fontSize:12,color:T.mu,fontWeight:400}}>· {n} {isBiz?"review":"rating"}{n!==1?"s":""}</span></div>
+      {n>0?<>
+        <div style={{marginBottom:12}}>
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:5}}>
+            <span style={{fontSize:12,color:T.mu}}>Progress → {next?next.label:"Top tier 👑"}</span>
+            {next&&<span style={{fontSize:11,color:T.mu,fontFamily:"'JetBrains Mono',monospace"}}>{next.min.toLocaleString()} pts</span>}
+          </div>
+          <div style={{height:5,background:T.b1,borderRadius:99,overflow:"hidden"}}><div style={{width:`${pct*100}%`,height:"100%",background:t.color,borderRadius:99,opacity:.9,transition:"width .9s"}}/></div>
+        </div>
+        {cats.map(c=>{const v=cAvg(myP,c.id);return<div key={c.id} style={{marginBottom:9}}>
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}><span style={{fontSize:12,color:T.mu}}>{c.emoji} {c.label}</span><span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:T.txt,fontWeight:600}}>{v}/100</span></div>
+          {c.sub&&<div style={{fontSize:10,color:T.mu,opacity:.6,marginBottom:3}}>{c.sub}</div>}
+          <div style={{height:4,background:T.faint,borderRadius:99,overflow:"hidden"}}><div style={{width:`${v}%`,height:"100%",background:myProfile.color,borderRadius:99,opacity:.85}}/></div>
+        </div>;})}
+      </>:<div style={{borderRadius:16,overflow:"hidden",marginTop:4}}>
+        {isBiz
+          /* ── Business empty state: show review categories ── */
+          ? <div>
+              <div style={{background:`linear-gradient(135deg,${AC}12,${AC}06)`,border:`1px solid ${AC}22`,borderRadius:14,padding:"16px 16px 12px",marginBottom:12}}>
+                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+                  <TierBadge sc={null} size="sm" isBiz={true}/>
+                  <span style={{fontSize:12,color:T.mu}}>No reviews yet</span>
+                </div>
+                <div style={{fontWeight:700,fontSize:15,color:T.txt,marginBottom:4}}>Customers will review you on:</div>
+                <div style={{display:"flex",flexDirection:"column",gap:6,marginTop:8}}>
+                  {cats.map(c=><div key={c.id} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",background:T.card,border:`1px solid ${T.b1}`,borderRadius:10}}>
+                    <span style={{fontSize:18,flexShrink:0}}>{c.emoji}</span>
+                    <div style={{flex:1}}>
+                      <div style={{fontWeight:600,fontSize:13,color:T.txt}}>{c.label}</div>
+                      {c.sub&&<div style={{fontSize:11,color:T.mu,marginTop:1}}>{c.sub}</div>}
+                    </div>
+                    <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:T.mu}}>0–100</div>
+                  </div>)}
+                </div>
+              </div>
+              {[
+                {icon:"🔗",title:"Share your business link",num:"01"},
+                {icon:"✍️",title:"Get reviewed by customers",num:"02"},
+                {icon:"🏆",title:"Earn your tier",num:"03"},
+              ].map(s=><div key={s.num} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 12px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:10,marginBottom:6}}>
+                <div style={{width:30,height:30,borderRadius:"50%",background:`${AC}14`,border:`1px solid ${AC}28`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0}}>{s.icon}</div>
+                <div style={{flex:1,fontWeight:600,fontSize:13,color:T.txt}}>{s.title}</div>
+                <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:T.mu}}>{s.num}</span>
+              </div>)}
+            </div>
+          /* ── Personal empty state: ghost card ── */
+          : <><div style={{background:`linear-gradient(135deg,${t.grad[0]}44,${t.grad[1]}22)`,border:`1px solid ${t.color}30`,borderRadius:16,padding:"22px 18px",marginBottom:12,position:"relative",overflow:"hidden"}}>
+              <div style={{position:"absolute",right:-18,top:-18,fontSize:88,opacity:.07,lineHeight:1,pointerEvents:"none",userSelect:"none"}}>👻</div>
+              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+                <TierBadge sc={null} size="sm" isBiz={isBiz}/>
+                <span style={{fontSize:12,color:T.mu}}>Starting tier</span>
+              </div>
+              <div style={{fontWeight:800,fontSize:20,color:T.txt,letterSpacing:"-.4px",marginBottom:4}}>You're a Ghost 👻</div>
+              <div style={{fontSize:12,color:T.mu,lineHeight:1.6}}>No one can see your score yet. Get your first rating to unlock your tier and start climbing.</div>
+            </div>
+            {[
+              {icon:"🔗",title:"Share your profile",desc:"Send your link or QR to someone you know",n:"01"},
+              {icon:"⭐",title:"Get rated",desc:"They rate you across 6 categories",n:"02"},
+              {icon:"🏆",title:"Earn your tier",desc:"Your score goes live — climb from Ghost to HighEnough",n:"03"},
+            ].map(s=><div key={s.n} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 14px",background:T.card,border:`1px solid ${T.b1}`,borderRadius:12,marginBottom:7}}>
+              <div style={{width:34,height:34,borderRadius:"50%",background:`${AC}18`,border:`1px solid ${AC}30`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>{s.icon}</div>
+              <div style={{flex:1,minWidth:0}}><div style={{fontWeight:700,fontSize:13,color:T.txt}}>{s.title}</div><div style={{fontSize:11,color:T.mu,marginTop:1}}>{s.desc}</div></div>
+              <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:T.mu,opacity:.5,flexShrink:0}}>{s.n}</div>
+            </div>)}</> }
+      </div>}
+    </div>
+  </div>;
+}
+/* ── CHANGE EMAIL & PASSWORD ── */
+function ChangeEmailSection({T,inp}){
+  const [open,setOpen]=useState(false);
+  const [newEmail,setNewEmail]=useState("");
+  const [msg,setMsg]=useState({text:"",error:false});
+  const [loading,setLoading]=useState(false);
+  async function change(){
+    if(!newEmail.trim()||!newEmail.includes("@"))return setMsg({text:"Enter a valid email address",error:true});
+    setLoading(true);setMsg({text:"",error:false});
+    try{
+      // Refresh session first to ensure token is valid
+      await sb.auth.refreshSession();
+      const {error}=await sb.auth.updateUser({email:newEmail.trim()});
+      if(error)setMsg({text:error.message,error:true});
+      else setMsg({text:"✅ Confirmation sent to new email. Click the link there to confirm.",error:false});
+    }catch(e){setMsg({text:e.message||"Error changing email",error:true});}
+    finally{setLoading(false);}
+  }
+  return<div style={{marginBottom:10}}>
+    {!open?<button onClick={()=>setOpen(true)} style={{width:"100%",padding:"11px 13px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:11,color:T.txt,fontWeight:500,fontSize:13,textAlign:"left",display:"flex",alignItems:"center",justifyContent:"space-between"}}>✉️ Change Email <span style={{color:T.mu,fontSize:18}}>›</span></button>
+    :<div style={{background:T.faint,border:`1px solid ${T.b1}`,borderRadius:11,padding:"13px 14px"}}>
+      <div style={{fontWeight:600,fontSize:13,color:T.txt,marginBottom:10}}>Change Email</div>
+      <input value={newEmail} onChange={e=>setNewEmail(e.target.value)} placeholder="New email address" style={{...inp,marginBottom:8}} type="email"/>
+      {msg.text&&<div style={{marginBottom:8,padding:"8px 12px",borderRadius:8,fontSize:12,background:msg.error?"#a0303018":"#10a37f18",border:`1px solid ${msg.error?"#a0303040":"#10a37f40"}`,color:msg.error?"#d06060":"#10a37f"}}>{msg.text}</div>}
+      <div style={{display:"flex",gap:7}}>
+        <button onClick={change} disabled={loading} style={{flex:1,padding:"9px 0",background:`linear-gradient(135deg,${AC}e0,${AC}90)`,borderRadius:9,color:"#fff",fontWeight:700,fontSize:13}}>{loading?"Sending…":"Change Email"}</button>
+        <button onClick={()=>{setOpen(false);setMsg({text:"",error:false});}} style={{flex:1,padding:"9px 0",background:"transparent",border:`1px solid ${T.b1}`,borderRadius:9,color:T.mu,fontSize:13}}>Cancel</button>
+      </div>
+    </div>}
+  </div>;
+}
+
+function ChangePasswordSection({T,inp}){
+  const [open,setOpen]=useState(false);
+  const [np,setNp]=useState("");
+  const [np2,setNp2]=useState("");
+  const [msg,setMsg]=useState({text:"",error:false});
+  const [loading,setLoading]=useState(false);
+  // Detect if this is a Google-only account (no password set yet)
+  const [isGoogleOnly,setIsGoogleOnly]=useState(false);
+  useEffect(()=>{
+    sb.auth.getUser().then(({data:{user}})=>{
+      if(!user)return;
+      const providers=(user.app_metadata?.providers)||[];
+      const hasPassword=providers.includes("email")||user.identities?.some(i=>i.provider==="email");
+      setIsGoogleOnly(!hasPassword&&providers.includes("google"));
+    });
+  },[]);
+  async function change(){
+    if(np.length<6)return setMsg({text:"Password must be at least 6 characters",error:true});
+    if(np!==np2)return setMsg({text:"Passwords don't match",error:true});
+    setLoading(true);setMsg({text:"",error:false});
+    try{
+      const {error}=await sb.auth.updateUser({password:np});
+      if(error)setMsg({text:error.message,error:true});
+      else{
+        setMsg({text:isGoogleOnly?"✅ Password created! You can now login with email + password.":"✅ Password changed successfully!",error:false});
+        setNp("");setNp2("");
+        setIsGoogleOnly(false);
+        setTimeout(()=>setOpen(false),2000);
+      }
+    }catch(e){setMsg({text:e.message||"Error updating password",error:true});}
+    finally{setLoading(false);}
+  }
+  const label=isGoogleOnly?"🔑 Set a Password":"🔑 Change Password";
+  const desc=isGoogleOnly?"Create a password so you can login with email + password on any device":null;
+  return<div style={{marginBottom:14}}>
+    {!open
+      ?<button onClick={()=>setOpen(true)} style={{width:"100%",padding:"11px 13px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:11,color:T.txt,fontWeight:500,fontSize:13,textAlign:"left",display:"flex",flexDirection:"column",gap:3}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%"}}>{label}<span style={{color:T.mu,fontSize:18}}>›</span></div>
+          {desc&&<div style={{fontSize:11,color:T.mu,fontWeight:400}}>{desc}</div>}
+        </button>
+      :<div style={{background:T.faint,border:`1px solid ${T.b1}`,borderRadius:11,padding:"13px 14px"}}>
+        <div style={{fontWeight:600,fontSize:13,color:T.txt,marginBottom:4}}>{label}</div>
+        {isGoogleOnly&&<div style={{fontSize:11,color:T.mu,marginBottom:10,lineHeight:1.5}}>Your account uses Google Sign-In. Add a password so you can also log in with your email and password.</div>}
+        <input value={np} onChange={e=>setNp(e.target.value)} placeholder="New password (min 6 chars)" style={{...inp,marginBottom:8}} type="password"/>
+        <input value={np2} onChange={e=>setNp2(e.target.value)} placeholder="Confirm new password" style={{...inp,marginBottom:8}} type="password"/>
+        {msg.text&&<div style={{marginBottom:8,padding:"8px 12px",borderRadius:8,fontSize:12,background:msg.error?"#a0303018":"#10a37f18",border:`1px solid ${msg.error?"#a0303040":"#10a37f40"}`,color:msg.error?"#d06060":"#10a37f"}}>{msg.text}</div>}
+        <div style={{display:"flex",gap:7}}>
+          <button onClick={change} disabled={loading} style={{flex:1,padding:"9px 0",background:`linear-gradient(135deg,${AC}e0,${AC}90)`,borderRadius:9,color:"#fff",fontWeight:700,fontSize:13}}>{loading?"Saving…":isGoogleOnly?"Set Password":"Change Password"}</button>
+          <button onClick={()=>{setOpen(false);setMsg({text:"",error:false});setNp("");setNp2("");}} style={{flex:1,padding:"9px 0",background:"transparent",border:`1px solid ${T.b1}`,borderRadius:9,color:T.mu,fontSize:13}}>Cancel</button>
+        </div>
+      </div>}
+  </div>;
+}
+
+/* ── PRIVACY POLICY ── */
+function PrivacyPolicy({T,onClose}){
+  return<Overlay onBg={onClose} T={T} wide>
+    <div style={{fontWeight:700,fontSize:18,color:T.txt,marginBottom:4}}>Privacy Policy</div>
+    <div style={{fontSize:11,color:T.mu,marginBottom:16}}>Last updated: April 2025</div>
+    <div style={{maxHeight:"62vh",overflowY:"auto",display:"flex",flexDirection:"column",gap:14,fontSize:13,lineHeight:1.75,color:T.mu}}>
+      {[
+        {h:"1. Who We Are",b:"HighEnough (highenough.in) is a social reputation app that lets users rate each other across categories and earn tier rankings. We are an independent product based in India."},
+        {h:"2. Data We Collect",b:"We collect your email address (required for login), display name, profile photo (optional), bio, interests, and social links you provide. We also store ratings you give and receive, followers/following relationships, messages you send, and notifications you receive."},
+        {h:"3. How We Use Your Data",b:"Your data is used solely to operate the HighEnough app — to display your profile and tier, show ratings, enable messaging and follows, and deliver notifications. We do not sell, trade, or share your data with third parties for advertising."},
+        {h:"4. Authentication",b:"We use Supabase (supabase.com) for authentication. You may sign in via email/password or Google OAuth. Your password is never stored by us — it is handled entirely by Supabase's secure auth system. Google Sign-In is governed by Google's privacy policy."},
+        {h:"5. User-Generated Content",b:"Ratings, messages, and profile content you create are stored in our Supabase database. Ratings are visible to other users of the platform. Messages are only visible to participants of that conversation."},
+        {h:"6. Data Storage & Security",b:"All data is stored on Supabase infrastructure with industry-standard encryption at rest and in transit (TLS). We use Row Level Security (RLS) policies to ensure users can only access data they are authorised to see."},
+        {h:"7. Local Storage",b:"We store your session token (managed by Supabase), dark/light mode preference, and group chat data in your browser's localStorage. We do not use third-party tracking cookies."},
+        {h:"8. Your Rights",b:"You can delete your account at any time from Settings → Account → Delete Account. This permanently and irreversibly removes your profile, ratings, messages, follows, and all associated data from our database."},
+        {h:"9. Data Retention",b:"If you delete your account, your data is removed immediately from our active database. Supabase may retain authentication records for a short period for abuse prevention. We do not retain any personal data beyond what is necessary to operate the service."},
+        {h:"10. Children",b:"HighEnough is not intended for users under the age of 13. If we become aware that a child under 13 has created an account, we will delete it promptly."},
+        {h:"11. Changes to This Policy",b:"We may update this privacy policy. Any significant changes will be communicated via a notice in the app. Your continued use of the app after changes constitutes acceptance."},
+        {h:"12. Contact",b:"For privacy-related questions or data deletion requests, contact us at: privacy@highenough.in or through the app's support channel."},
+      ].map(({h,b})=><div key={h}>
+        <div style={{fontWeight:700,color:T.txt,marginBottom:4,fontSize:13}}>{h}</div>
+        <div>{b}</div>
+      </div>)}
+    </div>
+    <button onClick={onClose} style={{marginTop:18,width:"100%",padding:"12px 0",background:`linear-gradient(135deg,${AC}e0,${AC}90)`,borderRadius:11,color:"#fff",fontWeight:700,fontSize:14}}>Close</button>
+  </Overlay>;
+}
+
+/* ── SETTINGS MODAL ── */
+/* ── SETTINGS PROFILE URL — proper component so useState is valid ── */
+function SettingsProfileUrl({me,T}){
+  const profileUrl=getProfileUrl(me);
+  const [copied,setCopied]=useState(false);
+  function copy(){try{navigator.clipboard?.writeText(profileUrl);}catch{}setCopied(true);setTimeout(()=>setCopied(false),2000);}
+  return<div style={{padding:"11px 13px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:11,marginBottom:11}}>
+    <div style={{fontSize:11,color:T.mu,marginBottom:6,textTransform:"uppercase",letterSpacing:.8,fontWeight:600}}>Your Profile Link</div>
+    <div style={{display:"flex",alignItems:"center",gap:8}}>
+      <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:AC,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{profileUrl.replace("https://","")}</span>
+      <button onClick={copy} style={{background:`${AC}18`,border:`1px solid ${AC}28`,borderRadius:7,padding:"5px 11px",color:AC,fontWeight:700,fontSize:11,flexShrink:0,whiteSpace:"nowrap"}}>{copied?"✓ Copied":"Copy"}</button>
+    </div>
+    <div style={{fontSize:10,color:T.mu,marginTop:5,lineHeight:1.4}}>Share this link — anyone can view your profile.</div>
+  </div>;
+}
+
+/* ── EDIT PROFILE MODAL (profile info only) ── */
+
+function RateModal({target,raterId,raterName,existing,T,onClose,onSubmit}){
+  const isBiz=target?.account_type==="business";
+  const cats=getCats(target);
+  const tiers=getTiers(target);
+  const isEdit=!!existing;
+  const [vals,setVals]=useState(isEdit?Object.fromEntries(cats.map(c=>[c.id,existing[c.id]||0])):Object.fromEntries(cats.map(c=>[c.id,50])));
+  const [submitting,setSubmitting]=useState(false);
+  // contribution = this rater's avg across categories (matches new pScore formula: sum of per-rater avgs)
+  const contribution=Math.round(cats.reduce((s,c)=>s+(vals[c.id]||0),0)/cats.length);
+  const currentSc=pScore(target)||0;
+  // If editing: replace old rater avg with new rater avg; if new: add rater avg
+  const oldContrib=isEdit?Math.round(cats.reduce((s,c)=>s+(existing[c.id]||0),0)/cats.length):0;
+  const projSc=isEdit?currentSc-oldContrib+contribution:currentSc+contribution;
+  const tBefore=tierOf(currentSc,isBiz),tAfter=tierOf(projSc,isBiz);
+  const tierUp=tiers.indexOf(tAfter)>tiers.indexOf(tBefore);
+
+  async function handleSubmit(){
+    if(submitting)return;
+    setSubmitting(true);
+    try{await onSubmit(target.id,{...vals,raterId,raterName,ts:Date.now()});}
+    finally{setSubmitting(false);}
+  }
+
+  return<Overlay onBg={onClose} T={T} bottom>
+    <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16}}>
+      <Ava p={target} size={48} T={T}/>
+      <div style={{flex:1}}><div style={{fontWeight:600,fontSize:16,color:T.txt}}>{isEdit?"Edit Rating —":"Rate"} {target.name}</div><TierBadge sc={pScore(target)} size="sm" isBiz={isBiz}/></div>
+      <div style={{textAlign:"center"}}><div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:22,fontWeight:700,color:tierUp?tAfter.color:T.txt,transition:"color .3s"}}>{contribution}</div><div style={{fontSize:9,color:T.mu,letterSpacing:.5}}>pts</div></div>
+    </div>
+    {tierUp&&<div style={{background:`${tAfter.color}14`,border:`1px solid ${tAfter.color}30`,borderRadius:10,padding:"8px 12px",marginBottom:12,fontSize:12,color:tAfter.color,fontWeight:600,display:"flex",alignItems:"center",gap:6}}><span>{tAfter.emoji}</span> This will push them to {tAfter.label}!</div>}
+    {isEdit&&<div style={{background:`${AC}10`,border:`1px solid ${AC}28`,borderRadius:10,padding:"8px 12px",marginBottom:12,fontSize:12,color:AC,fontWeight:600}}>✏️ Updating your previous rating</div>}
+    <div style={{display:"flex",flexDirection:"column",gap:18}}>
+      {cats.map(c=>{
+        const v=vals[c.id];
+        const pct=v/100;
+        const col=isBiz?"#10a37f":target.color;
+        return<div key={c.id}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:3}}>
+            <span style={{fontSize:13,color:T.txt,fontWeight:600}}>{c.emoji} {c.label}</span>
+            <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:13,fontWeight:800,color:v>=80?"#4ade80":v>=50?col:T.mu,background:v>=80?"#4ade8018":v>=50?`${col}18`:T.faint,border:`1px solid ${v>=80?"#4ade8030":v>=50?col+"30":T.b1}`,borderRadius:6,padding:"2px 9px",minWidth:40,textAlign:"center",transition:"all .15s"}}>{v}</div>
+          </div>
+          {c.sub&&<div style={{fontSize:11,color:T.mu,marginBottom:6,opacity:.75}}>{c.sub}</div>}
+          <div style={{position:"relative",height:8,background:T.b1,borderRadius:99,overflow:"hidden",cursor:"pointer"}}>
+            <div style={{position:"absolute",left:0,top:0,bottom:0,width:`${pct*100}%`,background:`linear-gradient(90deg,${col}99,${col})`,borderRadius:99,transition:"width .08s"}}/>
+          </div>
+          <input type="range" min={0} max={100} value={v} onChange={e=>setVals(prev=>({...prev,[c.id]:+e.target.value}))} style={{width:"100%",accentColor:col,cursor:"pointer",marginTop:-4,opacity:0,position:"relative",zIndex:2,height:16}}/>
+        </div>;
+      })}
+    </div>
+    <button onClick={handleSubmit} disabled={submitting} style={{marginTop:20,width:"100%",padding:"14px 0",background:submitting?T.faint:`linear-gradient(135deg,${target.color}e0,${target.color}90)`,borderRadius:13,color:submitting?T.mu:"#fff",fontWeight:700,fontSize:15,display:"flex",alignItems:"center",justifyContent:"center",gap:10,transition:"all .2s"}}>
+      {submitting?<><Spinner/>{isEdit?"Updating…":"Submitting…"}</>:isEdit?"Update Rating ✓":"Submit Rating ✓"}
+    </button>
+  </Overlay>;
+}
+
+/* ── FOLLOWERS / FOLLOWING / RATERS LIST ── */
+function PeopleListModal({title,people,T,onClose,onView}){
+  return<Overlay onBg={onClose} T={T} bottom>
+    <div style={{fontWeight:700,fontSize:16,color:T.txt,marginBottom:16}}>{title} <span style={{fontSize:13,color:T.mu,fontWeight:400}}>({people.length})</span></div>
+    {people.length===0?<div style={{textAlign:"center",padding:"32px 0",color:T.mu,fontSize:13}}>Nobody here yet</div>
+      :<div style={{display:"flex",flexDirection:"column",gap:2,maxHeight:"60vh",overflowY:"auto"}}>
+        {people.map((p,i)=><div key={p.id||i} onClick={()=>{onView(p);onClose();}} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 4px",cursor:"pointer",borderBottom:`1px solid ${T.b1}`}}>
+          <Ava p={p} size={44} T={T}/>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontWeight:600,fontSize:14,color:T.txt}}>{p.name}</div>
+            <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:T.mu}}>{p.handle}</div>
+          </div>
+          {p.score!=null&&<div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:12,color:T.color||T.mu,fontWeight:700}}>{p.ratingGiven!=null?`Gave ${p.ratingGiven}pts`:fmtScore(p.score)}</div>}
+        </div>)}
+      </div>}
+  </Overlay>;
+}
+
+/* ── PROFILE VIEW MODAL ── */
+
+function ProfileModal({profile,myId,following,profiles,T,onClose,onRate,onFollow,onUnfollow,onBlock,onReport,onMsg,onViewOther}){
+  const isSelf=profile.id===myId;
+  const isBiz=profile.account_type==="business";
+  const cats=getCats(profile);
+  const isFollowing=following.includes(profile.id);
+  const sc=pScore(profile),n=(profile.ratings||[]).length,t=tierOf(sc??0,isBiz);
+  const pct=tierPct(sc??0,isBiz);
+  const allTiers=getTiers(profile);
+  const next=sc!=null?allTiers[allTiers.indexOf(t)+1]:null;
+  const myR=profile.ratings?.find(r=>r.raterId===myId);
+  const links=profile.links||{};
+  const [peopleList,setPeopleList]=useState(null);
+
+  function showFollowers(){
+    sb.from("follows").select("follower_id").eq("following_id",profile.id).then(({data})=>{
+      const ids=(data||[]).map(r=>r.follower_id);
+      const list=profiles.filter(p=>ids.includes(p.id)).map(p=>({...p,score:pScore(p)}));
+      setPeopleList({title:`Followers of ${profile.name}`,people:list});
+    });
+  }
+  function showFollowing(){
+    sb.from("follows").select("following_id").eq("follower_id",profile.id).then(({data})=>{
+      const ids=(data||[]).map(r=>r.following_id);
+      const list=profiles.filter(p=>ids.includes(p.id)).map(p=>({...p,score:pScore(p)}));
+      setPeopleList({title:`${profile.name} follows`,people:list});
+    });
+  }
+  function showRaters(){
+    const raters=(profile.ratings||[]).map(r=>{
+      const rp=profiles.find(p=>p.id===r.raterId)||{id:r.raterId,name:r.raterName||"Unknown",handle:"",color:AC};
+      const given=Math.round(avg(cats.map(c=>r[c.id]||0)));
+      return{...rp,ratingGiven:given};
+    });
+    setPeopleList({title:`Rated by`,people:raters});
+  }
+
+  if(peopleList) return<PeopleListModal title={peopleList.title} people={peopleList.people} T={T} onClose={()=>setPeopleList(null)} onView={p=>{setPeopleList(null);if(onViewOther)onViewOther(p);else onClose();}} />;
+
+  // ── Full-screen profile view ──
+  return<div style={{position:"fixed",inset:0,zIndex:500,background:T.bg,display:"flex",flexDirection:"column",animation:"slideUp .22s ease",overflowY:"auto"}}>
+    {/* Sticky header bar */}
+    <div style={{position:"sticky",top:0,zIndex:10,background:`${T.nav}f0`,borderBottom:`1px solid ${T.b1}`,padding:"12px 16px",paddingTop:"max(12px,env(safe-area-inset-top))",display:"flex",alignItems:"center",gap:12,backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",flexShrink:0}}>
+      <button onClick={onClose} style={{background:"none",color:T.txt,padding:"4px",display:"flex",alignItems:"center",flexShrink:0}}><BackIcon/></button>
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{fontWeight:700,fontSize:16,color:T.txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{profile.name}</div>
+        <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:T.mu}}>{profile.handle}</div>
+      </div>
+      {!isSelf&&<button onClick={()=>isFollowing?onUnfollow(profile.id):onFollow(profile.id)} style={{padding:"7px 14px",borderRadius:20,background:isFollowing?T.faint:`linear-gradient(135deg,${AC}ee,${AC}aa)`,border:isFollowing?`1.5px solid ${T.b2}`:"none",color:isFollowing?T.txt:"#fff",fontWeight:700,fontSize:12,flexShrink:0}}>{isFollowing?"Following ✓":"+ Follow"}</button>}
+    </div>
+
+    <div style={{flex:1,padding:"0 0 32px",maxWidth:560,margin:"0 auto",width:"100%"}}>
+      {/* ── Profile header — no banner, clean card style ── */}
+      <div style={{padding:"24px 20px 0",background:T.bg}}>
+        {/* Avatar + name row */}
+        <div style={{display:"flex",alignItems:"flex-start",gap:16,marginBottom:18}}>
+          <div style={{position:"relative",flexShrink:0}}>
+            <div style={{width:88,height:88,borderRadius:"50%",padding:3,background:`linear-gradient(135deg,${t.color},${t.grad?.[1]||t.color}88)`,boxShadow:`0 0 0 1px ${T.bg},0 8px 24px ${t.color}40`}}>
+              <Ava p={profile} size={82} T={T}/>
+            </div>
+            {isBiz&&<div style={{position:"absolute",bottom:0,right:0,width:26,height:26,borderRadius:"50%",background:`linear-gradient(135deg,${AC},${AC}99)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,border:`2px solid ${T.bg}`,boxShadow:`0 2px 8px ${AC}40`}}>🏢</div>}
+          </div>
+          <div style={{flex:1,minWidth:0,paddingTop:4}}>
+            <div style={{fontWeight:800,fontSize:21,color:T.txt,letterSpacing:"-.4px",lineHeight:1.15,marginBottom:3}}>{profile.name}</div>
+            <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap",marginBottom:6}}>
+              <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:AC,fontWeight:600}}>{profile.handle}</span>
+              <span style={{color:T.mu,fontSize:11}}>·</span>
+              <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:T.mu}}>#{profile.short_id||shortId(profile.id)}</span>
+              {profile.age&&<><span style={{color:T.mu,fontSize:11}}>·</span><span style={{fontSize:11,color:T.mu}}>{profile.age}</span></>}
+            </div>
+            {profile.bio&&<p style={{color:T.mu,fontSize:12.5,lineHeight:1.55,margin:"0 0 6px"}}>{profile.bio}</p>}
+            {isBiz&&<div style={{marginTop:4}}>
+              <span style={{fontSize:11,color:AC,fontWeight:700,background:`${AC}12`,border:`1px solid ${AC}28`,borderRadius:6,padding:"2px 10px"}}>
+                {BIZ_TYPES.find(b=>b.id===(profile.biz_type||(profile.links?.biz_type)||"general"))?.emoji||"💼"} {BIZ_TYPES.find(b=>b.id===(profile.biz_type||(profile.links?.biz_type)||"general"))?.label||"Business / Professional"}
+              </span>
+            </div>}
+          </div>
+        </div>
+
+        {/* Stats row */}
+        <div style={{display:"flex",gap:8,marginBottom:14}}>
+          <button style={{flex:1,padding:"12px 4px",borderRadius:14,background:T.faint,border:`1px solid ${T.b1}`,cursor:"pointer",textAlign:"center"}} onClick={showFollowers}>
+            <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:17,fontWeight:800,color:T.txt}}>{fmtCount(profile.followers_count||0)}</div>
+            <div style={{fontSize:10,color:T.mu,marginTop:2}}>Followers</div>
+          </button>
+          <button style={{flex:1,padding:"12px 4px",borderRadius:14,background:T.faint,border:`1px solid ${T.b1}`,cursor:"pointer",textAlign:"center"}} onClick={showFollowing}>
+            <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:17,fontWeight:800,color:T.txt}}>{fmtCount(profile.following_count||0)}</div>
+            <div style={{fontSize:10,color:T.mu,marginTop:2}}>Following</div>
+          </button>
+          <button style={{flex:1,padding:"12px 4px",borderRadius:14,background:`linear-gradient(135deg,${t.color}20,${t.color}08)`,border:`1.5px solid ${t.color}35`,cursor:"pointer",textAlign:"center",boxShadow:`0 2px 12px ${t.color}18`}} onClick={showRaters}>
+            <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:17,fontWeight:800,color:t.color,textShadow:`0 0 12px ${t.color}60`}}>{sc!=null?fmtScore(sc):"—"}</div>
+            <div style={{fontSize:10,color:t.color,opacity:.85,marginTop:2}}>{n} {isBiz?"Reviews":"Ratings"}</div>
+          </button>
+        </div>
+
+        {/* Tier progress bar */}
+        <div style={{background:`linear-gradient(135deg,${t.color}14,${t.color}06)`,border:`1.5px solid ${t.color}28`,borderRadius:14,padding:"12px 14px",marginBottom:14,boxShadow:`0 2px 12px ${t.color}10`}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+            <TierBadge sc={sc} size="sm" isBiz={isBiz}/>
+            {next?<span style={{fontSize:11,color:T.mu,fontFamily:"'JetBrains Mono',monospace"}}>{next.emoji} {next.label} at {next.min.toLocaleString()}</span>:<span style={{fontSize:11,color:t.color,fontWeight:600}}>Top tier 🔝</span>}
+          </div>
+          <div style={{height:6,background:T.b1,borderRadius:99,overflow:"hidden"}}><div style={{width:`${pct*100}%`,height:"100%",background:`linear-gradient(90deg,${t.color}88,${t.color})`,borderRadius:99,transition:"width .9s",boxShadow:`0 0 8px ${t.color}60`}}/></div>
+        </div>
+
+        {(profile.interests||[]).length>0&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:14}}>{profile.interests.map(i=><Tag key={i} label={i} color={profile.color}/>)}</div>}
+
+        {(links.instagram||links.twitter||links.tiktok||links.website)&&<div style={{display:"flex",gap:7,flexWrap:"wrap",marginBottom:14}}>
+          {links.instagram&&<a href={`https://instagram.com/${links.instagram.replace("@","")}`} target="_blank" rel="noreferrer" style={{fontSize:11,color:"#c96090",background:"#c9609014",border:"1px solid #c9609028",borderRadius:6,padding:"3px 10px",fontWeight:600}}>📸 {links.instagram}</a>}
+          {links.twitter&&<a href={`https://x.com/${links.twitter.replace("@","")}`} target="_blank" rel="noreferrer" style={{fontSize:11,color:"#6090c8",background:"#6090c814",border:"1px solid #6090c828",borderRadius:6,padding:"3px 10px",fontWeight:600}}>𝕏 {links.twitter}</a>}
+          {links.tiktok&&<a href={`https://tiktok.com/@${links.tiktok.replace("@","")}`} target="_blank" rel="noreferrer" style={{fontSize:11,color:T.mu,background:T.faint,border:`1px solid ${T.b1}`,borderRadius:6,padding:"3px 10px",fontWeight:600}}>🎵 {links.tiktok}</a>}
+          {links.website&&<a href={links.website} target="_blank" rel="noreferrer" style={{fontSize:11,color:AC,background:`${AC}14`,border:`1px solid ${AC}28`,borderRadius:6,padding:"3px 10px",fontWeight:600}}>🔗 Site</a>}
+        </div>}
+      </div>
+
+      <div style={{padding:"0 16px"}}>
+        {/* Category bars */}
+        <div style={{height:1,background:T.b1,marginBottom:14}}/>
+        {n>0?<div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:14}}>{cats.map(c=>{const v=cAvg(profile,c.id);return<div key={c.id}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+            <span style={{fontSize:13,color:T.txt,fontWeight:500}}>{c.emoji} {c.label}</span>
+            <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:12,fontWeight:800,color:v>=80?"#4ade80":v>=60?profile.color:T.mu,background:v>=80?"#4ade8014":v>=60?`${profile.color}14`:T.faint,border:`1px solid ${v>=80?"#4ade8030":v>=60?profile.color+"28":T.b1}`,borderRadius:6,padding:"2px 8px"}}>{v}/100</span>
+          </div>
+          {c.sub&&<div style={{fontSize:10,color:T.mu,opacity:.65,marginBottom:5}}>{c.sub}</div>}
+          <div style={{height:6,background:T.faint,borderRadius:99,overflow:"hidden"}}>
+            <div style={{width:`${v}%`,height:"100%",background:v>=80?`linear-gradient(90deg,#4ade8099,#4ade80)`:`linear-gradient(90deg,${profile.color}80,${profile.color})`,borderRadius:99,transition:"width .7s"}}/>
+          </div>
+        </div>;})}
+        </div>:<div style={{background:`linear-gradient(135deg,${t.grad[0]}30,${t.grad[1]}18)`,border:`1px solid ${t.color}25`,borderRadius:14,padding:"20px 16px",marginBottom:8,textAlign:"center",position:"relative",overflow:"hidden"}}>
+          <div style={{position:"absolute",right:-10,top:-10,fontSize:72,opacity:.07,pointerEvents:"none"}}>👻</div>
+          <div style={{fontSize:22,marginBottom:6}}>👻</div>
+          <div style={{fontWeight:700,fontSize:14,color:T.txt,marginBottom:4}}>Still a Ghost</div>
+          <div style={{fontSize:12,color:T.mu,lineHeight:1.6}}>{isSelf?"Share your profile to get your first rating!":"No ratings yet — be the first to rate them!"}</div>
+          {!isSelf&&<button onClick={()=>{onClose();onRate(profile,myR);}} style={{marginTop:12,padding:"9px 20px",background:`linear-gradient(135deg,${profile.color}cc,${profile.color}80)`,borderRadius:12,color:"#fff",fontWeight:700,fontSize:12,border:"none",boxShadow:`0 4px 14px ${profile.color}40`}}>{isBiz?"✍️ Be first to review":"⭐ Be first to rate"}</button>}
+        </div>}
+
+        {myR&&!isSelf&&<div style={{background:T.faint,border:`1px solid ${T.b1}`,borderRadius:10,padding:"10px 13px",marginBottom:14}}><div style={{fontSize:10,color:T.mu,marginBottom:6,textTransform:"uppercase",letterSpacing:1,fontWeight:600}}>Your Rating</div><div style={{display:"flex",gap:5,flexWrap:"wrap"}}>{cats.map(c=><Tag key={c.id} label={`${c.emoji} ${myR[c.id]}`} color={T.mu}/>)}</div></div>}
+
+        {/* Action buttons */}
+        {isSelf
+          ?<button onClick={onClose} style={{width:"100%",padding:"14px 0",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:14,color:T.txt,fontWeight:600,fontSize:14}}>Close</button>
+          :<div style={{display:"flex",flexDirection:"column",gap:10}}>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={()=>isFollowing?onUnfollow(profile.id):onFollow(profile.id)} style={{flex:2,padding:"14px 0",background:isFollowing?T.faint:`linear-gradient(135deg,${AC}ee,${AC}aa)`,border:isFollowing?`1.5px solid ${T.b2}`:"none",borderRadius:14,color:isFollowing?T.txt:"#fff",fontWeight:700,fontSize:14,boxShadow:isFollowing?"none":`0 6px 20px ${AC}40`,transition:"all .2s"}}>{isFollowing?"Following ✓":"➕ Follow"}</button>
+              <button onClick={()=>{onClose();onRate(profile,myR);}} style={{flex:2,padding:"14px 0",background:`linear-gradient(135deg,${profile.color}cc,${profile.color}80)`,border:"none",borderRadius:14,color:"#fff",fontWeight:700,fontSize:14,boxShadow:`0 6px 20px ${profile.color}40`}}>{myR?`✏️ Edit ${isBiz?"Review":"Rating"}`:isBiz?"✍️ Review":"⭐ Rate"}</button>
+              <button onClick={()=>{onClose();onMsg(profile);}} style={{flex:1,padding:"14px 0",background:T.faint,border:`1.5px solid ${T.b1}`,borderRadius:14,color:T.mu,display:"flex",alignItems:"center",justifyContent:"center"}}><SendIcon/></button>
+            </div>
+            {/* Share + Block + Report row */}
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={()=>{
+                const shareUrl=getProfileUrl(profile);
+                const text=`Check out ${profile.name} on HighEnough 👉 ${shareUrl}`;
+                if(navigator.share){navigator.share({title:profile.name+" on HighEnough",text,url:shareUrl}).catch(()=>navigator.clipboard?.writeText(shareUrl));}
+                else{navigator.clipboard?.writeText(shareUrl);}
+              }} style={{flex:1,padding:"11px 0",background:T.faint,border:`1.5px solid ${T.b1}`,borderRadius:12,color:T.mu,fontSize:12,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+                Share
+              </button>
+              <button onClick={()=>{onBlock(profile.id);onClose();}} style={{flex:1,padding:"11px 0",background:"transparent",border:`1.5px solid ${T.b1}`,borderRadius:12,color:T.mu,fontSize:12,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}><ShieldIcon/>Block</button>
+              <button onClick={()=>{onClose();onReport(profile);}} style={{flex:1,padding:"11px 0",background:"transparent",border:"1.5px solid #8030304a",borderRadius:12,color:"#d07070",fontSize:12,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}><FlagIcon/>Report</button>
+            </div>
+          </div>}
+      </div>
+    </div>
+  </div>;
+}
+
+/* ── MESSAGE TEXT — renders URLs as links, __PROFILE__ as cards ── */
+function MsgText({txt,mine,T,onViewProfile}){
+  // Detect profile share message
+  if(txt&&txt.startsWith("__PROFILE__")){
+    try{
+      const data=JSON.parse(txt.slice("__PROFILE__".length));
+      const isBiz=data.account_type==="business";
+      const t=tierOf(data.sc??0,isBiz);
+      const col=data.color||AC;
+      return<div onClick={()=>onViewProfile&&onViewProfile(data)} style={{cursor:"pointer",background:mine?"rgba(255,255,255,.12)":"rgba(0,0,0,.05)",borderRadius:12,padding:"10px 12px",display:"flex",alignItems:"center",gap:10,minWidth:190,border:`1px solid ${mine?"rgba(255,255,255,.2)":"rgba(0,0,0,.08)"}`}}>
+        {/* Avatar: show photo if available, else initials */}
+        <div style={{width:42,height:42,borderRadius:"50%",background:`${col}28`,border:`2px solid ${col}60`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:13,color:col,flexShrink:0,overflow:"hidden"}}>
+          {data.photo
+            ?<img src={data.photo} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}} onError={e=>{e.target.style.display="none";}}/>
+            :ini(data.name)}
+        </div>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontWeight:700,fontSize:13,color:mine?"#fff":"inherit",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{data.name}</div>
+          <div style={{fontSize:10,color:mine?"rgba(255,255,255,.65)":"inherit",opacity:.85,fontFamily:"'JetBrains Mono',monospace",marginBottom:3}}>{data.handle}</div>
+          <span style={{background:`${t.color}22`,border:`1px solid ${t.color}44`,borderRadius:5,padding:"1px 7px",fontSize:10,fontWeight:700,color:t.color,fontFamily:"'JetBrains Mono',monospace"}}>{t.emoji} {data.tierLabel||t.label}</span>
+        </div>
+        <span style={{fontSize:16,color:mine?"rgba(255,255,255,.5)":"rgba(0,0,0,.3)",flexShrink:0}}>›</span>
+      </div>;
+    }catch{}
+  }
+  const URL_RE=/https?:\/\/[^\s]+|www\.[^\s]+/gi;
+  const parts=[];let last=0,m;
+  URL_RE.lastIndex=0;
+  while((m=URL_RE.exec(txt))!==null){
+    if(m.index>last)parts.push({type:"text",val:txt.slice(last,m.index)});
+    const href=m[0].startsWith("http")?m[0]:`https://${m[0]}`;
+    parts.push({type:"link",val:m[0],href});
+    last=m.index+m[0].length;
+  }
+  if(last<txt.length)parts.push({type:"text",val:txt.slice(last)});
+  if(parts.length===0)parts.push({type:"text",val:txt});
+  return<span>{parts.map((p,i)=>p.type==="link"
+    ?<a key={i} href={p.href} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} style={{color:mine?"#b8d4ff":"#5b9bf8",textDecoration:"underline",wordBreak:"break-all"}}>{p.val}</a>
+    :<span key={i}>{p.val}</span>
+  )}</span>;
+}
+
+/* ── CHAT SCREEN (full screen) ── */
+function MsgStatus({m,myId}){
+  if(m.sid!==myId)return null;
+  const st=m.status||"sent";
+  if(st==="seen")return<span style={{fontSize:11,color:"#4a9eff",marginLeft:4}}>✓✓</span>;
+  if(st==="delivered")return<span style={{fontSize:11,color:"#7a8098",marginLeft:4}}>✓✓</span>;
+  return<span style={{fontSize:11,color:"#4e5270",marginLeft:4}}>✓</span>;
+}
+
+function ChatScreen({conv,myProfile,profiles,T,onBack,onSend,onMarkRead,onClearChat,onBlockUser,onReportUser,onViewProfile}){
+  const [txt,setTxt]=useState("");
+  const [showMenu,setShowMenu]=useState(false);
+  const [showEmoji,setShowEmoji]=useState(false);
+  const [notifMuted,setNotifMuted]=useState(false);
+  const endRef=useRef(null);
+  const inputRef=useRef(null);
+  const msgs=conv.messages||[];
+
+  const EMOJI_CATS=[
+    {id:"recent",label:"🕐",name:"Recent"},
+    {id:"smileys",label:"😀",name:"Smileys"},
+    {id:"people",label:"👋",name:"People"},
+    {id:"nature",label:"🐶",name:"Nature"},
+    {id:"food",label:"🍎",name:"Food"},
+    {id:"travel",label:"✈️",name:"Travel"},
+    {id:"objects",label:"💡",name:"Objects"},
+    {id:"symbols",label:"❤️",name:"Symbols"},
+    {id:"flags",label:"🏳️",name:"Flags"},
+  ];
+  const ALL_EMOJIS={
+    smileys:["😀","😃","😄","😁","😆","😅","🤣","😂","🙂","🙃","🫠","😉","😊","😇","🥰","😍","🤩","😘","😗","☺️","😚","😙","🥲","😋","😛","😜","🤪","😝","🤑","🤗","🤭","🫢","🫣","🤫","🤔","🫡","🤐","🤨","😐","😑","😶","🫥","😏","😒","🙄","😬","🤥","😌","😔","😪","🤤","😴","😷","🤒","🤕","🤢","🤮","🤧","🥵","🥶","🥴","😵","🤯","🤠","🥸","🥳","😎","🤓","🧐","😕","🫤","😟","🙁","☹️","😮","😯","😲","😳","🥺","🥹","😦","😧","😨","😰","😥","😢","😭","😱","😖","😣","😞","😓","😩","😫","🥱","😤","😡","😠","🤬","😈","👿","💀","☠️","💩","🤡","👹","👺","👻","👽","👾","🤖"],
+    people:["👋","🤚","🖐️","✋","🖖","🫱","🫲","🫳","🫴","👌","🤌","🤏","✌️","🤞","🫰","🤟","🤘","🤙","👈","👉","👆","🖕","👇","☝️","🫵","👍","👎","✊","👊","🤛","🤜","👏","🙌","🫶","👐","🤲","🤝","🙏","✍️","💅","🤳","💪","🦾","🦿","🦵","🦶","👂","🦻","👃","🫀","🫁","🧠","🦷","🦴","👀","👁️","👅","👄","🫦","💋","🧑","👶","🧒","👦","👧","🧑","👱","👨","🧔","👩","🧓","👴","👵","🙍","🙎","🙅","🙆","💁","🙋","🧏","🙇","🤦","🤷","👮","🕵️","💂","🥷","👷","🫅","🤴","👸","👳","👲","🧕","🤵","👰","🤰","🫃","🤱","👼","🎅","🤶","🧑‍🎄","🦸","🦹","🧙","🧚","🧛","🧜","🧝","🧞","🧟","🧌","💆","💇","🚶","🧍","🧎","🏃","💃","🕺","🕴️","👯","🧖","🧗","🤺","🏇","⛷️","🏂","🏌️","🏄","🚣","🧘","🤼","🤸","⛹️","🤾","🏋️","🤼","🤺"],
+    nature:["🐶","🐱","🐭","🐹","🐰","🦊","🐻","🐼","🐻‍❄️","🐨","🐯","🦁","🐮","🐷","🐸","🐵","🙈","🙉","🙊","🐔","🐧","🐦","🐤","🦆","🦅","🦉","🦇","🐺","🐗","🐴","🦄","🐝","🪱","🐛","🦋","🐌","🐞","🐜","🪲","🦟","🦗","🪳","🕷️","🦂","🐢","🦎","🐍","🦕","🦖","🦙","🐊","🦈","🐬","🦭","🐳","🐋","🦑","🐙","🦐","🦞","🦀","🐡","🐟","🐠","🐬","🐊","🐅","🐆","��","🦍","🦧","🦣","🐘","🦛","🦏","🐪","🐫","🦒","🦘","🦬","🐃","🐂","🐄","🐎","🐖","🐏","🐑","🦙","🐐","🦌","🐕","🐩","🦮","🐈","🐓","🦃","🦤","🦚","🦜","🦢","🦩","🕊️","🐇","🦝","🦨","🦡","🦫","🦦","🦥","🐿️","🦔","🌵","🎄","🌲","🌳","🌴","🪵","🌱","🌿","☘️","🍀","🎋","🎍","🪴","🌾","🌺","🌸","🌼","🌻","🌞","🌝","🌛","🌚","🌕","🌖","🌗","🌘","🌑","🌒","🌓","🌔","🌙","🌟","⭐","🌠","🌌","☀️","🌤️","⛅","🌥️","☁️","🌦️","🌧️","⛈️","🌩️","🌨️","❄️","☃️","⛄","🌬️","💨","🌀","🌈","🌂","☂️","☔","⛱️","🌊","🌫️","🌁"],
+    food:["🍎","🍐","🍊","🍋","🍌","🍉","🍇","🍓","🫐","🍈","🍒","🍑","🥭","🍍","🥥","🥝","🍅","🍆","🥑","🫑","🥦","🥬","🥒","🌶️","🫒","🧄","🧅","🥔","🍠","🫘","🌽","🫚","🍄","🧅","🥜","🍞","🥐","🥖","🫓","🥨","🧀","🥚","🍳","🧈","🥞","🧇","🥓","🥩","🍗","🍖","🌭","🍔","🍟","🍕","🫔","🌮","🌯","🥙","🧆","🥚","🍲","🫕","🥘","🍛","🍜","🍝","🍠","🍢","🍣","🍤","🍙","🍚","🍘","🍥","🥮","🍡","🧁","🍰","🎂","🍮","🍭","🍬","🍫","🍿","🍩","🍪","🌰","🥜","🍯","🧃","🥤","🧋","☕","🫖","🍵","🧉","🍶","🍺","🍻","🥂","🍷","🫗","🥃","🍸","🍹","🧊","🥄","🍴","🍽️"],
+    travel:["🚗","🚕","🚙","🚌","🚎","🏎️","🚓","🚑","🚒","🚐","🛻","🚚","🚛","🚜","🏍️","🛵","🦽","🦼","🛺","🚲","🛴","🛹","🛼","🚏","🛣️","🛤️","⛽","🚧","🚦","🚥","🗺️","🗿","🗽","🗼","🏰","🏯","🏟️","🎡","🎢","🎠","⛲","⛺","🏕️","🌁","🌃","🌄","🌅","🌆","🌇","🌉","🏙️","🌌","🌠","🎇","🎆","🎑","⛱️","🏖️","🏝️","🏜️","🏞️","🏔️","⛰️","🌋","🗻","🏠","🏡","🏢","🏣","🏤","🏥","🏦","🏨","🏩","🏪","🏫","🏭","🏗️","🧱","🪞","🪟","🪑","🚪","🛏️","🛋️","🚿","🛁","🪠","🧴","🪒","🧽","🧹","🧺","🧻","🪣","🧼","✈️","🛩️","🛫","🛬","💺","🚁","🛸","🚀","🛶","⛵","🚤","🛥️","🛳️","⛴️","🚢","🗺️","🧭","⏱️","🌍","🌎","🌏"],
+    objects:["⌚","📱","💻","🖥️","🖨️","⌨️","🖱️","🖲️","💽","💾","💿","📀","📷","📸","📹","🎥","📽️","🎞️","📞","☎️","📟","📠","📺","📻","🧭","⏱️","⏰","🕰️","⌛","⏳","📡","🔋","🪫","🔌","💡","🔦","🕯️","🪔","🧯","🛢️","💰","💴","💵","💶","💷","💸","💳","🪙","💹","📈","📉","📊","📋","📌","📍","📎","🖇️","📏","📐","✂️","🗃️","🗄️","🗑️","🔒","🔓","🔏","🔐","🔑","🗝️","🔨","🪓","⛏️","⚒️","🛠️","🗡️","⚔️","🛡️","🔧","🔩","⚙️","🗜️","⚖️","🦯","🔗","⛓️","🪝","🧲","🪜","⚗️","🧪","🧫","🧬","🔭","🔬","🕳️","💊","🩺","🩹","🩻","🩼","🩸","💉","🧬","🦠","🧫","🪤","🧲","🎁","🎀","🎊","🎉","🎈","🎏","🎐","🎑","🎃","🎄","🎋","🎍","🎎","🎗️","🎟️","🎫","🎖️","🏆","🥇","🥈","🥉","⚽","🏀","🏈","⚾","🥎","🎾","🏐","🏉","🥏","🎱","🏓","🏸","🥍","🏒","🥌","🛷","🎿","⛷️","🤺","🏹","🎣","🤿","🥊","🎽","🛹","🛼","🎯","🪃","🎮","🎲","♟️","🎭","🎨","🧵","🪡","🧶","🪢","👓","🕶️","🥽","🌂","☂️"],
+    symbols:["❤️","🧡","💛","💚","💙","💜","🖤","🤍","🤎","💔","❤️‍🔥","❤️‍🩹","❣️","💕","💞","💓","💗","💖","💘","💝","💟","☮️","✝️","☪️","🕉️","✡️","🔯","🪯","☸️","🛐","⛎","♈","♉","♊","♋","♌","♍","♎","♏","♐","♑","♒","♓","🆔","⚛️","🉑","☢️","☣️","📴","📳","🈶","🈚","🈸","🈺","🈷️","✴️","🆚","💮","🉐","㊙️","㊗️","🈴","🈵","🈹","🈲","🅰️","🅱️","🆎","🆑","🅾️","🆘","❌","⭕","🛑","⛔","📛","🚫","💯","💢","♨️","🚷","🚯","🚳","🚱","🔞","📵","🔕","🔇","🔈","🔉","🔊","📢","📣","📯","🔔","🔕","🎵","🎶","⚠️","🚸","✅","❎","🔱","⚜️","🔰","♻️","✔️","🔛","🔜","🔚","🔙","🔝","🛐","🔀","🔁","🔂","▶️","⏩","⏭️","⏯️","◀️","⏪","⏮️","🔼","⏫","🔽","⏬","⏸️","⏹️","⏺️","🎦","🔅","🔆","📶","📳","🈶","🈚","🈸","🈺","🈷️","🔣","ℹ️","🔤","🔡","🔠","🆖","🆗","🆙","🆒","🆕","🆓","0️⃣","1️⃣","2️⃣","3️⃣","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣","🔟","🔢","#️⃣","*️⃣","⏏️","▫️","◾","◽","◼️","◻️","🟥","🟧","🟨","🟩","🟦","🟪","⬛","⬜","🔶","🔷","🔸","🔹","🔺","🔻","💠","🔘","🔳","🔲"],
+    flags:["🏁","🚩","🎌","🏴","🏳️","🏳️‍🌈","🏳️‍⚧️","🏴‍☠️","🇦🇫","🇦🇱","🇩🇿","🇦🇩","🇦🇴","🇦🇬","🇦🇷","🇦🇲","🇦🇺","🇦🇹","🇦🇿","🇧🇸","🇧🇭","🇧🇩","🇧🇧","🇧🇾","🇧🇪","🇧🇿","🇧🇯","🇧🇹","🇧🇴","🇧🇦","🇧🇼","🇧🇷","🇧🇳","🇧🇬","🇧🇫","🇧🇮","🇨🇻","🇨🇲","🇨🇦","🇨🇫","🇹🇩","🇨🇱","🇨🇳","🇨🇴","🇨🇬","🇨🇷","🇭🇷","🇨🇺","🇨🇾","🇨🇿","🇩🇰","🇩🇯","🇩🇲","🇩🇴","🇪🇨","🇪🇬","🇸🇻","🇬🇶","🇪🇷","🇪🇪","🇸🇿","🇪🇹","🇫🇯","🇫🇮","🇫🇷","🇬🇦","🇬🇲","🇬🇪","🇩🇪","🇬🇭","🇬🇷","🇬🇩","🇬🇹","🇬🇳","🇬🇼","🇬🇾","🇭🇹","🇭🇳","🇭🇺","🇮🇸","🇮🇳","🇮🇩","🇮🇷","🇮🇶","🇮🇪","🇮🇱","🇮🇹","🇯🇲","🇯🇵","🇯🇴","🇰🇿","🇰🇪","🇰🇮","🇰🇼","🇰🇬","🇱🇦","🇱🇻","🇱🇧","🇱🇸","🇱🇷","🇱🇾","🇱🇮","🇱🇹","🇱🇺","🇲🇬","🇲🇼","🇲🇾","🇲🇻","🇲🇱","🇲🇹","🇲🇭","🇲🇷","🇲🇺","🇲🇽","🇫🇲","🇲🇩","🇲🇨","🇲🇳","🇲🇪","🇲🇦","🇲🇿","🇲🇲","🇳🇦","🇳🇷","🇳🇵","🇳🇱","🇳🇿","🇳🇮","🇳🇪","🇳🇬","🇲🇰","🇳🇴","🇴🇲","🇵🇰","🇵🇼","🇵🇦","🇵🇬","🇵🇾","🇵🇪","🇵🇭","🇵🇱","🇵🇹","🇶🇦","🇷🇴","🇷🇺","🇷🇼","🇰🇳","🇱🇨","🇻🇨","🇼🇸","🇸🇲","🇸🇹","🇸🇦","🇸🇳","🇷🇸","🇸🇱","🇸🇬","🇸🇰","🇸🇮","🇸🇧","🇸🇴","🇿🇦","🇸🇸","🇪🇸","🇱🇰","🇸🇩","🇸🇷","🇸🇪","🇨🇭","🇸🇾","🇹🇼","🇹🇯","🇹🇿","🇹🇭","🇹🇱","🇹🇬","🇹🇴","🇹🇹","🇹🇳","🇹🇷","🇹🇲","🇺🇬","🇺🇦","🇦🇪","🇬🇧","🇺🇸","🇺🇾","🇺🇿","🇻🇺","🇻🇪","🇻🇳","🇾🇪","🇿🇲","🇿🇼"],
+  };
+  const [emojiCat,setEmojiCat]=useState("smileys");
+  const [recentEmojis,setRecentEmojis]=useState(()=>{try{return JSON.parse(localStorage.getItem("he_recent_emojis")||"[]");}catch{return[];}});
+  function addEmoji(e){
+    setTxt(prev=>prev+e);
+    inputRef.current?.focus();
+    setRecentEmojis(prev=>{const updated=[e,...prev.filter(x=>x!==e)].slice(0,32);localStorage.setItem("he_recent_emojis",JSON.stringify(updated));return updated;});
+  }
+  const currentEmojis=emojiCat==="recent"?(recentEmojis.length?recentEmojis:ALL_EMOJIS.smileys):ALL_EMOJIS[emojiCat]||[];
+
+  useEffect(()=>{
+    function onVisible(){if(document.visibilityState==="visible"&&endRef.current)endRef.current.scrollIntoView();}
+    document.addEventListener("visibilitychange",onVisible);
+    return()=>document.removeEventListener("visibilitychange",onVisible);
+  },[]);
+  useEffect(()=>{
+    endRef.current?.scrollIntoView({behavior:"smooth"});
+    onMarkRead(conv.id,conv.other?.id);
+  },[msgs.length,conv.id]);
+
+  function toggleEmoji(){
+    if(!showEmoji){
+      // Dismiss keyboard before showing emoji panel
+      inputRef.current?.blur();
+      setShowEmoji(true);
+    }else{
+      setShowEmoji(false);
+      inputRef.current?.focus();
+    }
+  }
+
+  function addEmoji(e){
+    setTxt(prev=>prev+e);
+    setRecentEmojis(prev=>{const updated=[e,...prev.filter(x=>x!==e)].slice(0,32);localStorage.setItem("he_recent_emojis",JSON.stringify(updated));return updated;});
+  }
+
+  return<div style={{position:"fixed",inset:0,zIndex:400,background:T.bg,display:"flex",flexDirection:"column"}}>
+    {/* Header */}
+    <div style={{background:T.nav,borderBottom:`1px solid ${T.b1}`,padding:"12px 16px",paddingTop:"max(12px,env(safe-area-inset-top))",display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
+      <button onClick={onBack} style={{background:"none",color:T.txt,padding:"4px",display:"flex",alignItems:"center"}}><BackIcon/></button>
+      <div style={{display:"flex",alignItems:"center",gap:10,flex:1,cursor:"pointer",minWidth:0}} onClick={()=>onViewProfile&&onViewProfile(conv.other)}>
+        <Ava p={conv.other} size={38} T={T}/>
+        <div style={{flex:1}}>
+          <div style={{fontWeight:600,fontSize:15,color:T.txt}}>{conv.other?.name}</div>
+          <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:T.mu}}>{conv.other?.handle}</div>
+        </div>
+      </div>
+      <div style={{position:"relative"}}>
+        <button onClick={()=>setShowMenu(v=>!v)} style={{background:"none",color:T.mu,width:34,height:34,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",border:`1px solid ${T.b1}`}}><DotsIcon/></button>
+        {showMenu&&<div onClick={()=>setShowMenu(false)} style={{position:"fixed",inset:0,zIndex:10}}/>}
+        {showMenu&&<div style={{position:"absolute",top:40,right:0,background:T.card,border:`1px solid ${T.b2}`,borderRadius:13,overflow:"hidden",zIndex:20,minWidth:180,boxShadow:"0 8px 32px rgba(0,0,0,.5)"}}>
+          {[
+            {icon:"🔔",label:notifMuted?"Unmute":"Mute Notifications",fn:()=>{setNotifMuted(v=>!v);setShowMenu(false);}},
+            {icon:"🗑️",label:"Clear Chat",fn:()=>{if(window.confirm("Clear all messages?"))onClearChat(conv.id);setShowMenu(false);}},
+            {icon:"🚫",label:"Block User",fn:()=>{onBlockUser(conv.other?.id);onBack();},red:true},
+            {icon:"🚩",label:"Report User",fn:()=>{onReportUser(conv.other);setShowMenu(false);},red:true},
+          ].map(item=><button key={item.label} onClick={item.fn} style={{width:"100%",padding:"12px 16px",background:"none",textAlign:"left",color:item.red?"#c06060":T.txt,fontSize:13,fontWeight:500,borderBottom:`1px solid ${T.b1}`,display:"flex",alignItems:"center",gap:10}}><span>{item.icon}</span>{item.label}</button>)}
+        </div>}
+      </div>
+    </div>
+
+    {/* Messages */}
+    <div onClick={()=>{setShowEmoji(false);}} style={{flex:1,overflowY:"auto",padding:"16px 14px",display:"flex",flexDirection:"column",gap:6}}>
+      {msgs.length===0&&<div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",color:T.mu,fontSize:14,flexDirection:"column",gap:8,marginTop:60}}><Ava p={conv.other} size={56} T={T}/><span>Say hello to {conv.other?.name}!</span></div>}
+      {msgs.map((m,i)=>{
+        // ── Date separator ──
+        const prevMsg=msgs[i-1];
+        const mDate=m.ts?new Date(m.ts):null;
+        const pDate=prevMsg?.ts?new Date(prevMsg.ts):null;
+        const showDate=mDate&&(!pDate||mDate.toDateString()!==pDate.toDateString());
+        const dateLabel=mDate?formatDateLabel(mDate):"";
+        const mine=m.sid===myProfile.id;
+        const showAva=!mine&&(i===0||msgs[i-1]?.sid!==m.sid);
+        const isProfileCard=m.txt?.startsWith("__PROFILE__");
+        return<React.Fragment key={m.dbId||i}>
+          {showDate&&<div style={{display:"flex",alignItems:"center",gap:8,margin:"8px 0"}}>
+            <div style={{flex:1,height:1,background:T.b1}}/>
+            <div style={{fontSize:10,color:T.mu,background:T.faint,borderRadius:8,padding:"3px 10px",fontFamily:"'JetBrains Mono',monospace",fontWeight:600,letterSpacing:".04em",flexShrink:0}}>{dateLabel}</div>
+            <div style={{flex:1,height:1,background:T.b1}}/>
+          </div>}
+          <div style={{display:"flex",flexDirection:mine?"row-reverse":"row",gap:8,alignItems:"flex-end"}}>
+            {!mine&&<div style={{width:28,flexShrink:0}}>{showAva&&<Ava p={conv.other} size={26} T={T}/>}</div>}
+            <div style={{maxWidth:"78%"}}>
+              <div style={{
+                background:isProfileCard?"transparent":mine?`linear-gradient(135deg,${myProfile.color}dd,${myProfile.color}99)`:T.card,
+                border:isProfileCard?`1.5px solid ${T.b2}`:mine?"none":`1px solid ${T.b1}`,
+                borderRadius:mine?"18px 18px 4px 18px":"18px 18px 18px 4px",
+                padding:isProfileCard?"0":"10px 14px",
+                overflow:"hidden",
+                color:mine?"#fff":T.txt,fontSize:14,lineHeight:1.5,wordBreak:"break-word"
+              }}>
+                <MsgText txt={m.txt} mine={mine} T={T} onViewProfile={p=>{
+                  const full=(profiles||[]).find(x=>x.id===(p.profileId||p.id))||p;
+                  onViewProfile&&onViewProfile(full);
+                }}/>
+              </div>
+              <div style={{display:"flex",alignItems:"center",justifyContent:mine?"flex-end":"flex-start",gap:3,marginTop:3}}>
+                <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:9,color:T.mu}}>{fmtTime(m.ts)}</span>
+                {mine&&<MsgStatus m={m} myId={myProfile.id}/>}
+              </div>
+            </div>
+          </div>
+        </React.Fragment>;
+      })}
+      <div ref={endRef}/>
+    </div>
+
+    {/* Input bar — ALWAYS above emoji panel */}
+    <div style={{background:T.nav,flexShrink:0}}>
+      {/* Emoji picker */}
+      {showEmoji&&<div style={{borderTop:`1px solid ${T.b1}`}}>
+        <div style={{display:"flex",overflowX:"auto",borderBottom:`1px solid ${T.b1}`,padding:"6px 8px 0"}}>
+          {EMOJI_CATS.map(c=><button key={c.id} onClick={()=>setEmojiCat(c.id)} style={{fontSize:18,padding:"4px 8px",borderRadius:"8px 8px 0 0",background:emojiCat===c.id?T.faint:"transparent",border:"none",borderBottom:emojiCat===c.id?`2px solid ${myProfile.color}`:"2px solid transparent",flexShrink:0,cursor:"pointer",opacity:c.id==="recent"&&recentEmojis.length===0?.4:1}}>{c.label}</button>)}
+        </div>
+        <div style={{display:"flex",flexWrap:"wrap",padding:"8px 10px",height:180,overflowY:"auto",gap:2,alignContent:"flex-start"}}>
+          {currentEmojis.map((e,i)=><button key={i} onClick={()=>addEmoji(e)} style={{background:"none",fontSize:24,width:40,height:40,borderRadius:8,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{e}</button>)}
+        </div>
+      </div>}
+      {/* Text input row */}
+      <div style={{padding:"10px 14px",paddingBottom:"max(14px,env(safe-area-inset-bottom))",borderTop:`1px solid ${T.b1}`,display:"flex",gap:8,alignItems:"center"}}>
+        <button onClick={toggleEmoji} style={{width:38,height:38,borderRadius:"50%",background:showEmoji?`${myProfile.color}22`:T.faint,border:`1px solid ${showEmoji?myProfile.color+"50":T.b1}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>😊</button>
+        <input ref={inputRef} value={txt}
+          onChange={e=>{setTxt(e.target.value);if(showEmoji)setShowEmoji(false);}}
+          onFocus={()=>setShowEmoji(false)}
+          onKeyDown={e=>e.key==="Enter"&&send()}
+          placeholder="Message…"
+          style={{flex:1,padding:"12px 16px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:24,color:T.txt,fontSize:14,outline:"none"}}/>
+        <button onClick={send} style={{width:42,height:42,borderRadius:"50%",background:txt.trim()?`linear-gradient(135deg,${myProfile.color}dd,${myProfile.color}99)`:T.faint,display:"flex",alignItems:"center",justifyContent:"center",color:txt.trim()?"#fff":T.mu,flexShrink:0,transition:"background .15s"}}><SendIcon/></button>
+      </div>
+    </div>
+  </div>;
+}
+
+/* ── GROUP HELPERS (localStorage — no DB schema change needed) ── */
+const GRP_KEY=uid=>`he_groups_${uid}`;
+function loadGroups(uid){try{return JSON.parse(localStorage.getItem(GRP_KEY(uid))||"[]");}catch{return[];}}
+function saveGroups(uid,groups){try{localStorage.setItem(GRP_KEY(uid),JSON.stringify(groups));}catch{}}
+function newGroupId(){return"grp_"+Math.random().toString(36).slice(2,10);}
+
+/* ── CREATE GROUP MODAL ── */
+function CreateGroupModal({profiles,myProfile,following,T,onClose,onCreate}){
+  const [name,setName]=useState("");
+  const [selected,setSelected]=useState([]);
+  const [q,setQ]=useState("");
+  const [searchResult,setSearchResult]=useState(null); // {found:profile|null,searched:bool}
+  const [searching,setSearching]=useState(false);
+  const [extraProfiles,setExtraProfiles]=useState([]); // profiles added via search outside following
+
+  // Followed profiles (excluding self AND business accounts — groups are personal only)
+  const followedProfiles=profiles.filter(p=>p.id!==myProfile.id&&(following||[]).includes(p.id)&&p.account_type!=="business");
+
+  // When search bar has input: search among all profiles by @handle or UID
+  const isSearchMode=q.trim().length>0;
+  const searchQ=q.trim().toLowerCase().replace(/^@/,"");
+
+  // Live filter within followed list (if not a UID-style search)
+  const filteredFollowed=followedProfiles.filter(p=>
+    p.name.toLowerCase().includes(searchQ)||
+    (p.handle||"").toLowerCase().replace(/^@/,"").includes(searchQ)
+  );
+
+  async function searchOutside(){
+    if(!q.trim())return;
+    setSearching(true);
+    setSearchResult(null);
+    const clean=q.trim().replace(/^@/,"").toLowerCase();
+    try{
+      // Try handle first, then short_id
+      let {data}=await sb.from("profiles").select("*").ilike("handle",`@${clean}`).neq("id",myProfile.id).limit(1);
+      if(!data||!data[0]){
+        const res2=await sb.from("profiles").select("*").eq("short_id",clean.toUpperCase()).neq("id",myProfile.id).limit(1);
+        data=res2.data;
+      }
+      setSearchResult({found:(data&&data[0])||null,searched:true});
+    }catch(e){console.error("searchOutside error:",e);setSearchResult({found:null,searched:true});}
+    setSearching(false);
+  }
+
+  function toggle(id){setSelected(prev=>prev.includes(id)?prev.filter(x=>x!==id):[...prev,id]);}
+
+  function addOutside(p){
+    if(!selected.includes(p.id))setSelected(prev=>[...prev,p.id]);
+    // Track externally found profiles in local state (never mutate the prop array)
+    if(!profiles.find(x=>x.id===p.id)&&!extraProfiles.find(x=>x.id===p.id)){
+      setExtraProfiles(prev=>[...prev,p]);
+    }
+    setQ("");setSearchResult(null);
+  }
+
+  function create(){
+    if(!name.trim()||selected.length<1)return;
+    const group={id:newGroupId(),name:name.trim(),members:[myProfile.id,...selected],adminId:myProfile.id,createdAt:Date.now(),messages:[]};
+    onCreate(group);onClose();
+  }
+
+  // Profiles pool (extra members added via search that are not in following)
+  const allKnown=[...profiles,...extraProfiles];
+  const pool=allKnown.filter(p=>selected.includes(p.id)&&!(following||[]).includes(p.id)&&p.id!==myProfile.id);
+
+  // What to render in the list
+  const listItems=isSearchMode?filteredFollowed:followedProfiles;
+
+  return<Overlay onBg={onClose} T={T} bottom>
+    <div style={{fontWeight:700,fontSize:17,color:T.txt,marginBottom:14}}>Create Group Chat</div>
+
+    {/* Group name */}
+    <input value={name} onChange={e=>setName(e.target.value)} placeholder="Group name…"
+      style={{width:"100%",padding:"12px 14px",background:T.inp,border:`1px solid ${T.b1}`,borderRadius:12,color:T.txt,fontSize:14,outline:"none",boxSizing:"border-box",marginBottom:12,fontFamily:"'Inter',sans-serif"}}/>
+
+    {/* Search bar */}
+    <div style={{position:"relative",marginBottom:10}}>
+      <input value={q} onChange={e=>{setQ(e.target.value);setSearchResult(null);}}
+        onKeyDown={e=>e.key==="Enter"&&searchOutside()}
+        placeholder="Search by @username or UID…"
+        style={{width:"100%",padding:"10px 46px 10px 14px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:11,color:T.txt,fontSize:13,outline:"none",boxSizing:"border-box",fontFamily:"'Inter',sans-serif"}}/>
+      {q.trim()&&<button onClick={searchOutside}
+        style={{position:"absolute",right:6,top:"50%",transform:"translateY(-50%)",background:`${AC}22`,border:"none",borderRadius:7,padding:"4px 9px",color:AC,fontWeight:700,fontSize:11}}>
+        {searching?"…":"Find"}
+      </button>}
+    </div>
+
+    {/* Selected count */}
+    {selected.length>0&&<div style={{fontSize:11,color:AC,marginBottom:8,fontWeight:600}}>
+      {selected.length} member{selected.length!==1?"s":""} selected
+    </div>}
+
+    {/* Search result (outside following) */}
+    {searchResult&&searchResult.searched&&(()=>{
+      const p=searchResult.found;
+      if(!p)return<div style={{textAlign:"center",padding:"14px",color:T.mu,fontSize:13,background:T.faint,borderRadius:10,marginBottom:10}}>No profile found for "{q}"</div>;
+      const alreadyIn=selected.includes(p.id);
+      return<div style={{display:"flex",alignItems:"center",gap:11,padding:"9px 10px",borderRadius:10,background:`${AC}10`,border:`1px solid ${AC}30`,marginBottom:10}}>
+        <Ava p={p} size={38} T={T}/>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontWeight:600,fontSize:13,color:T.txt}}>{p.name}</div>
+          <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:T.mu}}>@{p.handle}</div>
+        </div>
+        <button onClick={()=>alreadyIn?null:addOutside(p)}
+          style={{padding:"5px 12px",borderRadius:8,background:alreadyIn?T.faint:`${AC}dd`,border:"none",color:alreadyIn?T.mu:"#fff",fontWeight:700,fontSize:11,flexShrink:0}}>
+          {alreadyIn?"Added":"+ Add"}
+        </button>
+      </div>;
+    })()}
+
+    {/* Following list */}
+    <div style={{maxHeight:230,overflowY:"auto",display:"flex",flexDirection:"column",gap:2,marginBottom:14}}>
+      {!isSearchMode&&followedProfiles.length===0&&<div style={{textAlign:"center",padding:"20px",color:T.mu,fontSize:13}}>
+        You're not following anyone yet.<br/>Search by @username or UID above to add members.
+      </div>}
+      {/* Extra members added via search (not in following) */}
+      {pool.map(p=>{
+        const sel=selected.includes(p.id);
+        return<MemberRow key={p.id} p={p} sel={sel} T={T} onToggle={toggle} badge="Added"/>;
+      })}
+      {listItems.map(p=>{
+        const sel=selected.includes(p.id);
+        return<MemberRow key={p.id} p={p} sel={sel} T={T} onToggle={toggle}/>;
+      })}
+      {isSearchMode&&listItems.length===0&&!searchResult&&<div style={{textAlign:"center",padding:"16px",color:T.mu,fontSize:12}}>
+        No match in following. Tap <b style={{color:AC}}>Find</b> to search all users.
+      </div>}
+    </div>
+
+    <button disabled={!name.trim()||selected.length<1} onClick={create}
+      style={{width:"100%",padding:"13px 0",background:name.trim()&&selected.length>=1?`linear-gradient(135deg,${AC}e0,${AC}90)`:"transparent",border:name.trim()&&selected.length>=1?"none":`1px solid ${T.b1}`,borderRadius:12,color:name.trim()&&selected.length>=1?"#fff":T.mu,fontWeight:700,fontSize:14}}>
+      Create Group →
+    </button>
+  </Overlay>;
+}
+
+function MemberRow({p,sel,T,onToggle,badge}){
+  return<div onClick={()=>onToggle(p.id)} style={{display:"flex",alignItems:"center",gap:11,padding:"9px 10px",borderRadius:10,cursor:"pointer",background:sel?`${AC}12`:T.faint,border:`1px solid ${sel?AC+"40":T.b1}`,transition:"all .12s"}}>
+    <Ava p={p} size={38} T={T}/>
+    <div style={{flex:1,minWidth:0}}>
+      <div style={{display:"flex",alignItems:"center",gap:6}}>
+        <span style={{fontWeight:600,fontSize:13,color:T.txt}}>{p.name}</span>
+        {badge&&<span style={{fontSize:9,background:`${AC}20`,color:AC,borderRadius:5,padding:"1px 5px",fontWeight:700}}>{badge}</span>}
+      </div>
+      <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:T.mu}}>@{p.handle}</div>
+    </div>
+    <div style={{width:20,height:20,borderRadius:"50%",border:`2px solid ${sel?AC:T.b2}`,background:sel?AC:"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"all .12s"}}>
+      {sel&&<svg width="10" height="10" viewBox="0 0 10 10" fill="none"><polyline points="1.5,5 4,7.5 8.5,2.5" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+    </div>
+  </div>;
+}
+
+/* ── GROUP CHAT SCREEN ── */
+function GroupChatScreen({group,myProfile,profiles,T,onBack,onSendGroup,onUpdateGroup,onDeleteGroup,onViewProfile}){
+  const [txt,setTxt]=useState("");
+  const [showMenu,setShowMenu]=useState(false);
+  const [showMembers,setShowMembers]=useState(false);
+  const [showAddModal,setShowAddModal]=useState(false);
+  const [editingDesc,setEditingDesc]=useState(false);
+  const [descDraft,setDescDraft]=useState(group.description||"");
+  const endRef=useRef(null);
+  const msgs=group.messages||[];
+  const members=(group.members||[]).map(id=>profiles.find(p=>p.id===id)||{id,name:"Unknown",color:AC});
+  const isAdmin=group.adminId===myProfile.id;
+  const MAX_MEMBERS=100;
+
+  useEffect(()=>{endRef.current?.scrollIntoView({behavior:"smooth"});},[msgs.length]);
+  function send(){if(!txt.trim())return;onSendGroup(group.id,txt.trim());setTxt("");}
+
+  function saveDescription(){
+    const updated={...group,description:descDraft.trim()};
+    onUpdateGroup(updated);
+    setEditingDesc(false);
+  }
+
+  function leaveGroup(){
+    if(!window.confirm("Leave this group?"))return;
+    const updated={...group,members:group.members.filter(id=>id!==myProfile.id)};
+    onUpdateGroup(updated);
+    onBack();
+  }
+
+  function deleteGroup(){
+    if(!window.confirm(`Delete "${group.name}"? This cannot be undone.`))return;
+    onDeleteGroup(group.id);
+    onBack();
+  }
+
+  function removeMember(uid){
+    if(!window.confirm(`Remove this member from the group?`))return;
+    onUpdateGroup({...group,members:group.members.filter(id=>id!==uid)});
+  }
+
+  return<div style={{position:"fixed",inset:0,zIndex:400,background:T.bg,display:"flex",flexDirection:"column"}}>
+    {/* Header */}
+    <div style={{background:T.nav,borderBottom:`1px solid ${T.b1}`,padding:"12px 16px",paddingTop:"max(12px,env(safe-area-inset-top))",display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
+      <button onClick={onBack} style={{background:"none",color:T.txt,padding:"4px",display:"flex",alignItems:"center",flexShrink:0}}><BackIcon/></button>
+      {/* Group avatar */}
+      <div style={{width:40,height:40,borderRadius:"50%",background:`linear-gradient(135deg,${AC}40,${AC}18)`,border:`1.5px solid ${AC}50`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0,cursor:"pointer"}} onClick={()=>setShowMembers(v=>!v)}>👥</div>
+      <div style={{flex:1,minWidth:0,cursor:"pointer"}} onClick={()=>setShowMembers(v=>!v)}>
+        <div style={{fontWeight:700,fontSize:15,color:T.txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{group.name}</div>
+        <div style={{fontSize:10,color:T.mu,marginTop:1}}>
+          {group.description
+            ?<span style={{color:T.mu,fontStyle:"italic"}}>{group.description}</span>
+            :<span>{members.length} member{members.length!==1?"s":""} · tap to view</span>}
+        </div>
+      </div>
+      {/* 3-dot menu */}
+      <div style={{position:"relative"}}>
+        <button onClick={()=>setShowMenu(v=>!v)} style={{background:"none",color:T.mu,width:34,height:34,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",border:`1px solid ${T.b1}`,flexShrink:0}}><DotsIcon/></button>
+        {showMenu&&<div onClick={()=>setShowMenu(false)} style={{position:"fixed",inset:0,zIndex:10}}/>}
+        {showMenu&&<div style={{position:"absolute",top:40,right:0,background:T.card,border:`1px solid ${T.b2}`,borderRadius:14,overflow:"hidden",zIndex:20,minWidth:200,boxShadow:"0 8px 32px rgba(0,0,0,.5)"}}>
+          <button onClick={()=>{setShowMembers(true);setShowMenu(false);}} style={{width:"100%",padding:"12px 16px",background:"none",textAlign:"left",color:T.txt,fontSize:13,fontWeight:500,borderBottom:`1px solid ${T.b1}`,display:"flex",alignItems:"center",gap:10}}>👥 View Members</button>
+          {isAdmin&&<button onClick={()=>{setEditingDesc(true);setDescDraft(group.description||"");setShowMenu(false);}} style={{width:"100%",padding:"12px 16px",background:"none",textAlign:"left",color:T.txt,fontSize:13,fontWeight:500,borderBottom:`1px solid ${T.b1}`,display:"flex",alignItems:"center",gap:10}}>✏️ Edit Description</button>}
+          {isAdmin&&group.members.length<MAX_MEMBERS&&<button onClick={()=>{setShowAddModal(true);setShowMenu(false);}} style={{width:"100%",padding:"12px 16px",background:"none",textAlign:"left",color:T.txt,fontSize:13,fontWeight:500,borderBottom:`1px solid ${T.b1}`,display:"flex",alignItems:"center",gap:10}}>➕ Add Members</button>}
+          {!isAdmin&&<button onClick={()=>{leaveGroup();setShowMenu(false);}} style={{width:"100%",padding:"12px 16px",background:"none",textAlign:"left",color:"#e07060",fontSize:13,fontWeight:500,borderBottom:`1px solid ${T.b1}`,display:"flex",alignItems:"center",gap:10}}>🚪 Leave Group</button>}
+          {isAdmin&&<button onClick={()=>{deleteGroup();setShowMenu(false);}} style={{width:"100%",padding:"12px 16px",background:"none",textAlign:"left",color:"#e05050",fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:10}}>🗑️ Delete Group</button>}
+        </div>}
+      </div>
+    </div>
+
+    {/* Edit Description Panel */}
+    {editingDesc&&<div style={{background:T.surf,borderBottom:`1px solid ${T.b1}`,padding:"12px 16px",flexShrink:0,animation:"ci .15s ease"}}>
+      <div style={{fontWeight:600,fontSize:13,color:T.txt,marginBottom:8}}>Group Description</div>
+      <input value={descDraft} onChange={e=>setDescDraft(e.target.value)} placeholder="Add a description…" maxLength={120}
+        style={{width:"100%",padding:"10px 13px",background:T.inp,border:`1px solid ${T.b1}`,borderRadius:10,color:T.txt,fontSize:13,outline:"none",boxSizing:"border-box",marginBottom:8}}/>
+      <div style={{display:"flex",gap:7}}>
+        <button onClick={saveDescription} style={{flex:1,padding:"8px 0",background:`linear-gradient(135deg,${AC}e0,${AC}90)`,borderRadius:9,color:"#fff",fontWeight:700,fontSize:13}}>Save</button>
+        <button onClick={()=>setEditingDesc(false)} style={{flex:1,padding:"8px 0",background:"transparent",border:`1px solid ${T.b1}`,borderRadius:9,color:T.mu,fontSize:13}}>Cancel</button>
+      </div>
+    </div>}
+
+    {/* Members panel (collapsible slide-down) */}
+    {showMembers&&<div style={{background:T.surf,borderBottom:`1px solid ${T.b1}`,padding:"12px 16px 14px",flexShrink:0,animation:"ci .15s ease"}}>
+      <div style={{fontWeight:700,fontSize:12,color:T.mu,letterSpacing:".06em",textTransform:"uppercase",marginBottom:10}}>Members ({members.length})</div>
+      <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:200,overflowY:"auto"}}>
+        {members.map(m=><div key={m.id} style={{display:"flex",alignItems:"center",gap:10,padding:"6px 4px",borderRadius:10}}>
+          <div onClick={()=>{if(m.id!==myProfile.id&&onViewProfile){setShowMembers(false);onViewProfile(m);}}} style={{cursor:m.id!==myProfile.id?"pointer":"default",display:"flex",alignItems:"center",gap:10,flex:1,minWidth:0}}>
+            <div style={{width:34,height:34,borderRadius:"50%",background:`${m.color||AC}18`,border:`1.5px solid ${m.color||AC}40`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:m.color||AC,overflow:"hidden",flexShrink:0}}>
+              {m.photo?<img src={m.photo} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:ini(m.name)}
+            </div>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:13,fontWeight:600,color:T.txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.name}{m.id===myProfile.id?" (you)":""}</div>
+              {m.id===group.adminId&&<div style={{fontSize:9,color:AC,fontWeight:700,letterSpacing:".06em"}}>ADMIN</div>}
+            </div>
+          </div>
+          {isAdmin&&m.id!==myProfile.id&&m.id!==group.adminId&&<button onClick={()=>removeMember(m.id)} style={{padding:"4px 10px",background:"#c0404018",border:"1px solid #c0404030",borderRadius:7,color:"#c06060",fontSize:11,fontWeight:600,flexShrink:0}}>Remove</button>}
+        </div>)}
+      </div>
+      {!isAdmin&&<button onClick={leaveGroup} style={{marginTop:10,width:"100%",padding:"9px 0",background:"transparent",border:"1px solid #c0404040",borderRadius:10,color:"#c06060",fontSize:12,fontWeight:600}}>🚪 Leave Group</button>}
+      {isAdmin&&group.members.length<MAX_MEMBERS&&<button onClick={()=>{setShowMembers(false);setShowAddModal(true);}} style={{marginTop:10,width:"100%",padding:"9px 0",background:`${AC}14`,border:`1px solid ${AC}30`,borderRadius:10,color:AC,fontSize:12,fontWeight:600}}>➕ Add Members</button>}
+    </div>}
+
+    {/* Messages */}
+    <div style={{flex:1,overflowY:"auto",padding:"14px 14px",display:"flex",flexDirection:"column",gap:6}}>
+      {msgs.length===0&&<div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:8,color:T.mu,marginTop:60,textAlign:"center"}}>
+        <div style={{fontSize:36,opacity:.3}}>👥</div>
+        <div style={{fontWeight:600,color:T.txt}}>Start the group conversation!</div>
+        <div style={{fontSize:12,opacity:.6}}>{members.length} members ready</div>
+      </div>}
+      {msgs.map((m,i)=>{
+        const mine=m.sid===myProfile.id;
+        const sender=members.find(p=>p.id===m.sid)||{name:"?",color:AC};
+        const showName=!mine&&(i===0||msgs[i-1]?.sid!==m.sid);
+        return<div key={i} style={{display:"flex",flexDirection:mine?"row-reverse":"row",gap:8,alignItems:"flex-end"}}>
+          {!mine&&<div style={{width:28,flexShrink:0}}>
+            {showName&&<div onClick={()=>sender.id&&onViewProfile&&onViewProfile(sender)} style={{width:28,height:28,borderRadius:"50%",background:`${sender.color||AC}18`,border:`1.5px solid ${sender.color||AC}40`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:8,fontWeight:700,color:sender.color||AC,overflow:"hidden",cursor:"pointer"}}>
+              {sender.photo?<img src={sender.photo} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:ini(sender.name)}
+            </div>}
+          </div>}
+          <div style={{maxWidth:"74%"}}>
+            {showName&&<div style={{fontSize:10,color:sender.color||AC,fontWeight:600,marginBottom:2,paddingLeft:4}}>{sender.name}</div>}
+            <div style={{background:mine?`linear-gradient(135deg,${myProfile.color}dd,${myProfile.color}99)`:T.card,border:mine?"none":`1px solid ${T.b1}`,borderRadius:mine?"18px 18px 4px 18px":"18px 18px 18px 4px",padding:"10px 14px",color:mine?"#fff":T.txt,fontSize:14,lineHeight:1.5,wordBreak:"break-word"}}>{m.txt}</div>
+            <div style={{fontSize:9,color:T.mu,marginTop:3,textAlign:mine?"right":"left",fontFamily:"'JetBrains Mono',monospace",paddingLeft:4,paddingRight:4}}>{ago(m.ts)}</div>
+          </div>
+        </div>;
+      })}
+      <div ref={endRef}/>
+    </div>
+
+    {/* Input */}
+    <div style={{padding:"10px 14px",paddingBottom:"max(14px,env(safe-area-inset-bottom))",borderTop:`1px solid ${T.b1}`,background:T.nav,display:"flex",gap:10,alignItems:"center",flexShrink:0}}>
+      <input value={txt} onChange={e=>setTxt(e.target.value)} onKeyDown={e=>e.key==="Enter"&&send()} placeholder={`Message ${group.name}…`} style={{flex:1,padding:"12px 16px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:24,color:T.txt,fontSize:14,outline:"none"}}/>
+      <button onClick={send} style={{width:42,height:42,borderRadius:"50%",background:txt.trim()?`linear-gradient(135deg,${myProfile.color}dd,${myProfile.color}99)`:T.faint,display:"flex",alignItems:"center",justifyContent:"center",color:txt.trim()?"#fff":T.mu,flexShrink:0,transition:"background .15s"}}><SendIcon/></button>
+    </div>
+
+    {/* Add Members Modal */}
+    {showAddModal&&<AddMembersModal group={group} profiles={profiles} myProfile={myProfile} T={T} onClose={()=>setShowAddModal(false)} onAdd={newIds=>{onUpdateGroup({...group,members:[...group.members,...newIds]});}}/>}
+  </div>;
+}
+
+/* ── ADD MEMBERS MODAL (for existing group) ── */
+function AddMembersModal({group,profiles,myProfile,T,onClose,onAdd}){
+  const [selected,setSelected]=useState([]);
+  const [q,setQ]=useState("");
+  const MAX_MEMBERS=100;
+  const available=profiles.filter(p=>!group.members.includes(p.id)&&p.id!==myProfile.id);
+  const filtered=q.trim()?available.filter(p=>p.name.toLowerCase().includes(q.toLowerCase())||(p.handle||"").toLowerCase().includes(q.toLowerCase())):available;
+  const canAdd=group.members.length+selected.length<MAX_MEMBERS;
+
+  function toggle(id){setSelected(prev=>prev.includes(id)?prev.filter(x=>x!==id):[...prev,id]);}
+  function confirm(){if(!selected.length)return;onAdd(selected);onClose();}
+
+  return<Overlay onBg={onClose} T={T} bottom>
+    <div style={{fontWeight:700,fontSize:17,color:T.txt,marginBottom:14}}>Add Members</div>
+    {!canAdd&&<div style={{fontSize:12,color:"#e07060",marginBottom:10,background:"#e0706018",borderRadius:8,padding:"8px 12px"}}>Group is nearly full ({group.members.length}/{MAX_MEMBERS})</div>}
+    <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search…" style={{width:"100%",padding:"10px 14px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:11,color:T.txt,fontSize:13,outline:"none",boxSizing:"border-box",marginBottom:10}}/>
+    {selected.length>0&&<div style={{fontSize:11,color:AC,marginBottom:8,fontWeight:600}}>{selected.length} selected</div>}
+    <div style={{maxHeight:260,overflowY:"auto",display:"flex",flexDirection:"column",gap:4,marginBottom:14}}>
+      {filtered.length===0&&<div style={{textAlign:"center",padding:"20px",color:T.mu,fontSize:13}}>No users available to add</div>}
+      {filtered.map(p=>{
+        const sel=selected.includes(p.id);
+        return<div key={p.id} onClick={()=>{if(canAdd||sel)toggle(p.id);}} style={{display:"flex",alignItems:"center",gap:11,padding:"9px 10px",borderRadius:10,cursor:"pointer",background:sel?`${AC}12`:T.faint,border:`1px solid ${sel?AC+"40":T.b1}`,transition:"all .12s"}}>
+          <Ava p={p} size={38} T={T}/>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontWeight:600,fontSize:13,color:T.txt}}>{p.name}</div>
+            <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:T.mu}}>@{p.handle}</div>
+          </div>
+          <div style={{width:20,height:20,borderRadius:"50%",border:`2px solid ${sel?AC:T.b2}`,background:sel?AC:"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+            {sel&&<svg width="10" height="10" viewBox="0 0 10 10" fill="none"><polyline points="1.5,5 4,7.5 8.5,2.5" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+          </div>
+        </div>;
+      })}
+    </div>
+    <button disabled={!selected.length} onClick={confirm} style={{width:"100%",padding:"13px 0",background:selected.length?`linear-gradient(135deg,${AC}e0,${AC}90)`:"transparent",border:selected.length?"none":`1px solid ${T.b1}`,borderRadius:12,color:selected.length?"#fff":T.mu,fontWeight:700,fontSize:14}}>
+      Add {selected.length>0?`${selected.length} Member${selected.length!==1?"s":""}`:""} →
+    </button>
+  </Overlay>;
+}
+
+/* ── INBOX TAB ── */
+function InboxTab({convs,profiles,myProfile,following,T,onOpen,onDeleteConv,onViewProfile,groups,onOpenGroup,onCreateGroup}){
+  const sorted=[...convs].sort((a,b)=>(b.messages?.at(-1)?.ts||0)-(a.messages?.at(-1)?.ts||0));
+  const [menuId,setMenuId]=useState(null);
+  const [showCreateGroup,setShowCreateGroup]=useState(false);
+  const myGroups=(groups||[]).filter(g=>g.members?.includes(myProfile.id));
+  const isPersonal=myProfile.account_type!=="business"; // business cannot create/see groups
+
+  return<div>
+    {/* Header row — New Group only for personal accounts */}
+    <div style={{padding:"14px 16px 10px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+      <div style={{fontWeight:700,fontSize:18,color:T.txt}}>{myProfile.name}</div>
+      {isPersonal&&<button onClick={()=>setShowCreateGroup(true)} style={{display:"flex",alignItems:"center",gap:6,padding:"7px 12px",background:`${AC}18`,border:`1px solid ${AC}30`,borderRadius:10,color:AC,fontWeight:600,fontSize:12}}>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        New Group
+      </button>}
+    </div>
+    <div style={{height:1,background:T.b1}}/>
+
+    {/* Group chats — personal only */}
+    {isPersonal&&myGroups.length>0&&<>
+      <div style={{padding:"10px 16px 6px",fontSize:11,fontWeight:700,color:T.mu,letterSpacing:".06em",textTransform:"uppercase"}}>Group Chats</div>
+      {myGroups.map(g=>{
+        const last=g.messages?.at(-1);
+        const memberNames=(g.members||[]).slice(0,3).map(id=>{const p=profiles.find(x=>x.id===id);return p?.name?.split(" ")[0]||"?";}).join(", ");
+        const unread=(g.messages||[]).filter(m=>m.sid!==myProfile.id&&!m.read).length||0;
+        return<div key={g.id} onClick={()=>onOpenGroup(g)} style={{display:"flex",alignItems:"center",gap:13,padding:"12px 16px",borderBottom:`1px solid ${T.b1}`,cursor:"pointer",transition:"background .12s"}} onMouseEnter={e=>e.currentTarget.style.background=T.faint} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+          {/* Group icon */}
+          <div style={{width:52,height:52,borderRadius:"50%",background:`linear-gradient(135deg,${AC}30,${AC}14)`,border:`1.5px solid ${AC}40`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0,position:"relative"}}>
+            👥
+            {unread>0&&<div style={{position:"absolute",top:-2,right:-2,minWidth:18,height:18,borderRadius:99,background:"#e0304a",border:`2px solid ${T.nav}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,color:"#fff",fontWeight:700,padding:"0 4px"}}>{unread}</div>}
+          </div>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontWeight:unread>0?700:600,fontSize:15,color:T.txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{g.name}</div>
+            <div style={{fontSize:11,color:T.mu,marginTop:1}}>
+              {g.description
+                ?<span style={{fontStyle:"italic"}}>{g.description}</span>
+                :<span>{memberNames}{g.members.length>3?` +${g.members.length-3} more`:""}</span>}
+            </div>
+            {last&&<div style={{fontSize:12,color:unread>0?T.txt:T.mu,marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{last.txt}</div>}
+          </div>
+          {last&&<div style={{fontSize:10,color:T.mu,fontFamily:"'JetBrains Mono',monospace",flexShrink:0}}>{ago(last.ts)}</div>}
+        </div>;
+      })}
+      {sorted.length>0&&<div style={{padding:"10px 16px 6px",fontSize:11,fontWeight:700,color:T.mu,letterSpacing:".06em",textTransform:"uppercase"}}>Direct Messages</div>}
+    </>}
+
+    {sorted.length===0&&myGroups.length===0&&<div style={{textAlign:"center",padding:"80px 20px",color:T.mu}}><div style={{fontSize:48,marginBottom:16,opacity:.3}}>💬</div><div style={{fontWeight:600,fontSize:16}}>No messages yet</div><div style={{fontSize:13,marginTop:8,opacity:.7}}>Tap the send icon on a profile to start chatting</div></div>}
+    {sorted.map((conv,i)=>{
+      const other=profiles.find(p=>p.id===conv.oid);if(!other)return null;
+      const last=conv.messages?.at(-1);
+      const unread=conv.messages?.filter(m=>m.sid!==myProfile.id&&!m.read).length||0;
+      const isMenuOpen=menuId===conv.id;
+      return<div key={conv.id} style={{position:"relative",borderBottom:`1px solid ${T.b1}`}}>
+        {isMenuOpen&&<div onClick={()=>setMenuId(null)} style={{position:"fixed",inset:0,zIndex:10}}/>}
+        <div style={{display:"flex",alignItems:"center",gap:13,padding:"13px 16px",transition:"background .12s"}} onMouseEnter={e=>e.currentTarget.style.background=T.faint} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+          <div onClick={()=>onViewProfile&&onViewProfile(other)} style={{cursor:"pointer",flexShrink:0}}>
+            <Ava p={other} size={52} T={T} badge={unread}/>
+          </div>
+          <div onClick={()=>onOpen(conv,other)} style={{flex:1,minWidth:0,cursor:"pointer"}}>
+            <div style={{fontWeight:unread>0?700:500,fontSize:15,color:T.txt}}>{other.name}</div>
+            <div style={{fontSize:13,color:unread>0?T.txt:T.mu,marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontWeight:unread>0?500:400}}>{last?`${last.sid===myProfile.id?"You: ":""}${last.txt}`:"Start a conversation"}</div>
+          </div>
+          <div style={{textAlign:"right",flexShrink:0,display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4}}>
+            {last&&<div style={{fontSize:11,color:T.mu,fontFamily:"'JetBrains Mono',monospace"}}>{ago(last.ts)}</div>}
+            {unread>0&&<div style={{background:AC,borderRadius:99,minWidth:20,height:20,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,color:"#fff",fontWeight:700,padding:"0 5px"}}>{unread}</div>}
+            <div style={{position:"relative"}}>
+              <button onClick={e=>{e.stopPropagation();setMenuId(isMenuOpen?null:conv.id);}} style={{background:"none",color:T.mu,padding:"3px",display:"flex",alignItems:"center",borderRadius:6}}><DotsIcon/></button>
+              {isMenuOpen&&<div style={{position:"absolute",top:28,right:0,background:T.card,border:`1px solid ${T.b2}`,borderRadius:12,overflow:"hidden",zIndex:20,minWidth:160,boxShadow:"0 8px 28px rgba(0,0,0,.5)"}}>
+                <button onClick={e=>{e.stopPropagation();onViewProfile&&onViewProfile(other);setMenuId(null);}} style={{width:"100%",padding:"11px 14px",background:"none",textAlign:"left",color:T.txt,fontSize:13,fontWeight:500,borderBottom:`1px solid ${T.b1}`,display:"flex",alignItems:"center",gap:9}}>👤 View Profile</button>
+                <button onClick={e=>{e.stopPropagation();onOpen(conv,other);setMenuId(null);}} style={{width:"100%",padding:"11px 14px",background:"none",textAlign:"left",color:T.txt,fontSize:13,fontWeight:500,borderBottom:`1px solid ${T.b1}`,display:"flex",alignItems:"center",gap:9}}>💬 Open Chat</button>
+                <button onClick={e=>{e.stopPropagation();if(window.confirm("Delete this conversation?"))onDeleteConv(conv.id);setMenuId(null);}} style={{width:"100%",padding:"11px 14px",background:"none",textAlign:"left",color:"#c06060",fontSize:13,fontWeight:500,display:"flex",alignItems:"center",gap:9}}>🗑️ Delete Chat</button>
+              </div>}
+            </div>
+          </div>
+        </div>
+      </div>;
+    })}
+    {showCreateGroup&&<CreateGroupModal profiles={profiles} myProfile={myProfile} following={following} T={T} onClose={()=>setShowCreateGroup(false)} onCreate={onCreateGroup}/>}
+  </div>;
+}
+
+/* ── SEARCH TAB ── */
+function SearchTab({profiles,myId,following,T,onView,onFollow,onUnfollow,onRate,myProfile}){
+  const [q,setQ]=useState("");
+  const [filter,setFilter]=useState("all");
+  const [focused,setFocused]=useState(false);
+  const [scanning,setScanning]=useState(false);
+  const videoRef=useRef(null);
+  const streamRef=useRef(null);
+
+  const allSorted=[...profiles].sort((a,b)=>a.name.localeCompare(b.name));
+  const filtered=filter==="all"?allSorted:allSorted.filter(p=>(p.account_type||"personal")===filter);
+  // Search all profiles (including followed ones) — just exclude self
+  const results=q.trim().length>0?filtered.filter(p=>p.id!==myId&&(
+    p.name.toLowerCase().includes(q.toLowerCase())||
+    (p.handle||"").toLowerCase().replace(/^@/,"").includes(q.toLowerCase().replace(/^@/,""))||
+    (p.short_id||shortId(p.id)).toLowerCase().includes(q.toLowerCase().replace(/^#/,""))||
+    (p.bio||"").toLowerCase().includes(q.toLowerCase())
+  )):[];
+  // Suggested = people you haven't followed yet
+  const suggested=filtered.filter(p=>p.id!==myId&&!following.includes(p.id)).slice(0,20);
+
+  async function startScan(){
+    setScanning(true);
+    try{
+      const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}});
+      streamRef.current=stream;
+      setTimeout(()=>{if(videoRef.current){videoRef.current.srcObject=stream;videoRef.current.play();}},100);
+      loadScript("https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js",()=>{
+        const canvas=document.createElement("canvas");const ctx=canvas.getContext("2d");
+        let active=true;
+        function tick(){
+          if(!active)return;
+          const v=videoRef.current;
+          if(v&&v.readyState===v.HAVE_ENOUGH_DATA){
+            canvas.width=v.videoWidth;canvas.height=v.videoHeight;
+            ctx.drawImage(v,0,0);
+            const img=ctx.getImageData(0,0,canvas.width,canvas.height);
+            const code=window.jsQR&&window.jsQR(img.data,img.width,img.height,{inversionAttempts:"dontInvert"});
+            if(code?.data){
+              active=false;stopScan();
+              const url=code.data;
+              if(url.includes("highenough.in")){window.location.href=url;}
+              else{alert("Not a HighEnough QR code: "+url);}
+              return;
+            }
+          }
+          requestAnimationFrame(tick);
+        }
+        requestAnimationFrame(tick);
+      });
+    }catch(e){setScanning(false);alert("Camera unavailable. Please allow camera access.");}
+  }
+  function stopScan(){
+    streamRef.current?.getTracks().forEach(t=>t.stop());
+    streamRef.current=null;setScanning(false);
+  }
+
+  if(scanning) return<div style={{position:"fixed",inset:0,zIndex:500,background:"#000",display:"flex",flexDirection:"column"}}>
+    <div style={{padding:"14px 18px",display:"flex",alignItems:"center",background:"rgba(0,0,0,.8)",gap:12}}>
+      <button onClick={stopScan} style={{background:"rgba(255,255,255,.15)",border:"1px solid rgba(255,255,255,.2)",color:"#fff",borderRadius:9,padding:"8px 16px",fontWeight:600,fontSize:14}}>✕ Cancel</button>
+      <div style={{flex:1,textAlign:"center",color:"#fff",fontWeight:600,fontSize:14}}>Point at a HighEnough QR</div>
+    </div>
+    <video ref={videoRef} style={{flex:1,objectFit:"cover",width:"100%"}} playsInline muted/>
+    <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",width:230,height:230,border:"2px solid #7b72e9",borderRadius:18,boxShadow:"0 0 0 9999px rgba(0,0,0,.55)"}}/>
+    <div style={{position:"absolute",top:"calc(50% + 130px)",left:"50%",transform:"translateX(-50%)",color:"rgba(255,255,255,.6)",fontSize:12}}>Scanning…</div>
+  </div>;
+
+  return<div>
+    <div style={{padding:"12px 14px 8px",position:"sticky",top:56,background:`${T.bg}f0`,zIndex:10,backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)"}}>
+      <div style={{display:"flex",alignItems:"center",background:T.faint,borderRadius:14,padding:"12px 16px",gap:10,border:`1.5px solid ${focused?AC+"60":T.b1}`,transition:"border-color .2s",marginBottom:10,boxShadow:focused?`0 0 0 3px ${AC}14`:"none"}}>
+        <SearchIcon active={false}/>
+        <input value={q} onChange={e=>setQ(e.target.value)} onFocus={()=>setFocused(true)} onBlur={()=>setFocused(false)} placeholder="Search name, @handle or #ID…" style={{flex:1,background:"none",border:"none",outline:"none",color:T.txt,fontSize:15,fontFamily:"'Inter',sans-serif"}}/>
+        {q?<button onClick={()=>setQ("")} style={{background:"none",color:T.mu,display:"flex",alignItems:"center"}}><XIcon/></button>
+          :<button onClick={startScan} style={{background:"none",color:T.mu,display:"flex",alignItems:"center",padding:2}} title="Scan QR">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="3" height="3"/><rect x="19" y="14" width="2" height="2"/><rect x="14" y="19" width="2" height="2"/><rect x="18" y="18" width="3" height="3" rx=".5"/></svg>
+          </button>}
+      </div>
+      <div style={{display:"flex",gap:6}}>
+        {[["all","🌐 All"],["personal","👤 People"],["business","🏢 Business"]].map(([id,label])=>
+          <button key={id} onClick={()=>setFilter(id)} style={{padding:"6px 14px",borderRadius:20,fontSize:11,fontWeight:filter===id?700:500,background:filter===id?`linear-gradient(135deg,${AC}cc,${AC}80)`:"transparent",border:`1.5px solid ${filter===id?"transparent":T.b1}`,color:filter===id?"#fff":T.mu,transition:"all .15s",boxShadow:filter===id?`0 3px 10px ${AC}40`:"none"}}>{label}</button>)}
+      </div>
+    </div>
+
+    {!q.trim()&&<>
+      <div style={{padding:"14px 16px 8px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+        <span style={{fontSize:14,fontWeight:700,color:T.txt}}>Discover</span>
+        <span style={{fontSize:11,color:T.mu}}>{suggested.length} people</span>
+      </div>
+      {suggested.map((p,i)=><PersonRow key={p.id} p={p} myId={myId} following={following} T={T} onView={onView} onFollow={onFollow} onUnfollow={onUnfollow} idx={i}/>)}
+      {suggested.length===0&&<div style={{textAlign:"center",padding:"48px 20px",color:T.mu,fontSize:13}}>You're following everyone here!</div>}
+      <div style={{height:80}}/>
+    </>}
+
+    {q.trim().length>0&&<>
+      <div style={{padding:"10px 16px 4px",fontSize:12,color:T.mu}}>{results.length} result{results.length!==1?"s":""} for "{q}"</div>
+      {results.length===0&&<div style={{textAlign:"center",padding:"48px 20px",color:T.mu}}><div style={{fontSize:32,marginBottom:12,opacity:.3}}>🔍</div><div style={{fontWeight:600,marginBottom:4}}>No results for "{q}"</div><div style={{fontSize:13,opacity:.7}}>Try name, @handle or #ID</div></div>}
+      {results.map((p,i)=><PersonRow key={p.id} p={p} myId={myId} following={following} T={T} onView={onView} onFollow={onFollow} onUnfollow={onUnfollow} idx={i}/>)}
+      <div style={{height:80}}/>
+    </>}
+  </div>;
+}
+
+function PersonRow({p,myId,following,T,onView,onFollow,onUnfollow,idx}){
+  const sc=pScore(p);const isFollowing=following.includes(p.id);const isBiz=p.account_type==="business";
+  return<div style={{display:"flex",alignItems:"center",gap:12,padding:"11px 16px",borderBottom:`1px solid ${T.b1}28`,animation:"ci .2s ease both",animationDelay:`${idx*25}ms`}}>
+    <div style={{position:"relative",cursor:"pointer"}} onClick={()=>onView(p)}>
+      <Ava p={p} size={48} T={T}/>
+      {isBiz&&<div style={{position:"absolute",bottom:-1,right:-1,width:16,height:16,borderRadius:"50%",background:AC,fontSize:8,display:"flex",alignItems:"center",justifyContent:"center",border:`1.5px solid ${T.bg}`}}>🏢</div>}
+    </div>
+    <div style={{flex:1,minWidth:0,cursor:"pointer"}} onClick={()=>onView(p)}>
+      <div style={{fontWeight:700,fontSize:14,color:T.txt}}>{p.name}</div>
+      <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:T.mu,marginTop:1}}>{p.handle}</div>
+      {sc!=null&&<div style={{marginTop:4}}><TierBadge sc={sc} size="sm" isBiz={isBiz}/></div>}
+    </div>
+    <button onClick={()=>isFollowing?onUnfollow(p.id):onFollow(p.id)} style={{padding:"8px 16px",background:isFollowing?T.faint:`linear-gradient(135deg,${AC}ee,${AC}99)`,border:isFollowing?`1.5px solid ${T.b2}`:"none",borderRadius:20,color:isFollowing?T.mu:"#fff",fontWeight:700,fontSize:12,flexShrink:0,transition:"all .15s",boxShadow:isFollowing?"none":`0 4px 12px ${AC}40`}}>{isFollowing?"✓":"Follow"}</button>
+  </div>;
+}
+
+/* ── LEADERBOARD ── */
+function BoardTab({profiles,myId,T,onView}){
+  const [sub,setSub]=useState("all");
+  const [acFilter,setAcFilter]=useState("personal");
+  const [bizFilter,setBizFilter]=useState("all");
+  const now=Date.now(),week=7*24*60*60*1000;
+
+  // All biz types including "all"
+  const BIZ_TABS=[{id:"all",label:"All",emoji:"🏢"},...BIZ_TYPES];
+
+  const getBizType=p=>p?.biz_type||(p?.links?.biz_type)||"general";
+
+  const filteredByType=profiles.filter(p=>{
+    if((p.account_type||"personal")!==acFilter)return false;
+    if(acFilter==="business"&&bizFilter!=="all"&&getBizType(p)!==bizFilter)return false;
+    return true;
+  });
+
+  // Scored profiles sorted descending, then unscored at bottom
+  const allR=[...filteredByType].map(p=>({...p,sc:pScore(p)??-1})).sort((a,b)=>{
+    if(a.sc>=0&&b.sc>=0)return b.sc-a.sc;
+    if(a.sc>=0)return -1;
+    if(b.sc>=0)return 1;
+    return a.name.localeCompare(b.name);
+  });
+  const trending=[...filteredByType].map(p=>{
+    const rc=(p.ratings||[]).filter(r=>r.ts&&now-r.ts<week);
+    return{...p,sc:pScore(p)??-1,tC:rc.length};
+  }).filter(p=>p.tC>0).sort((a,b)=>b.tC-a.tC);
+  const rising=[...filteredByType].map(p=>{
+    const cats2=getCats(p);
+    const rc=(p.ratings||[]).filter(r=>r.ts&&now-r.ts<week);
+    const gain=rc.length?Math.round(rc.reduce((s,r)=>s+cats2.reduce((cs,c)=>cs+(r[c.id]||0),0)/cats2.length,0)):0;
+    return{...p,sc:pScore(p)??-1,gain};
+  }).filter(p=>p.gain>0).sort((a,b)=>b.gain-a.gain);
+  const list=sub==="all"?allR:sub==="trending"?trending:rising;
+
+  // Count per biz_type for badge numbers
+  const bizCounts=BIZ_TYPES.reduce((acc,bt)=>{
+    acc[bt.id]=profiles.filter(p=>p.account_type==="business"&&getBizType(p)===bt.id).length;
+    return acc;
+  },{});
+
+  return<div style={{paddingBottom:8}}>
+
+    {/* ── Main toggle: People / Business·Professional ── */}
+    <div style={{display:"flex",gap:8,padding:"14px 14px 0"}}>
+      {[["personal","👤","People"],["business","💼","Business · Pro"]].map(([id,em,label])=>
+        <button key={id} onClick={()=>{setAcFilter(id);setSub("all");setBizFilter("all");}} style={{flex:1,padding:"11px 0",borderRadius:22,fontSize:13,fontWeight:acFilter===id?700:500,background:acFilter===id?`linear-gradient(135deg,${AC}e0,${AC}90)`:"transparent",border:`1.5px solid ${acFilter===id?"transparent":T.b2}`,color:acFilter===id?"#fff":T.mu,transition:"all .18s",boxShadow:acFilter===id?`0 4px 16px ${AC}40`:"none"}}>
+          {em} {label}
+        </button>
+      )}
+    </div>
+
+    {/* ── Business sub-category tabs (scrollable) ── */}
+    {acFilter==="business"&&<div style={{overflowX:"auto",paddingBottom:4,marginTop:12}}>
+      <div style={{display:"flex",gap:6,padding:"0 14px",width:"max-content"}}>
+        {BIZ_TABS.map(bt=>{
+          const count=bt.id==="all"
+            ?profiles.filter(p=>p.account_type==="business").length
+            :bizCounts[bt.id]||0;
+          const active=bizFilter===bt.id;
+          return<button key={bt.id} onClick={()=>{setBizFilter(bt.id);setSub("all");}} style={{
+            display:"flex",alignItems:"center",gap:5,
+            padding:"7px 12px",borderRadius:20,whiteSpace:"nowrap",
+            background:active?`${AC}18`:"transparent",
+            border:`1.5px solid ${active?AC+"80":T.b2}`,
+            color:active?AC:T.mu,
+            fontWeight:active?700:400,fontSize:12,
+            transition:"all .15s",flexShrink:0
+          }}>
+            <span style={{fontSize:14}}>{bt.emoji}</span>
+            <span>{bt.id==="all"?"All":bt.label.split(" /")[0].split(" ·")[0]}</span>
+            {count>0&&<span style={{
+              background:active?AC:T.faint,color:active?"#fff":T.mu,
+              borderRadius:10,padding:"0px 6px",fontSize:10,fontWeight:700,
+              minWidth:16,textAlign:"center",
+              border:`1px solid ${active?"transparent":T.b1}`
+            }}>{count}</span>}
+          </button>;
+        })}
+      </div>
+    </div>}
+
+    {/* ── Sub-filter: All Time / Trending / Rising ── */}
+    <div style={{display:"flex",background:T.faint,margin:"16px 14px 12px",borderRadius:12,padding:3,border:`1px solid ${T.b1}`}}>
+      {[["all","All Time"],["trending","🔥 Trending"],["rising","📈 Rising"]].map(([t,l])=>
+        <button key={t} onClick={()=>setSub(t)} style={{flex:1,padding:"8px 0",borderRadius:10,border:sub===t?`1px solid ${T.b1}`:"1px solid transparent",background:sub===t?T.card:"transparent",color:sub===t?T.txt:T.mu,fontWeight:sub===t?600:400,fontSize:12,transition:"all .12s"}}>{l}</button>)}
+    </div>
+
+    <div style={{padding:"0 14px"}}>
+      {list.length===0&&<div style={{textAlign:"center",padding:"40px 0",color:T.mu,fontSize:13}}>
+        {sub==="trending"?"No activity this week yet":sub==="rising"?"No rising profiles this week":acFilter==="business"&&bizFilter!=="all"?`No ${BIZ_TYPES.find(b=>b.id===bizFilter)?.label||""} profiles yet`:"Nothing here yet"}
+      </div>}
+      {list.map((p,i)=>{
+        const isBiz2=acFilter==="business";
+        const hasScore=p.sc>=0;
+        const t=tierOf(hasScore?p.sc:0,isBiz2);
+        const rank=i+1;
+        const isTop=rank<=3&&hasScore;
+        const bizType=isBiz2?BIZ_TYPES.find(b=>b.id===getBizType(p)):null;
+        return<div key={p.id} onClick={()=>onView(p)} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 14px",background:isTop?`linear-gradient(135deg,${t.color}18,${t.color}08)`:`linear-gradient(135deg,${T.card},${T.surf})`,border:`1px solid ${isTop?t.color+"40":T.b1}`,borderRadius:16,marginBottom:8,cursor:"pointer",transition:"all .14s",animation:`ci .28s ease ${i*35}ms both`,boxShadow:isTop?`0 4px 20px ${t.color}18`:"0 2px 12px rgba(0,0,0,.08)",opacity:hasScore?1:.65}}>
+          <div style={{width:28,textAlign:"center",fontFamily:"'JetBrains Mono',monospace",fontSize:isTop?14:12,fontWeight:800,color:isTop?t.color:T.mu}}>#{rank}</div>
+          <Ava p={p} size={isTop?46:42} T={T}/>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontWeight:isTop?800:700,fontSize:isTop?15:14,color:T.txt,marginBottom:3}}>
+              {p.name}
+              {p.id===myId&&<span style={{fontSize:9,marginLeft:6,background:`${AC}18`,color:AC,borderRadius:10,padding:"1px 7px",fontFamily:"'JetBrains Mono',monospace"}}>you</span>}
+            </div>
+            <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
+              <TierBadge sc={hasScore?p.sc:null} size="sm" isBiz={isBiz2}/>
+              {bizType&&bizFilter==="all"&&<span style={{fontSize:10,color:T.mu,background:T.faint,borderRadius:8,padding:"1px 7px",border:`1px solid ${T.b1}`}}>{bizType.emoji} {bizType.label.split(" /")[0]}</span>}
+            </div>
+          </div>
+          <div style={{textAlign:"right",flexShrink:0}}>
+            <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:isTop?19:17,fontWeight:800,color:hasScore?t.color:T.mu,textShadow:isTop?`0 0 12px ${t.color}50`:"none"}}>{hasScore?fmtScore(p.sc):"—"}</div>
+            {sub==="trending"&&p.tC&&<div style={{fontSize:10,color:"#10a37f",marginTop:2}}>+{p.tC} this week</div>}
+            {sub==="rising"&&p.gain&&<div style={{fontSize:10,color:"#c08a2e",marginTop:2}}>+{p.gain} pts</div>}
+          </div>
+        </div>;
+      })}
+    </div>
+  </div>;
+}
+
+/* ── FEED CARD ── */
+function FeedCard({p,myId,following,T,onView,onFollow,onUnfollow,onRate,onMsg,idx}){
+  const myR=p.ratings?.find(r=>r.raterId===myId);
+  const isBiz=p.account_type==="business";
+  const sc=pScore(p);const t=tierOf(sc??0,isBiz);
+  const isFollowing=following.includes(p.id);
+  const {level}=tierLevel(sc??0,isBiz);
+  const levelStr=sc&&sc>0&&t.label!=="Ghost"?` L${level}`:"";
+
+  return<div onClick={()=>onView(p)} style={{background:`linear-gradient(135deg,${T.card},${T.surf})`,border:`1px solid ${T.b1}`,borderRadius:16,padding:"12px 14px",marginBottom:2,animation:"ci .3s ease both",animationDelay:`${idx*30}ms`,cursor:"pointer",display:"flex",alignItems:"center",gap:12}}>
+    <div style={{position:"relative",flexShrink:0}}>
+      <Ava p={p} size={46} T={T}/>
+      {isBiz&&<div style={{position:"absolute",bottom:-2,right:-2,width:16,height:16,borderRadius:"50%",background:"#7b72e9",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,border:`2px solid ${T.card}`}}>🏢</div>}
+    </div>
+    <div style={{flex:1,minWidth:0}}>
+      <div style={{fontWeight:700,fontSize:14,color:T.txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</div>
+      <div style={{display:"flex",alignItems:"center",gap:6,marginTop:2,flexWrap:"wrap"}}>
+        <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:9,color:T.mu}}>{p.handle}</span>
+        {sc!=null&&<span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:t.color,fontWeight:700}}>{t.emoji} {t.label}{levelStr}</span>}
+      </div>
+    </div>
+    <div style={{display:"flex",flexDirection:"column",gap:6,alignItems:"flex-end",flexShrink:0}} onClick={e=>e.stopPropagation()}>
+      <button onClick={()=>isFollowing?onUnfollow(p.id):onFollow(p.id)} style={{padding:"5px 12px",background:isFollowing?T.faint:`linear-gradient(135deg,${AC}ee,${AC}99)`,border:isFollowing?`1px solid ${T.b2}`:"none",borderRadius:14,color:isFollowing?T.mu:"#fff",fontWeight:600,fontSize:11,transition:"all .15s"}}>{isFollowing?"✓":"Follow"}</button>
+      <button onClick={()=>onRate(p,myR)} style={{padding:"5px 12px",background:myR?T.faint:`${p.color}22`,border:`1px solid ${myR?T.b1:p.color+"40"}`,borderRadius:14,color:myR?T.mu:p.color,fontSize:11,fontWeight:600}}>{myR?"Edit ✏️":isBiz?"Review":"Rate ⭐"}</button>
+    </div>
+  </div>;
+}
+
+/* ── PROFILE TAB (own) ── */
+function ProfileTab({myProfile,myP,T,onQR,onSettings,onEditProfile,onEditPhoto,onScoreCard,following,profiles,onViewProfile}){
+  const isBiz=myProfile.account_type==="business";
+  const cats=getCats(myP);
+  const sc=pScore(myP),t=tierOf(sc??0,isBiz),pct=tierPct(sc??0,isBiz);
+  const allTiers=getTiers(myP);
+  const next=sc!=null?allTiers[allTiers.indexOf(t)+1]:null;
+  const n=(myP.ratings||[]).length;
+  const [peopleList,setPeopleList]=useState(null);
+  const profileUrl=getProfileUrl(myProfile);
+
+  function shareMyProfile(){
+    const sc2=pScore(myP);
+    const isBiz2=myProfile.account_type==="business";
+    const tier=tierOf(sc2??0,isBiz2);
+    const text=`Check out my ${isBiz2?"business profile":"profile"} on HighEnough — ${myProfile.name} ${tier.emoji} ${tier.label}${sc2!=null?" ("+fmtScore(sc2)+" pts)":""} 👉 ${profileUrl}`;
+    if(navigator.share){
+      navigator.share({title:myProfile.name+" on HighEnough",text,url:profileUrl}).catch(()=>{
+        navigator.clipboard?.writeText(profileUrl);
+      });
+    } else {
+      navigator.clipboard?.writeText(profileUrl);
+    }
+  }
+
+  if(peopleList) return<div style={{paddingBottom:80}}>
+    <div style={{padding:"14px 16px 0",display:"flex",alignItems:"center",gap:12}}>
+      <button onClick={()=>setPeopleList(null)} style={{background:"none",color:T.txt,padding:"4px",display:"flex",alignItems:"center"}}><BackIcon/></button>
+      <div style={{fontWeight:700,fontSize:16,color:T.txt}}>{peopleList.title} <span style={{fontSize:13,color:T.mu,fontWeight:400}}>({peopleList.people.length})</span></div>
+    </div>
+    <div style={{padding:"12px 16px",display:"flex",flexDirection:"column",gap:2}}>
+      {peopleList.people.length===0?<div style={{textAlign:"center",padding:"32px 0",color:T.mu}}>Nobody here yet</div>
+        :peopleList.people.map((p,i)=><div key={p.id||i} onClick={()=>{if(p.id&&p.id!==myProfile.id&&onViewProfile){setPeopleList(null);onViewProfile(p);}}} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 0",borderBottom:`1px solid ${T.b1}`,cursor:p.id&&p.id!==myProfile.id?"pointer":"default"}}>
+          <Ava p={p} size={44} T={T}/>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontWeight:600,fontSize:14,color:T.txt}}>{p.name}</div>
+            <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:T.mu}}>{p.handle}</div>
+          </div>
+          {p.ratingGiven!=null&&<div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:12,color:t.color,fontWeight:700}}>{p.ratingGiven} pts</div>}
+        </div>)}
+    </div>
+  </div>;
+
+  return<div>
+    {/* Header row */}
+    <div style={{padding:"14px 16px 0",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+      <div>
+        <div style={{fontWeight:800,fontSize:18,color:T.txt,letterSpacing:"-.3px"}}>{myProfile.name}</div>
+        <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:AC,marginTop:2,fontWeight:600,letterSpacing:.8}}>UID #{myProfile.short_id||shortId(myProfile.id)}</div>
+      </div>
+      <button onClick={onSettings} style={{padding:"7px 14px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:10,color:T.txt,fontWeight:600,fontSize:13}}>⚙️ Settings</button>
+    </div>
+    <div style={{padding:"16px 16px 0"}}>
+      {/* Avatar + stats */}
+      <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:14}}>
+        <div style={{position:"relative",cursor:"pointer",flexShrink:0}} onClick={onEditPhoto}>
+          <div style={{width:88,height:88,borderRadius:"50%",padding:3,background:`linear-gradient(135deg,${t.color},${t.grad?.[1]||t.color}88)`,boxShadow:`0 0 0 1px ${T.bg},0 6px 20px ${t.color}40`}}>
+            <Ava p={myP} size={82} T={T}/>
+          </div>
+          <div style={{position:"absolute",bottom:0,right:0,width:26,height:26,borderRadius:"50%",background:`linear-gradient(135deg,${myProfile.color}dd,${myProfile.color}99)`,border:`2px solid ${T.bg}`,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:`0 2px 8px ${myProfile.color}50`}}><EditIcon/></div>
+        </div>
+        {/* Stats */}
+        <div style={{flex:1,display:"flex",gap:6}}>
+          <button onClick={()=>{sb.from("follows").select("follower_id").eq("following_id",myProfile.id).then(({data})=>{const ids=(data||[]).map(r=>r.follower_id);const list=(profiles||[]).filter(p=>ids.includes(p.id)).map(p=>({...p,score:pScore(p)}));setPeopleList({title:"Followers",people:list});});}} style={{flex:1,background:T.faint,borderRadius:13,padding:"11px 0",textAlign:"center",border:`1px solid ${T.b1}`,cursor:"pointer"}}>
+            <div style={{fontFamily:"'JetBrains Mono',monospace",fontWeight:800,fontSize:16,color:T.txt}}>{fmtCount(myProfile.followers_count||0)}</div>
+            <div style={{fontSize:10,color:T.mu,marginTop:2}}>Followers</div>
+          </button>
+          <button onClick={()=>{const list=(profiles||[]).filter(p=>following.includes(p.id)).map(p=>({...p,score:pScore(p)}));setPeopleList({title:"Following",people:list});}} style={{flex:1,background:T.faint,borderRadius:13,padding:"11px 0",textAlign:"center",border:`1px solid ${T.b1}`,cursor:"pointer"}}>
+            <div style={{fontFamily:"'JetBrains Mono',monospace",fontWeight:800,fontSize:16,color:T.txt}}>{fmtCount(myProfile.following_count||0)}</div>
+            <div style={{fontSize:10,color:T.mu,marginTop:2}}>Following</div>
+          </button>
+          <button onClick={()=>{
+            const cats2=getCats(myP);
+            const raters=(myP.ratings||[]).map(r=>{
+              const given=Math.round(cats2.reduce((s,c)=>s+(r[c.id]||0),0)/cats2.length);
+              const rp=(profiles||[]).find(p=>p.id===r.raterId);
+              return rp?{...rp,score:pScore(rp),ratingGiven:given}:{id:r.raterId,name:r.raterName||"?",handle:"",color:AC,ratingGiven:given};
+            });
+            setPeopleList({title:"Rated by",people:raters});
+          }} style={{flex:1,background:`linear-gradient(135deg,${t.color}20,${t.color}08)`,borderRadius:13,padding:"11px 0",textAlign:"center",border:`1.5px solid ${t.color}35`,cursor:"pointer",boxShadow:`0 2px 12px ${t.color}18`}}>
+            <div style={{fontFamily:"'JetBrains Mono',monospace",fontWeight:800,fontSize:16,color:t.color,textShadow:`0 0 10px ${t.color}60`}}>{sc!=null?fmtScore(sc):"—"}</div>
+            <div style={{fontSize:10,color:t.color,opacity:.8,marginTop:2}}>Score</div>
+          </button>
+        </div>
+      </div>
+      {myProfile.bio&&<p style={{color:T.mu,fontSize:13,lineHeight:1.55,marginBottom:10}}>{myProfile.bio}</p>}
+      {isBiz&&<div style={{marginBottom:8}}>
+        <span style={{fontSize:12,color:AC,fontWeight:700,background:`${AC}12`,border:`1px solid ${AC}28`,borderRadius:7,padding:"3px 11px"}}>
+          {BIZ_TYPES.find(b=>b.id===(myProfile.biz_type||(myProfile.links?.biz_type)||"general"))?.emoji||"💼"} {BIZ_TYPES.find(b=>b.id===(myProfile.biz_type||(myProfile.links?.biz_type)||"general"))?.label||"Business / Professional"}
+        </span>
+      </div>}
+      <div style={{marginBottom:12}}><TierBadge sc={sc} size="md" isBiz={isBiz}/></div>
+      {/* Action buttons */}
+      <div style={{display:"flex",gap:8,marginBottom:16}}>
+        <button onClick={onEditProfile} style={{flex:1,padding:"10px 0",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:11,color:T.txt,fontWeight:600,fontSize:12}}>✏️ Edit Profile</button>
+        <button onClick={onScoreCard} style={{flex:1,padding:"10px 0",background:`linear-gradient(135deg,${AC}22,${AC}0e)`,border:`1.5px solid ${AC}35`,borderRadius:11,color:AC,fontWeight:700,fontSize:12,boxShadow:`0 2px 10px ${AC}20`}}>Score Card</button>
+        <button onClick={shareMyProfile} style={{flex:1,padding:"10px 0",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:11,color:T.txt,fontWeight:600,fontSize:12,display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+          Share
+        </button>
+      </div>
+    </div>
+    <div style={{height:1,background:T.b1}}/>
+    <div style={{padding:"14px 16px"}}>
+      <div style={{fontWeight:600,fontSize:14,color:T.txt,marginBottom:12}}>{isBiz?"Review Breakdown":"Rating Breakdown"} <span style={{fontSize:12,color:T.mu,fontWeight:400}}>· {n} {isBiz?"review":"rating"}{n!==1?"s":""}</span></div>
+      {n>0?<>
+        <div style={{marginBottom:12}}>
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:5}}>
+            <span style={{fontSize:12,color:T.mu}}>Progress → {next?next.label:"Top tier 👑"}</span>
+            {next&&<span style={{fontSize:11,color:T.mu,fontFamily:"'JetBrains Mono',monospace"}}>{next.min.toLocaleString()} pts</span>}
+          </div>
+          <div style={{height:5,background:T.b1,borderRadius:99,overflow:"hidden"}}><div style={{width:`${pct*100}%`,height:"100%",background:t.color,borderRadius:99,opacity:.9,transition:"width .9s"}}/></div>
+        </div>
+        {cats.map(c=>{const v=cAvg(myP,c.id);return<div key={c.id} style={{marginBottom:9}}>
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}><span style={{fontSize:12,color:T.mu}}>{c.emoji} {c.label}</span><span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:T.txt,fontWeight:600}}>{v}/100</span></div>
+          {c.sub&&<div style={{fontSize:10,color:T.mu,opacity:.6,marginBottom:3}}>{c.sub}</div>}
+          <div style={{height:4,background:T.faint,borderRadius:99,overflow:"hidden"}}><div style={{width:`${v}%`,height:"100%",background:myProfile.color,borderRadius:99,opacity:.85}}/></div>
+        </div>;})}
+      </>:<div style={{borderRadius:16,overflow:"hidden",marginTop:4}}>
+        {isBiz
+          /* ── Business empty state: show review categories ── */
+          ? <div>
+              <div style={{background:`linear-gradient(135deg,${AC}12,${AC}06)`,border:`1px solid ${AC}22`,borderRadius:14,padding:"16px 16px 12px",marginBottom:12}}>
+                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+                  <TierBadge sc={null} size="sm" isBiz={true}/>
+                  <span style={{fontSize:12,color:T.mu}}>No reviews yet</span>
+                </div>
+                <div style={{fontWeight:700,fontSize:15,color:T.txt,marginBottom:4}}>Customers will review you on:</div>
+                <div style={{display:"flex",flexDirection:"column",gap:6,marginTop:8}}>
+                  {cats.map(c=><div key={c.id} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",background:T.card,border:`1px solid ${T.b1}`,borderRadius:10}}>
+                    <span style={{fontSize:18,flexShrink:0}}>{c.emoji}</span>
+                    <div style={{flex:1}}>
+                      <div style={{fontWeight:600,fontSize:13,color:T.txt}}>{c.label}</div>
+                      {c.sub&&<div style={{fontSize:11,color:T.mu,marginTop:1}}>{c.sub}</div>}
+                    </div>
+                    <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:T.mu}}>0–100</div>
+                  </div>)}
+                </div>
+              </div>
+              {[
+                {icon:"🔗",title:"Share your business link",num:"01"},
+                {icon:"✍️",title:"Get reviewed by customers",num:"02"},
+                {icon:"🏆",title:"Earn your tier",num:"03"},
+              ].map(s=><div key={s.num} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 12px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:10,marginBottom:6}}>
+                <div style={{width:30,height:30,borderRadius:"50%",background:`${AC}14`,border:`1px solid ${AC}28`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0}}>{s.icon}</div>
+                <div style={{flex:1,fontWeight:600,fontSize:13,color:T.txt}}>{s.title}</div>
+                <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:T.mu}}>{s.num}</span>
+              </div>)}
+            </div>
+          /* ── Personal empty state: ghost card ── */
+          : <><div style={{background:`linear-gradient(135deg,${t.grad[0]}44,${t.grad[1]}22)`,border:`1px solid ${t.color}30`,borderRadius:16,padding:"22px 18px",marginBottom:12,position:"relative",overflow:"hidden"}}>
+              <div style={{position:"absolute",right:-18,top:-18,fontSize:88,opacity:.07,lineHeight:1,pointerEvents:"none",userSelect:"none"}}>👻</div>
+              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+                <TierBadge sc={null} size="sm" isBiz={isBiz}/>
+                <span style={{fontSize:12,color:T.mu}}>Starting tier</span>
+              </div>
+              <div style={{fontWeight:800,fontSize:20,color:T.txt,letterSpacing:"-.4px",marginBottom:4}}>You're a Ghost 👻</div>
+              <div style={{fontSize:12,color:T.mu,lineHeight:1.6}}>No one can see your score yet. Get your first rating to unlock your tier and start climbing.</div>
+            </div>
+            {[
+              {icon:"🔗",title:"Share your profile",desc:"Send your link or QR to someone you know",n:"01"},
+              {icon:"⭐",title:"Get rated",desc:"They rate you across 6 categories",n:"02"},
+              {icon:"🏆",title:"Earn your tier",desc:"Your score goes live — climb from Ghost to HighEnough",n:"03"},
+            ].map(s=><div key={s.n} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 14px",background:T.card,border:`1px solid ${T.b1}`,borderRadius:12,marginBottom:7}}>
+              <div style={{width:34,height:34,borderRadius:"50%",background:`${AC}18`,border:`1px solid ${AC}30`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>{s.icon}</div>
+              <div style={{flex:1,minWidth:0}}><div style={{fontWeight:700,fontSize:13,color:T.txt}}>{s.title}</div><div style={{fontSize:11,color:T.mu,marginTop:1}}>{s.desc}</div></div>
+              <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:T.mu,opacity:.5,flexShrink:0}}>{s.n}</div>
+            </div>)}</> }
+      </div>}
+    </div>
+  </div>;
+}
+/* ── CHANGE EMAIL & PASSWORD ── */
+function ChangeEmailSection({T,inp}){
+  const [open,setOpen]=useState(false);
+  const [newEmail,setNewEmail]=useState("");
+  const [msg,setMsg]=useState({text:"",error:false});
+  const [loading,setLoading]=useState(false);
+  async function change(){
+    if(!newEmail.trim()||!newEmail.includes("@"))return setMsg({text:"Enter a valid email address",error:true});
+    setLoading(true);setMsg({text:"",error:false});
+    try{
+      // Refresh session first to ensure token is valid
+      await sb.auth.refreshSession();
+      const {error}=await sb.auth.updateUser({email:newEmail.trim()});
+      if(error)setMsg({text:error.message,error:true});
+      else setMsg({text:"✅ Confirmation sent to new email. Click the link there to confirm.",error:false});
+    }catch(e){setMsg({text:e.message||"Error changing email",error:true});}
+    finally{setLoading(false);}
+  }
+  return<div style={{marginBottom:10}}>
+    {!open?<button onClick={()=>setOpen(true)} style={{width:"100%",padding:"11px 13px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:11,color:T.txt,fontWeight:500,fontSize:13,textAlign:"left",display:"flex",alignItems:"center",justifyContent:"space-between"}}>✉️ Change Email <span style={{color:T.mu,fontSize:18}}>›</span></button>
+    :<div style={{background:T.faint,border:`1px solid ${T.b1}`,borderRadius:11,padding:"13px 14px"}}>
+      <div style={{fontWeight:600,fontSize:13,color:T.txt,marginBottom:10}}>Change Email</div>
+      <input value={newEmail} onChange={e=>setNewEmail(e.target.value)} placeholder="New email address" style={{...inp,marginBottom:8}} type="email"/>
+      {msg.text&&<div style={{marginBottom:8,padding:"8px 12px",borderRadius:8,fontSize:12,background:msg.error?"#a0303018":"#10a37f18",border:`1px solid ${msg.error?"#a0303040":"#10a37f40"}`,color:msg.error?"#d06060":"#10a37f"}}>{msg.text}</div>}
+      <div style={{display:"flex",gap:7}}>
+        <button onClick={change} disabled={loading} style={{flex:1,padding:"9px 0",background:`linear-gradient(135deg,${AC}e0,${AC}90)`,borderRadius:9,color:"#fff",fontWeight:700,fontSize:13}}>{loading?"Sending…":"Change Email"}</button>
+        <button onClick={()=>{setOpen(false);setMsg({text:"",error:false});}} style={{flex:1,padding:"9px 0",background:"transparent",border:`1px solid ${T.b1}`,borderRadius:9,color:T.mu,fontSize:13}}>Cancel</button>
+      </div>
+    </div>}
+  </div>;
+}
+
+function ChangePasswordSection({T,inp}){
+  const [open,setOpen]=useState(false);
+  const [np,setNp]=useState("");
+  const [np2,setNp2]=useState("");
+  const [msg,setMsg]=useState({text:"",error:false});
+  const [loading,setLoading]=useState(false);
+  // Detect if this is a Google-only account (no password set yet)
+  const [isGoogleOnly,setIsGoogleOnly]=useState(false);
+  useEffect(()=>{
+    sb.auth.getUser().then(({data:{user}})=>{
+      if(!user)return;
+      const providers=(user.app_metadata?.providers)||[];
+      const hasPassword=providers.includes("email")||user.identities?.some(i=>i.provider==="email");
+      setIsGoogleOnly(!hasPassword&&providers.includes("google"));
+    });
+  },[]);
+  async function change(){
+    if(np.length<6)return setMsg({text:"Password must be at least 6 characters",error:true});
+    if(np!==np2)return setMsg({text:"Passwords don't match",error:true});
+    setLoading(true);setMsg({text:"",error:false});
+    try{
+      const {error}=await sb.auth.updateUser({password:np});
+      if(error)setMsg({text:error.message,error:true});
+      else{
+        setMsg({text:isGoogleOnly?"✅ Password created! You can now login with email + password.":"✅ Password changed successfully!",error:false});
+        setNp("");setNp2("");
+        setIsGoogleOnly(false);
+        setTimeout(()=>setOpen(false),2000);
+      }
+    }catch(e){setMsg({text:e.message||"Error updating password",error:true});}
+    finally{setLoading(false);}
+  }
+  const label=isGoogleOnly?"🔑 Set a Password":"🔑 Change Password";
+  const desc=isGoogleOnly?"Create a password so you can login with email + password on any device":null;
+  return<div style={{marginBottom:14}}>
+    {!open
+      ?<button onClick={()=>setOpen(true)} style={{width:"100%",padding:"11px 13px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:11,color:T.txt,fontWeight:500,fontSize:13,textAlign:"left",display:"flex",flexDirection:"column",gap:3}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%"}}>{label}<span style={{color:T.mu,fontSize:18}}>›</span></div>
+          {desc&&<div style={{fontSize:11,color:T.mu,fontWeight:400}}>{desc}</div>}
+        </button>
+      :<div style={{background:T.faint,border:`1px solid ${T.b1}`,borderRadius:11,padding:"13px 14px"}}>
+        <div style={{fontWeight:600,fontSize:13,color:T.txt,marginBottom:4}}>{label}</div>
+        {isGoogleOnly&&<div style={{fontSize:11,color:T.mu,marginBottom:10,lineHeight:1.5}}>Your account uses Google Sign-In. Add a password so you can also log in with your email and password.</div>}
+        <input value={np} onChange={e=>setNp(e.target.value)} placeholder="New password (min 6 chars)" style={{...inp,marginBottom:8}} type="password"/>
+        <input value={np2} onChange={e=>setNp2(e.target.value)} placeholder="Confirm new password" style={{...inp,marginBottom:8}} type="password"/>
+        {msg.text&&<div style={{marginBottom:8,padding:"8px 12px",borderRadius:8,fontSize:12,background:msg.error?"#a0303018":"#10a37f18",border:`1px solid ${msg.error?"#a0303040":"#10a37f40"}`,color:msg.error?"#d06060":"#10a37f"}}>{msg.text}</div>}
+        <div style={{display:"flex",gap:7}}>
+          <button onClick={change} disabled={loading} style={{flex:1,padding:"9px 0",background:`linear-gradient(135deg,${AC}e0,${AC}90)`,borderRadius:9,color:"#fff",fontWeight:700,fontSize:13}}>{loading?"Saving…":isGoogleOnly?"Set Password":"Change Password"}</button>
+          <button onClick={()=>{setOpen(false);setMsg({text:"",error:false});setNp("");setNp2("");}} style={{flex:1,padding:"9px 0",background:"transparent",border:`1px solid ${T.b1}`,borderRadius:9,color:T.mu,fontSize:13}}>Cancel</button>
+        </div>
+      </div>}
+  </div>;
+}
+
+/* ── PRIVACY POLICY ── */
+function PrivacyPolicy({T,onClose}){
+  return<Overlay onBg={onClose} T={T} wide>
+    <div style={{fontWeight:700,fontSize:18,color:T.txt,marginBottom:4}}>Privacy Policy</div>
+    <div style={{fontSize:11,color:T.mu,marginBottom:16}}>Last updated: April 2025</div>
+    <div style={{maxHeight:"62vh",overflowY:"auto",display:"flex",flexDirection:"column",gap:14,fontSize:13,lineHeight:1.75,color:T.mu}}>
+      {[
+        {h:"1. Who We Are",b:"HighEnough (highenough.in) is a social reputation app that lets users rate each other across categories and earn tier rankings. We are an independent product based in India."},
+        {h:"2. Data We Collect",b:"We collect your email address (required for login), display name, profile photo (optional), bio, interests, and social links you provide. We also store ratings you give and receive, followers/following relationships, messages you send, and notifications you receive."},
+        {h:"3. How We Use Your Data",b:"Your data is used solely to operate the HighEnough app — to display your profile and tier, show ratings, enable messaging and follows, and deliver notifications. We do not sell, trade, or share your data with third parties for advertising."},
+        {h:"4. Authentication",b:"We use Supabase (supabase.com) for authentication. You may sign in via email/password or Google OAuth. Your password is never stored by us — it is handled entirely by Supabase's secure auth system. Google Sign-In is governed by Google's privacy policy."},
+        {h:"5. User-Generated Content",b:"Ratings, messages, and profile content you create are stored in our Supabase database. Ratings are visible to other users of the platform. Messages are only visible to participants of that conversation."},
+        {h:"6. Data Storage & Security",b:"All data is stored on Supabase infrastructure with industry-standard encryption at rest and in transit (TLS). We use Row Level Security (RLS) policies to ensure users can only access data they are authorised to see."},
+        {h:"7. Local Storage",b:"We store your session token (managed by Supabase), dark/light mode preference, and group chat data in your browser's localStorage. We do not use third-party tracking cookies."},
+        {h:"8. Your Rights",b:"You can delete your account at any time from Settings → Account → Delete Account. This permanently and irreversibly removes your profile, ratings, messages, follows, and all associated data from our database."},
+        {h:"9. Data Retention",b:"If you delete your account, your data is removed immediately from our active database. Supabase may retain authentication records for a short period for abuse prevention. We do not retain any personal data beyond what is necessary to operate the service."},
+        {h:"10. Children",b:"HighEnough is not intended for users under the age of 13. If we become aware that a child under 13 has created an account, we will delete it promptly."},
+        {h:"11. Changes to This Policy",b:"We may update this privacy policy. Any significant changes will be communicated via a notice in the app. Your continued use of the app after changes constitutes acceptance."},
+        {h:"12. Contact",b:"For privacy-related questions or data deletion requests, contact us at: privacy@highenough.in or through the app's support channel."},
+      ].map(({h,b})=><div key={h}>
+        <div style={{fontWeight:700,color:T.txt,marginBottom:4,fontSize:13}}>{h}</div>
+        <div>{b}</div>
+      </div>)}
+    </div>
+    <button onClick={onClose} style={{marginTop:18,width:"100%",padding:"12px 0",background:`linear-gradient(135deg,${AC}e0,${AC}90)`,borderRadius:11,color:"#fff",fontWeight:700,fontSize:14}}>Close</button>
+  </Overlay>;
+}
+
+/* ── SETTINGS MODAL ── */
+/* ── SETTINGS PROFILE URL — proper component so useState is valid ── */
+function SettingsProfileUrl({me,T}){
+  const profileUrl=getProfileUrl(me);
+  const [copied,setCopied]=useState(false);
+  function copy(){try{navigator.clipboard?.writeText(profileUrl);}catch{}setCopied(true);setTimeout(()=>setCopied(false),2000);}
+  return<div style={{padding:"11px 13px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:11,marginBottom:11}}>
+    <div style={{fontSize:11,color:T.mu,marginBottom:6,textTransform:"uppercase",letterSpacing:.8,fontWeight:600}}>Your Profile Link</div>
+    <div style={{display:"flex",alignItems:"center",gap:8}}>
+      <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:AC,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{profileUrl.replace("https://","")}</span>
+      <button onClick={copy} style={{background:`${AC}18`,border:`1px solid ${AC}28`,borderRadius:7,padding:"5px 11px",color:AC,fontWeight:700,fontSize:11,flexShrink:0,whiteSpace:"nowrap"}}>{copied?"✓ Copied":"Copy"}</button>
+    </div>
+    <div style={{fontSize:10,color:T.mu,marginTop:5,lineHeight:1.4}}>Share this link — anyone can view your profile.</div>
+  </div>;
+}
+
+/* ── EDIT PROFILE MODAL (profile info only) ── */
+
 function EditProfileModal({me,prefs,T,onClose,onSave,onEditPhoto,onQR}){
   const [nm,setNm]=useState(me.name);
   const [hd,setHd]=useState(me.handle);
@@ -2285,7 +5181,6 @@ function App(){
     }catch(e){console.warn("Background messages failed:",e);}
 
     // ── Groups ─────────────────────────────────────────────────────────
-    loadGroupsFromSupabase(uid);
 
     // ── Realtime subscriptions ─────────────────────────────────────────
     // Wrapped in try/catch — WebSocket unavailability never blocks anything
@@ -2375,617 +5270,4 @@ function App(){
         if(pr.data&&rr.data&&!clearingRatingsRef.current){
           const delSet=new Set((dr.data||[]).map(d=>d.auth_id));
           const activeR=(rr.data||[]).filter(r=>!delSet.has(r.rater_id));
-          const updated=pr.data.filter(p=>!delSet.has(p.id)).map(p=>({...p,account_type:p.account_type||"personal",ratings:activeR.filter(r=>r.target_id===p.id).map(mapRating)}));
-          setProfiles(updated);
-          setProfile(prev=>{if(!prev)return prev;const f=updated.find(p=>p.id===prev.id);return f?{...f,followers_count:prev.followers_count,following_count:prev.following_count}:prev;});
-        }
-      }catch(e){console.warn("Poll error:",e);}
-    },30000);
-  }
-
-  // handleRefresh — in-app data refresh. Never reloads the page.
-  // Fetches fresh profiles, ratings, follows, messages without losing auth state.
-  const [refreshing,setRefreshing]=useState(false);
-  async function handleRefresh(){
-    if(!profile||refreshing)return;
-    if(clearingRatingsRef.current)return; // don't refresh during category clear
-    setRefreshing(true);
-    try{
-      const mapR=r=>({raterId:r.rater_id,raterName:r.rater_name||"",vibe:r.vibe,humor:r.humor,kindness:r.kindness,rizz:r.rizz,loyalty:r.loyalty,drip:r.drip,ts:new Date(r.updated_at).getTime()});
-      const [profRes,ratRes,followRes,myFollowersRes,blockRes,notifRes,delRes]=await Promise.all([
-        sb.from("profiles").select("*"),
-        sb.from("ratings").select("*"),
-        sb.from("follows").select("following_id").eq("follower_id",profile.id),
-        sb.from("follows").select("follower_id").eq("following_id",profile.id),
-        sb.from("blocks").select("blocked_id").eq("blocker_id",profile.id),
-        sb.from("notifications").select("*").eq("target_id",profile.id).order("created_at",{ascending:false}).limit(60),
-        sb.from("deleted_accounts").select("auth_id"),
-      ]);
-      if(clearingRatingsRef.current){setRefreshing(false);return;} // re-check after awaits
-      const delSet=new Set((delRes.data||[]).map(d=>d.auth_id));
-      const allRatings=ratRes.data||[];
-      const activeRatings=allRatings.filter(r=>!delSet.has(r.rater_id));
-      if(profRes.data){
-        const updatedProfiles=profRes.data.filter(p=>!delSet.has(p.id)).map(p=>({...p,account_type:p.account_type||"personal",ratings:activeRatings.filter(r=>r.target_id===p.id).map(mapR)}));
-        setProfiles(updatedProfiles);
-        // Sync profile state with fresh data (preserve follow counts)
-        const myFresh=updatedProfiles.find(p=>p.id===profile.id);
-        const followingIds=(followRes.data||[]).map(r=>r.following_id);
-        const followerIds=(myFollowersRes.data||[]).map(r=>r.follower_id);
-        if(myFresh)setProfile({...myFresh,followers_count:followerIds.length,following_count:followingIds.length});
-        setFollowing(followingIds);
-      }else{
-        const followingIds=(followRes.data||[]).map(r=>r.following_id);
-        const followerIds=(myFollowersRes.data||[]).map(r=>r.follower_id);
-        setFollowing(followingIds);
-        setProfile(prev=>({...prev,followers_count:followerIds.length,following_count:followingIds.length}));
-      }
-      setBlocked((blockRes.data||[]).map(r=>r.blocked_id));
-      if(notifRes.data)setNotifs(notifRes.data.map(n=>({type:n.type,actorId:n.actor_id,text:n.text,ts:new Date(n.created_at).getTime(),read:n.read})));
-      pop("Refreshed ✓");
-    }catch(e){console.error("handleRefresh error:",e);}
-    finally{setRefreshing(false);}
-  }
-
-  function handleAdminTap(){
-    const n=adminTaps+1;setAdminTaps(n);clearTimeout(adminTimer.current);
-    if(n>=5){setShowAdminLock(true);setAdminTaps(0);}
-    else adminTimer.current=setTimeout(()=>setAdminTaps(0),2500);
-  }
-
-  // handleAuthed — called immediately after signInWithPassword succeeds.
-  // Sets bootingUserIdRef so SIGNED_IN event knows this user is already being loaded.
-  async function handleAuthed(user){
-    if(!user?.id)return;
-    if(bootingUserIdRef.current===user.id)return; // already booting this user
-    profileLoadingRef.current=true;
-    bootingUserIdRef.current=user.id;
-    setAuthError("");
-    setAuthUser(user);
-    loadProfile(user.id, pendingDlRef.current);
-  }
-  async function handleProfileCreated(p){
-    setProfile(p);
-    await loadAppData(p);
-    pop("Welcome to HighEnough ✦");
-  }
-  async function handleLogout(){
-    localStorage.setItem("he_intent_signout","true");
-    try{window.HE_PREFETCHED_SESSION=null;}catch{}
-    try{await sb.auth.signOut();}catch{}
-  }
-
-
-
-
-
-  async function handleDeleteAccount(){
-    if(!profile)return;
-    const uid=profile.id;
-    const userEmail=profile.email||authUser?.email||"";
-    pop("Deleting account…");
-    try{
-      await sb.from("deleted_accounts").insert({auth_id:uid,email:userEmail,deleted_at:new Date().toISOString()});
-      await Promise.all([
-        sb.from("ratings").delete().eq("rater_id",uid),
-        sb.from("ratings").delete().eq("target_id",uid),
-        sb.from("follows").delete().eq("follower_id",uid),
-        sb.from("follows").delete().eq("following_id",uid),
-        sb.from("messages").delete().eq("sender_id",uid),
-        sb.from("messages").delete().eq("receiver_id",uid),
-        sb.from("notifications").delete().eq("target_id",uid),
-        sb.from("notifications").delete().eq("actor_id",uid),
-        sb.from("blocks").delete().eq("blocker_id",uid),
-        sb.from("blocks").delete().eq("blocked_id",uid),
-        sb.from("reports").delete().eq("reporter_id",uid),
-      ]);
-      await sb.from("profiles").delete().eq("id",uid);
-      // Fully delete the Supabase auth user via Edge Function
-      // so the same email can sign up fresh with no friction
-      try{
-        const {data:sessionData}=await sb.auth.getSession();
-        const token=sessionData?.session?.access_token;
-        await fetch("https://jwtopqlofxtuwevhmbqo.supabase.co/functions/v1/delete-auth-user",{
-          method:"POST",
-          headers:{"Content-Type":"application/json","Authorization":`Bearer ${token}`},
-          body:JSON.stringify({auth_id:uid})
-        });
-      }catch(e){console.warn("Edge function delete-auth-user failed (non-critical):",e);}
-    }catch(e){console.error("Delete cleanup error:",e);}
-    // Mark intentional — lets SIGNED_OUT → clearSession redirect to login cleanly
-    localStorage.setItem("he_intent_signout","true");
-    try{window.HE_PREFETCHED_SESSION=null;}catch{}
-    try{await sb.auth.signOut();}catch{}
-  }
-
-  async function handleSaveProfile(u){
-    // Strip internal-only flags — never send to DB
-    const {_clearRatings,...safeU}=u;
-    const updated={...profile,...safeU};
-
-    // If category changed: block realtime FIRST, then delete — order matters
-    if(_clearRatings){
-      clearingRatingsRef.current=true;
-      try{
-        // Attempt 1: RPC function (bypasses RLS)
-        const {error:rpcErr}=await sb.rpc("delete_ratings_for_target",{p_target_id:updated.id});
-        if(!rpcErr){
-          console.log("Ratings cleared via RPC");
-        }else{
-          console.warn("RPC not available, trying direct delete:",rpcErr.message);
-          // Attempt 2: direct DELETE by target_id
-          const {error:delErr}=await sb.from("ratings").delete().eq("target_id",updated.id);
-          if(delErr){
-            console.warn("Direct delete failed:",delErr.message);
-            // Attempt 3: fetch rows then delete each by primary key (rater_id+target_id)
-            const {data:rows}=await sb.from("ratings").select("rater_id").eq("target_id",updated.id);
-            if(rows&&rows.length){
-              await Promise.all(rows.map(r=>
-                sb.from("ratings").delete().eq("rater_id",r.rater_id).eq("target_id",updated.id)
-              ));
-            }
-          }
-        }
-      }catch(e){console.error("Clear ratings error:",e);}
-    }
-
-    // Core fields that always exist in profiles table
-    const coreBase={
-      id:updated.id,
-      name:updated.name,
-      handle:updated.handle,
-      bio:updated.bio||"",
-      color:updated.color,
-      age:updated.age||null,
-      photo:updated.photo||null,
-      interests:updated.interests||[],
-      links:{...(updated.links||{})},
-      email:updated.email||"",
-      short_id:updated.short_id,
-      account_type:updated.account_type||"personal",
-      followers_count:updated.followers_count||0,
-      following_count:updated.following_count||0,
-      created_at:updated.created_at||new Date().toISOString()
-    };
-
-    // Try each variant from most to least featured, stopping on success
-    const variants=[
-      {...coreBase, biz_type:updated.account_type==="business"?(updated.biz_type||"general"):null, dob:updated.dob||null},
-      {...coreBase, biz_type:updated.account_type==="business"?(updated.biz_type||"general"):null},
-      {...coreBase},
-    ];
-
-    let error=null;
-    for(const v of variants){
-      ({error}=await sb.from("profiles").upsert(v,{onConflict:"id"}));
-      if(!error)break;
-      const msg=error?.message||"";
-      if(!msg.includes("column")&&!msg.includes("biz_type")&&!msg.includes("dob"))break;
-    }
-
-    if(!error){
-      if(_clearRatings){
-        const freshProfile={...updated,ratings:[]};
-        setProfiles(prev=>prev.map(p=>p.id===updated.id?{...p,...updated,ratings:[]}:p));
-        setProfile(freshProfile);
-        pop("Category changed — reviews cleared");
-        // Hold block for 35s — longer than the 30s poll interval — to prevent any re-fetch from restoring old data
-        setTimeout(()=>{clearingRatingsRef.current=false;},35000);
-      }else{
-        setProfiles(prev=>prev.map(p=>p.id===updated.id?{...p,...updated}:p));
-        setProfile(updated);
-        pop("Profile saved");
-      }
-    }else{
-      // Release the block on error too
-      if(_clearRatings)clearingRatingsRef.current=false;
-      console.error("Save error:",error);
-      pop("Could not save. Try again.");
-    }
-  }
-
-  async function handleSavePhoto(photoData){
-    if(!photoData){await handleSaveProfile({photo:null});setPhoto(false);pop("Photo removed");return;}
-    // Cropper already outputs 400px JPEG at 0.92. Pass through directly —
-    // re-compressing caused quality loss and a decode+encode delay on first save.
-    await handleSaveProfile({photo:photoData});
-    setPhoto(false);pop("Photo updated");
-  }
-  function handleSavePrefs(p){setPrefs(p);setPref(p);}
-
-  function handleRate(p,ex){if(blocked.includes(p.id))return pop("You've blocked this user");setRateT({profile:p,existing:ex});}
-
-  async function handleSubmit(tid,sc2){
-    const isEdit=!!rateT?.existing;
-    try{
-      const {error}=await sb.from("ratings").upsert(
-        {rater_id:sc2.raterId,target_id:tid,rater_name:profile.name,
-         vibe:sc2.vibe,humor:sc2.humor,kindness:sc2.kindness,
-         rizz:sc2.rizz,loyalty:sc2.loyalty,drip:sc2.drip,
-         updated_at:new Date().toISOString()},
-        {onConflict:"rater_id,target_id"}
-      );
-      if(error){console.error("Rating save error:",error);pop("Failed to save. Try again.");return;}
-      const ts=Date.now();
-      const newR={raterId:sc2.raterId,raterName:profile.name,vibe:sc2.vibe,humor:sc2.humor,
-                  kindness:sc2.kindness,rizz:sc2.rizz,loyalty:sc2.loyalty,drip:sc2.drip,ts};
-      setProfiles(prev=>prev.map(p=>{
-        if(p.id!==tid)return p;
-        const ex=p.ratings?.find(r=>r.raterId===sc2.raterId);
-        return{...p,ratings:ex?p.ratings.map(r=>r.raterId===sc2.raterId?newR:r):[...(p.ratings||[]),newR]};
-      }));
-      // Also update viewT if that profile modal is currently open
-      setViewT(prev=>{
-        if(!prev||prev.id!==tid)return prev;
-        const ex=prev.ratings?.find(r=>r.raterId===sc2.raterId);
-        return{...prev,ratings:ex?prev.ratings.map(r=>r.raterId===sc2.raterId?newR:r):[...(prev.ratings||[]),newR]};
-      });
-      const cats=getCats(rateT?.profile||{});
-      // scoreGiven = this rater's average across categories (per-rater contribution)
-      const scoreGiven=Math.round(cats.reduce((s,c)=>s+(sc2[c.id]||0),0)/cats.length);
-      await sb.from("notifications").insert({
-        target_id:tid,actor_id:profile.id,actor_name:profile.name,
-        type:isEdit?"edit":"rating",text:isEdit?"updated their rating of you":"rated you",
-        score:scoreGiven,read:false,created_at:new Date().toISOString()
-      });
-      setRateT(null);
-      pop(isEdit?"Rating updated ✓":"Rating submitted ✓");
-    }catch(e){
-      console.error("handleSubmit error:",e);
-      pop("Something went wrong. Try again.");
-    }
-  }
-
-  async function handleFollow(uid){
-    if(following.includes(uid))return;
-    const targetCount=(profiles.find(p=>p.id===uid)?.followers_count||0)+1;
-    const myCount=(profile.following_count||0)+1;
-    setFollowing(prev=>[...prev,uid]);
-    setProfiles(prev=>prev.map(p=>p.id===uid?{...p,followers_count:targetCount}:p));
-    setProfile(prev=>({...prev,following_count:myCount}));
-    await sb.from("follows").upsert({follower_id:profile.id,following_id:uid});
-    await Promise.all([
-      sb.from("profiles").update({followers_count:targetCount}).eq("id",uid),
-      sb.from("profiles").update({following_count:myCount}).eq("id",profile.id),
-    ]);
-    await sb.from("notifications").insert({target_id:uid,actor_id:profile.id,actor_name:profile.name,type:"follow",text:"started following you",read:false,created_at:new Date().toISOString()});
-  }
-
-  async function handleUnfollow(uid){
-    const targetCount=Math.max(0,(profiles.find(p=>p.id===uid)?.followers_count||1)-1);
-    const myCount=Math.max(0,(profile.following_count||1)-1);
-    setFollowing(prev=>prev.filter(x=>x!==uid));
-    setProfiles(prev=>prev.map(p=>p.id===uid?{...p,followers_count:targetCount}:p));
-    setProfile(prev=>({...prev,following_count:myCount}));
-    await sb.from("follows").delete().eq("follower_id",profile.id).eq("following_id",uid);
-    await Promise.all([
-      sb.from("profiles").update({followers_count:targetCount}).eq("id",uid),
-      sb.from("profiles").update({following_count:myCount}).eq("id",profile.id),
-    ]);
-  }
-
-  function handleMsg(other){
-    if(!other||!other.id)return;
-    const cid=[profile.id,other.id].sort().join("_");
-    const ex=convs.find(c=>c.id===cid)||{id:cid,oid:other.id,messages:[]};
-    const resolvedOther=profiles.find(p=>p.id===other.id)||other;
-    setActiveChat({...ex,other:resolvedOther});
-  }
-
-  async function handleSend(cid,txt){
-    const otherId=convs.find(c=>c.id===cid)?.oid||activeChat?.oid;
-    const tempId=`temp_${Date.now()}`;
-    const msg={sid:profile.id,txt,ts:Date.now(),read:false,status:"sent",dbId:tempId};
-    setActiveChat(prev=>({...prev,messages:[...(prev.messages||[]),msg]}));
-    setConvs(prev=>{const ex=prev.find(c=>c.id===cid);if(ex)return prev.map(c=>c.id===cid?{...c,messages:[...c.messages,msg]}:c);return[...prev,{id:cid,oid:otherId,messages:[msg]}];});
-    const {data}=await sb.from("messages").insert({sender_id:profile.id,receiver_id:otherId,text:txt,read:false,status:"sent",created_at:new Date().toISOString()}).select().single();
-    if(data){
-      // Update temp message with real dbId and status=delivered
-      const realMsg={...msg,dbId:data.id,status:"delivered"};
-      setActiveChat(prev=>({...prev,messages:(prev.messages||[]).map(m=>m.dbId===tempId?realMsg:m)}));
-      setConvs(prev=>prev.map(c=>c.id===cid?{...c,messages:c.messages.map(m=>m.dbId===tempId?realMsg:m)}:c));
-    }
-  }
-
-  async function handleMarkRead(cid,otherId){
-    if(!cid)return;
-    // Resolve otherId from convs state if not passed (prevents stuck badge on reload)
-    const resolvedOtherId=otherId||convs.find(c=>c.id===cid)?.oid;
-    const markRead=msgs=>msgs.map(m=>m.sid===profile.id?m:{...m,read:true,status:"seen"});
-    setConvs(prev=>prev.map(c=>c.id===cid?{...c,messages:markRead(c.messages||[])}:c));
-    setActiveChat(prev=>prev&&prev.id===cid?{...prev,messages:markRead(prev.messages||[])}:prev);
-    if(!resolvedOtherId)return;
-    await sb.from("messages")
-      .update({read:true,status:"seen"})
-      .eq("sender_id",resolvedOtherId)
-      .eq("receiver_id",profile.id)
-      .eq("read",false);
-  }
-
-  async function handleBlock(uid){setBlocked(prev=>[...prev,uid]);await sb.from("blocks").upsert({blocker_id:profile.id,blocked_id:uid});pop("User blocked");}
-  async function handleUnblock(uid){setBlocked(prev=>prev.filter(x=>x!==uid));await sb.from("blocks").delete().eq("blocker_id",profile.id).eq("blocked_id",uid);pop("Unblocked");}
-  async function handleReport(targetId,reasonId,alsoBlock){
-    setReports(prev=>[{targetId,reasonId,ts:Date.now(),reporterId:profile.id},...prev]);
-    await sb.from("reports").insert({reporter_id:profile.id,target_id:targetId,reason:reasonId,created_at:new Date().toISOString()});
-    if(alsoBlock)handleBlock(targetId);
-  }
-  async function handleMarkNotif(idx){
-    if(idx==="all"){
-      setNotifs(prev=>prev.map(n=>({...n,read:true})));
-      await sb.from("notifications").update({read:true}).eq("target_id",profile.id).eq("read",false);
-    } else {
-      setNotifs(prev=>prev.map((n,i)=>i===idx?{...n,read:true}:n));
-    }
-  }
-  async function handleAdminDeleteProfile(id){
-    const target=profiles.find(p=>p.id===id);
-    try{
-      // Blacklist so they can never log back in
-      await sb.from("deleted_accounts").insert({auth_id:id,email:target?.email||"",deleted_at:new Date().toISOString()});
-      await Promise.all([
-        sb.from("ratings").delete().eq("rater_id",id),
-        sb.from("ratings").delete().eq("target_id",id),
-        sb.from("follows").delete().eq("follower_id",id),
-        sb.from("follows").delete().eq("following_id",id),
-        sb.from("messages").delete().eq("sender_id",id),
-        sb.from("messages").delete().eq("receiver_id",id),
-        sb.from("notifications").delete().eq("target_id",id),
-        sb.from("notifications").delete().eq("actor_id",id),
-        sb.from("blocks").delete().eq("blocker_id",id),
-        sb.from("blocks").delete().eq("blocked_id",id),
-      ]);
-      await sb.from("profiles").delete().eq("id",id);
-    }catch(e){console.error("Admin delete error:",e);}
-    setProfiles(prev=>prev.filter(p=>p.id!==id));
-    pop("Account permanently deleted ✓");
-  }
-  async function handleAdminClearRatings(id){await sb.from("ratings").delete().eq("target_id",id);setProfiles(prev=>prev.map(p=>p.id===id?{...p,ratings:[]}:p));pop("Ratings cleared");}
-  function handleExport(type){const data=type==="all"?{profiles,reports}:type==="profiles"?{profiles}:{reports};const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`highenough_${type}_${Date.now()}.json`;a.click();pop("Exported ✓");}
-
-  async function handleClearChat(cid){
-    const otherId=cid.split("_").find(x=>x!==profile.id);
-    await sb.from("messages").delete().or(`and(sender_id.eq.${profile.id},receiver_id.eq.${otherId}),and(sender_id.eq.${otherId},receiver_id.eq.${profile.id})`);
-    setConvs(prev=>prev.map(c=>c.id===cid?{...c,messages:[]}:c));
-    setActiveChat(null);pop("Chat cleared");
-  }
-  async function handleDeleteConv(cid){await handleClearChat(cid);setConvs(prev=>prev.filter(c=>c.id!==cid));pop("Conversation deleted");}
-
-  // Install prompt state — only shown when browser has a capturable install event
-  // AND app is not already running as installed standalone PWA
-  const alreadyInstalled=window.matchMedia('(display-mode: standalone)').matches||
-                          window.navigator.standalone===true;
-  const [canInstall,setCanInstall]=useState(false);
-  useEffect(()=>{
-    if(alreadyInstalled)return; // never show install button if already installed
-    const onReady=()=>setCanInstall(true);
-    const onGone=()=>setCanInstall(false);
-    window.addEventListener('he-install-ready',onReady);
-    window.addEventListener('he-installed',onGone);
-    return()=>{window.removeEventListener('he-install-ready',onReady);window.removeEventListener('he-installed',onGone);};
-  },[]);
-  async function handleInstall(){
-    if(window.hePromptInstall){
-      setCanInstall(false); // optimistic hide
-      await window.hePromptInstall();
-    }
-  }
-
-  useEffect(()=>{document.body.style.background=T.bg;document.body.style.color=T.txt;},[T.bg,T.txt]);
-
-  // Keep dataReadyRef in sync with dataReady state
-  useEffect(()=>{dataReadyRef.current=dataReady;},[dataReady]);
-
-  // Dismiss splash once auth resolved
-  useEffect(()=>{
-    if(!authLoading){
-      const s=document.getElementById('splash');
-      if(s){s.style.transition='opacity .2s';s.style.opacity='0';setTimeout(()=>s.remove(),200);}
-    }
-  },[authLoading]);
-
-  // Safety: if authUser is set but profile never loads (DB error), unblock after 12s
-  useEffect(()=>{
-    if(!authUser||profileFetched||profile)return;
-    const t=setTimeout(()=>{setProfileFetched(true);},12000);
-    return()=>clearTimeout(t);
-  },[authUser,profileFetched,profile]);
-
-  // ── RENDER ROUTING ────────────────────────────────────────────────────────
-  // 1. Auth still resolving — splash is visible, render nothing underneath
-  if(authLoading)return null;
-
-  // 2. Pre-boot found a valid session but onAuthStateChange hasn't fired yet.
-  // Only show spinner if session is genuinely still pending (not cleared by logout).
-  if(!authUser&&window.HE_PREFETCHED_SESSION){
-    return<div style={{minHeight:"100vh",background:"#09090f",display:"flex",alignItems:"center",justifyContent:"center"}}>
-      <div style={{width:22,height:22,border:"2.5px solid #1c1c2c",borderTopColor:"#7b72e9",borderRadius:"50%",animation:"spin .55s linear infinite"}}/>
-    </div>;
-  }
-
-  // 3. No authenticated user — show login or public profile
-  if(!authUser){
-    if(deepLinkProfile)return<PublicProfilePage profile={deepLinkProfile} onJoin={()=>setDeepLinkProfile(null)}/>;
-    return<AuthScreen T={DK} onAuthed={handleAuthed} authError={authError} onClearAuthError={()=>setAuthError("")}/>;
-  }
-
-  // 3. User authenticated, waiting for profile row from DB
-  if(!profile&&!profileFetched){
-    return<div style={{minHeight:"100vh",background:"#09090f",display:"flex",alignItems:"center",justifyContent:"center"}}>
-      <div style={{width:22,height:22,border:"2.5px solid #1c1c2c",borderTopColor:"#7b72e9",borderRadius:"50%",animation:"spin .55s linear infinite"}}/>
-    </div>;
-  }
-
-  // 4. User authenticated but no profile row — new user setup
-  if(!profile&&profileFetched)return<ProfileSetup user={authUser} T={T} onDone={handleProfileCreated}/>;
-
-  // Active chat = full screen DM only (groups removed in V1)
-  if(activeChat){
-    const freshOther=profiles.find(p=>p.id===activeChat.oid)||activeChat.other;
-    if(!freshOther)return<div style={{position:"fixed",inset:0,zIndex:400,background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16}}>
-      <div style={{width:36,height:36,border:`3px solid ${T.b1}`,borderTopColor:AC,borderRadius:"50%",animation:"spin .55s linear infinite"}}/>
-      <div style={{fontSize:13,color:T.mu}}>Opening chat…</div>
-    </div>;
-    return<>
-      <ChatScreen conv={{...activeChat,other:freshOther}} myProfile={profile} profiles={profiles} T={T} onBack={()=>setActiveChat(null)} onSend={handleSend} onMarkRead={handleMarkRead} onClearChat={handleClearChat} onBlockUser={(uid)=>{handleBlock(uid);setActiveChat(null);}} onReportUser={(p)=>setReportT(p)} onViewProfile={p=>setViewT(p)}/>
-      {viewT&&<div style={{position:"fixed",inset:0,zIndex:500}}><ProfileModal profile={viewT} myId={profile.id} following={following} profiles={profiles} T={T} onClose={()=>setViewT(null)} onRate={handleRate} onFollow={handleFollow} onUnfollow={handleUnfollow} onBlock={handleBlock} onReport={setReportT} onMsg={p=>{setViewT(null);handleMsg(p);}} onViewOther={p=>setViewT(p)}/></div>}
-      {rateT&&<RateModal target={rateT.profile} raterId={profile.id} existing={rateT.existing} T={T} onClose={()=>setRateT(null)} onSubmit={handleSubmit}/>}
-      {reportT&&<ReportModal target={reportT} T={T} onClose={()=>setReportT(null)} onSubmit={handleReport}/>}
-      <Toast msg={toast} T={T}/>
-    </>;
-  }
-
-  const myP=profiles.find(p=>p.id===profile.id)||{...profile,ratings:[]};
-  const allFeedProfiles=profiles.filter(p=>p.id!==profile.id&&!blocked.includes(p.id));
-  const followedFeed=allFeedProfiles.filter(p=>following.includes(p.id));
-  const followedPersonal=followedFeed.filter(p=>(p.account_type||"personal")==="personal");
-  const followedBiz=followedFeed.filter(p=>p.account_type==="business");
-  const suggestedPersonal=allFeedProfiles.filter(p=>!following.includes(p.id)&&(p.account_type||"personal")==="personal").slice(0,6);
-  const suggestedBiz=allFeedProfiles.filter(p=>!following.includes(p.id)&&p.account_type==="business").slice(0,4);
-  const unreadN=notifs.filter(n=>!n.read).length;
-  const unreadM=convs.reduce((s,cv)=>{
-    const msgs=cv.messages||[];
-    const u=msgs.filter(m=>
-      m&&m.sid&&
-      m.sid!==profile.id&&          // not my own message
-      m.read!==true&&               // not marked read (covers false AND undefined)
-      !String(m.dbId||"").startsWith("temp_") // not a temp message
-    ).length;
-    return s+u;
-  },0);
-
-  const NAV=[
-    {id:"feed",    label:"Home",    Icon:HomeIcon},
-    {id:"search",  label:"Search",  Icon:SearchIcon},
-    {id:"board",   label:"Board",   Icon:BoardIcon},
-    {id:"inbox",   label:"Inbox",   Icon:MsgIcon2,  badge:unreadM},
-    {id:"profile", label:"Profile", Icon:UserIcon},
-  ];
-
-  return<>
-    <div style={{minHeight:"100vh",background:T.bg,color:T.txt,paddingBottom:68}}>
-      {/* HEADER */}
-      <div style={{background:`${T.nav}e8`,borderBottom:`1px solid ${T.b1}`,padding:"14px 18px",position:"sticky",top:0,zIndex:100,display:"flex",alignItems:"center",justifyContent:"space-between",backdropFilter:"blur(24px)",WebkitBackdropFilter:"blur(24px)"}}>
-        <div style={{fontWeight:900,fontSize:24,letterSpacing:"-2px",color:T.txt,cursor:"pointer",userSelect:"none",lineHeight:1}} onClick={handleAdminTap}>
-          High<span style={{color:AC,fontWeight:300,letterSpacing:"0.04em"}}>Enough</span>
-        </div>
-        <div style={{display:"flex",alignItems:"center",gap:10}}>
-          {canInstall&&<button onClick={handleInstall} style={{padding:"7px 14px",background:`linear-gradient(135deg,${AC}cc,${AC}80)`,border:"none",borderRadius:20,color:"#fff",fontWeight:700,fontSize:12,display:"flex",alignItems:"center",gap:5,boxShadow:`0 4px 14px ${AC}40`,flexShrink:0}}>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            Install App
-          </button>}
-          {/* In-app refresh — replaces page reload so auth is never disrupted */}
-          <button onClick={handleRefresh} disabled={refreshing} title="Refresh" style={{width:38,height:38,borderRadius:12,background:T.faint,border:`1px solid ${T.b1}`,display:"flex",alignItems:"center",justifyContent:"center",color:T.mu,fontSize:16,transition:"all .15s",flexShrink:0}}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{animation:refreshing?"spin .7s linear infinite":"none"}}><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-          </button>
-          <div style={{position:"relative",cursor:"pointer"}} onClick={()=>setShowNotifs(true)}>
-            <div style={{width:38,height:38,borderRadius:12,background:T.faint,border:`1px solid ${T.b1}`,display:"flex",alignItems:"center",justifyContent:"center",color:T.mu,transition:"all .15s"}}><BellIcon/></div>
-            {unreadN>0&&<div style={{position:"absolute",top:-3,right:-3,minWidth:16,height:16,borderRadius:99,background:"#e0304a",border:`2px solid ${T.nav}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:8,color:"#fff",fontWeight:800,padding:"0 3px"}}>{unreadN>9?"9+":unreadN}</div>}
-          </div>
-        </div>
-      </div>
-
-      {/* CONTENT */}
-      {tab==="feed"&&<div style={{padding:"14px 14px 0"}}>
-        {!dataReady
-          ? <div style={{display:"flex",flexDirection:"column",gap:10,paddingTop:8}}>
-              {[1,2,3].map(i=><div key={i} style={{background:T.card,border:`1px solid ${T.b1}`,borderRadius:16,padding:"14px",display:"flex",alignItems:"center",gap:12,opacity:1-i*.15}}>
-                <div style={{width:46,height:46,borderRadius:"50%",background:T.b1,flexShrink:0}}/>
-                <div style={{flex:1,display:"flex",flexDirection:"column",gap:8}}>
-                  <div style={{height:12,background:T.b1,borderRadius:6,width:"60%"}}/>
-                  <div style={{height:10,background:T.b1,borderRadius:6,width:"40%"}}/>
-                </div>
-              </div>)}
-            </div>
-          : followedFeed.length===0
-            ? <div>
-                <div style={{background:`linear-gradient(135deg,${AC}12,${AC}08)`,border:`1px solid ${AC}22`,borderRadius:18,padding:"24px 20px",marginBottom:16,textAlign:"center",position:"relative",overflow:"hidden"}}>
-                  <div style={{position:"absolute",right:-20,top:-20,fontSize:100,opacity:.05,pointerEvents:"none"}}>◎</div>
-                  {profile.account_type==="business"
-                    ? <>
-                        <div style={{fontSize:32,marginBottom:10}}>🏢</div>
-                        <div style={{fontWeight:800,fontSize:18,color:T.txt,marginBottom:6,letterSpacing:"-.3px"}}>Your business feed is empty</div>
-                        <div style={{fontSize:13,color:T.mu,marginBottom:18,lineHeight:1.6}}>Follow other businesses or share your profile link to start receiving customer reviews.</div>
-                        {[
-                          {icon:"🔗",title:"Share your business link",desc:"Copy from Profile → Share and send to customers or post online"},
-                          {icon:"📱",title:"Display your QR code",desc:"Let customers scan it at your location to open your profile instantly"},
-                          {icon:"✍️",title:"Collect your first review",desc:"Customers review you across your specific business categories"},
-                          {icon:"📈",title:"Build your reputation",desc:"Your score and tier go live once your first review comes in"},
-                        ].map((s,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 14px",background:T.card,border:`1px solid ${T.b1}`,borderRadius:12,marginBottom:7,textAlign:"left"}}>
-                          <div style={{width:36,height:36,borderRadius:"50%",background:`${AC}18`,border:`1px solid ${AC}28`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>{s.icon}</div>
-                          <div style={{flex:1}}>
-                            <div style={{fontWeight:700,fontSize:13,color:T.txt}}>{s.title}</div>
-                            <div style={{fontSize:11,color:T.mu,marginTop:1}}>{s.desc}</div>
-                          </div>
-                        </div>)}
-                      </>
-                    : <>
-                        <div style={{fontSize:32,marginBottom:10}}>👻</div>
-                        <div style={{fontWeight:800,fontSize:18,color:T.txt,marginBottom:6,letterSpacing:"-.3px"}}>Your feed is empty</div>
-                        <div style={{fontSize:13,color:T.mu,marginBottom:18,lineHeight:1.6}}>Follow people to see them here — or share your profile to start getting rated.</div>
-                        {[
-                          {icon:"🔗",title:"Share your profile link",desc:"Copy it from Profile → Share and send it to someone"},
-                          {icon:"📱",title:"Show your QR code",desc:"Let someone scan it instantly to open your profile"},
-                          {icon:"⭐",title:"Get rated",desc:"They rate you across 6 categories and your score appears"},
-                        ].map((s,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 14px",background:T.card,border:`1px solid ${T.b1}`,borderRadius:12,marginBottom:7,textAlign:"left"}}>
-                          <div style={{width:36,height:36,borderRadius:"50%",background:`${AC}18`,border:`1px solid ${AC}28`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>{s.icon}</div>
-                          <div style={{flex:1}}>
-                            <div style={{fontWeight:700,fontSize:13,color:T.txt}}>{s.title}</div>
-                            <div style={{fontSize:11,color:T.mu,marginTop:1}}>{s.desc}</div>
-                          </div>
-                        </div>)}
-                      </>
-                  }
-                </div>
-              </div>
-            : <div>
-                {followedPersonal.length>0&&<><div style={{fontWeight:700,fontSize:13,color:T.mu,padding:"4px 0 10px",letterSpacing:".04em",textTransform:"uppercase"}}>👤 People</div><div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:18}}>{followedPersonal.map((p,i)=><FeedCard key={p.id} p={p} myId={profile.id} following={following} T={T} onView={setViewT} onFollow={handleFollow} onUnfollow={handleUnfollow} onRate={handleRate} onMsg={handleMsg} idx={i}/>)}</div></>}
-                {followedBiz.length>0&&<><div style={{fontWeight:700,fontSize:13,color:T.mu,padding:"4px 0 10px",letterSpacing:".04em",textTransform:"uppercase"}}>🏢 Businesses</div><div style={{display:"flex",flexDirection:"column",gap:12}}>{followedBiz.map((p,i)=><FeedCard key={p.id} p={p} myId={profile.id} following={following} T={T} onView={setViewT} onFollow={handleFollow} onUnfollow={handleUnfollow} onRate={handleRate} onMsg={handleMsg} idx={i}/>)}</div></>}
-              </div>
-        }
-      </div>}
-
-      {tab==="search"&&<SearchTab profiles={profiles.filter(p=>p.id!==profile.id)} myId={profile.id} following={following} T={T} onView={setViewT} onFollow={handleFollow} onUnfollow={handleUnfollow} onRate={handleRate} myProfile={profile}/>}
-
-      {tab==="board"&&<BoardTab profiles={profiles} myId={profile.id} T={T} onView={setViewT}/>}
-
-      {tab==="inbox"&&<InboxTab convs={convs.map(c=>{const other=profiles.find(p=>p.id===c.oid);return other?{...c,other}:null;}).filter(Boolean)} profiles={profiles} myProfile={profile} following={following} T={T} onOpen={(conv,other)=>setActiveChat({...conv,other})} onDeleteConv={handleDeleteConv} onViewProfile={p=>setViewT(p)}/>}
-
-      {tab==="profile"&&<ProfileTab myProfile={profile} myP={myP} T={T} onQR={()=>setQRT(myP)} onSettings={()=>setSettings(true)} onEditProfile={()=>setEditProfile(true)} onEditPhoto={()=>setPhoto(true)} onScoreCard={()=>setScoreCard(myP)} following={following} profiles={profiles} onViewProfile={p=>setViewT(p)}/>}
-    </div>
-
-    {/* BOTTOM NAV */}
-    <div style={{position:"fixed",bottom:0,left:0,right:0,background:`${T.nav}f0`,borderTop:`1px solid ${T.b1}`,display:"flex",padding:"10px 8px max(14px,env(safe-area-inset-bottom))",zIndex:100,backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)"}}>
-      {NAV.map(({id,label,Icon,badge})=>
-        <button key={id} onClick={()=>setTab(id)} style={{flex:1,background:"none",display:"flex",flexDirection:"column",alignItems:"center",gap:4,color:tab===id?AC:T.mu,transition:"color .15s",padding:"2px 0"}}>
-          <div style={{position:"relative",padding:"6px 14px",borderRadius:14,background:tab===id?`${AC}18`:"transparent",transition:"all .2s",boxShadow:tab===id?`0 2px 12px ${AC}30`:"none"}}>
-            <Icon active={tab===id}/>
-            {badge>0&&<div style={{position:"absolute",top:-2,right:-2,minWidth:15,height:15,borderRadius:99,background:"#e0304a",border:`2px solid ${T.nav}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:7,color:"#fff",fontWeight:800,padding:"0 3px"}}>{badge>9?"9+":badge}</div>}
-          </div>
-          <span style={{fontSize:9.5,fontWeight:tab===id?700:400,letterSpacing:".03em"}}>{label}</span>
-        </button>)}
-    </div>
-
-    {rateT      &&<RateModal target={rateT.profile} raterId={profile.id} existing={rateT.existing} T={T} onClose={()=>setRateT(null)} onSubmit={handleSubmit}/>}
-    {viewT      &&<ProfileModal profile={viewT} myId={profile.id} following={following} profiles={profiles} T={T} onClose={()=>setViewT(null)} onRate={handleRate} onFollow={handleFollow} onUnfollow={handleUnfollow} onBlock={handleBlock} onReport={setReportT} onMsg={p=>{setViewT(null);handleMsg(p);}} onViewOther={p=>setViewT(p)}/>}
-    {qrT        &&<QRModal profile={qrT} T={T} onClose={()=>setQRT(null)}/>}
-    {settings   &&<SettingsModal me={profile} prefs={prefs} T={T} onClose={()=>setSettings(false)} onSave={handleSaveProfile} onSavePrefs={handleSavePrefs} onEditPhoto={()=>{setSettings(false);setPhoto(true);}} onShowBlocked={()=>{setSettings(false);setShowBlocked(true);}} onLogout={handleLogout} onDelete={handleDeleteAccount} onQR={()=>{setQRT(myP);setSettings(false);}}/>}
-    {editProfile&&<EditProfileModal me={profile} prefs={prefs} T={T} onClose={()=>setEditProfile(false)} onSave={handleSaveProfile} onEditPhoto={()=>{setEditProfile(false);setPhoto(true);}} onQR={()=>{setQRT(myP);setEditProfile(false);}}/>}
-    {photo      &&<PhotoModal profile={profile} T={T} onClose={()=>setPhoto(false)} onSave={handleSavePhoto}/>}
-    {scoreCard  &&<ScoreCardModal profile={scoreCard} T={T} onClose={()=>setScoreCard(null)}/>}
-    {reportT    &&<ReportModal target={reportT} T={T} onClose={()=>setReportT(null)} onSubmit={handleReport}/>}
-    {showBlocked&&<BlockedListPanel blocked={blocked} profiles={profiles} T={T} onClose={()=>setShowBlocked(false)} onUnblock={handleUnblock}/>}
-    {showNotifs &&<NotifsPanel notifs={notifs} profiles={profiles} T={T} onClose={()=>setShowNotifs(false)} onMark={handleMarkNotif} onView={p=>{setViewT(p);setShowNotifs(false);}}/>}
-    {showAdminLock&&<AdminLock T={T} onClose={()=>setShowAdminLock(false)} onUnlock={()=>{setShowAdminLock(false);setShowAdmin(true);}}/>}
-    {showAdmin  &&<AdminPanel profiles={profiles} reports={reports} blocked={blocked} T={T} onClose={()=>setShowAdmin(false)} onDeleteProfile={handleAdminDeleteProfile} onClearRatings={handleAdminClearRatings} onExport={handleExport}/>}
-    <Toast msg={toast} T={T}/>
-  </>;
-}
-
-// ── DEFERRED MOUNT: React only renders after getSession() resolves ──────────
-// This is what prevents the login flash. By the time App() runs for the first
-// time, HE_PREFETCHED_SESSION is already populated (or null = not logged in).
-// authLoading starts as false when we have a definitive answer, true only if
-// the pre-boot somehow failed (safety fallback).
-HE_BOOT().then(()=>{
-  ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
-});
+          const updated=pr.data.filter(p=>!delSet.has(p.id)).map(p=>({...p,account_type:p.acc
