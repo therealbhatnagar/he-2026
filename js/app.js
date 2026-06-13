@@ -296,72 +296,10 @@ function Overlay({onBg,children,T,wide,bottom}){
   </div>;
   return<div onClick={e=>e.target===e.currentTarget&&onBg()} style={{position:"fixed",inset:0,zIndex:300,background:T.ov,backdropFilter:"blur(16px)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
     <div style={{background:T.card,border:`1px solid ${T.b1}`,borderRadius:22,padding:"24px 20px 20px",width:"100%",maxWidth:wide?510:430,position:"relative",maxHeight:"92vh",overflowY:"auto",boxShadow:"0 40px 100px rgba(0,0,0,.7)",animation:"su .2s ease"}}>
-      }
+      {children}
     </div>
-    <div style={{height:1,background:T.b1}}/>
-
-    {/* Group chats — personal only */}
-    {isPersonal&&myGroups.length>0&&<>
-      <div style={{padding:"10px 16px 6px",fontSize:11,fontWeight:700,color:T.mu,letterSpacing:".06em",textTransform:"uppercase"}}>Group Chats</div>
-      {myGroups.map(g=>{
-        const last=g.messages?.at(-1);
-        const memberNames=(g.members||[]).slice(0,3).map(id=>{const p=profiles.find(x=>x.id===id);return p?.name?.split(" ")[0]||"?";}).join(", ");
-        const unread=(g.messages||[]).filter(m=>m.sid!==myProfile.id&&m.read===false).length||0;
-        return<div key={g.id} onClick={()=>onOpenGroup(g)} style={{display:"flex",alignItems:"center",gap:13,padding:"12px 16px",borderBottom:`1px solid ${T.b1}`,cursor:"pointer",transition:"background .12s"}} onMouseEnter={e=>e.currentTarget.style.background=T.faint} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-          {/* Group icon */}
-          <div style={{width:52,height:52,borderRadius:"50%",background:`linear-gradient(135deg,${AC}30,${AC}14)`,border:`1.5px solid ${AC}40`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0,position:"relative"}}>
-            👥
-            {unread>0&&<div style={{position:"absolute",top:-2,right:-2,minWidth:18,height:18,borderRadius:99,background:"#e0304a",border:`2px solid ${T.nav}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,color:"#fff",fontWeight:700,padding:"0 4px"}}>{unread}</div>}
-          </div>
-          <div style={{flex:1,minWidth:0}}>
-            <div style={{fontWeight:unread>0?700:600,fontSize:15,color:T.txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{g.name}</div>
-            <div style={{fontSize:11,color:T.mu,marginTop:1}}>
-              {g.description
-                ?<span style={{fontStyle:"italic"}}>{g.description}</span>
-                :<span>{memberNames}{g.members.length>3?` +${g.members.length-3} more`:""}</span>}
-            </div>
-            {last&&<div style={{fontSize:12,color:unread>0?T.txt:T.mu,marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{last.txt}</div>}
-          </div>
-          {last&&<div style={{fontSize:10,color:T.mu,fontFamily:"'JetBrains Mono',monospace",flexShrink:0}}>{ago(last.ts)}</div>}
-        </div>;
-      })}
-      {sorted.length>0&&<div style={{padding:"10px 16px 6px",fontSize:11,fontWeight:700,color:T.mu,letterSpacing:".06em",textTransform:"uppercase"}}>Direct Messages</div>}
-    </>}
-
-    {sorted.length===0&&myGroups.length===0&&<div style={{textAlign:"center",padding:"80px 20px",color:T.mu}}><div style={{fontSize:48,marginBottom:16,opacity:.3}}>💬</div><div style={{fontWeight:600,fontSize:16}}>No messages yet</div><div style={{fontSize:13,marginTop:8,opacity:.7}}>Tap the send icon on a profile to start chatting</div></div>}
-    {sorted.map((conv,i)=>{
-      const other=profiles.find(p=>p.id===conv.oid);if(!other)return null;
-      const last=conv.messages?.at(-1);
-      const unread=conv.messages?.filter(m=>m.sid!==myProfile.id&&m.read===false).length||0;
-      const isMenuOpen=menuId===conv.id;
-      return<div key={conv.id} style={{position:"relative",borderBottom:`1px solid ${T.b1}`}}>
-        {isMenuOpen&&<div onClick={()=>setMenuId(null)} style={{position:"fixed",inset:0,zIndex:10}}/>}
-        <div style={{display:"flex",alignItems:"center",gap:13,padding:"13px 16px",transition:"background .12s"}} onMouseEnter={e=>e.currentTarget.style.background=T.faint} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-          <div onClick={()=>onViewProfile&&onViewProfile(other)} style={{cursor:"pointer",flexShrink:0}}>
-            <Ava p={other} size={52} T={T}/>
-          </div>
-          <div onClick={()=>onOpen(conv,other)} style={{flex:1,minWidth:0,cursor:"pointer"}}>
-            <div style={{fontWeight:unread>0?700:500,fontSize:15,color:T.txt}}>{other.name}</div>
-            <div style={{fontSize:13,color:unread>0?T.txt:T.mu,marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontWeight:unread>0?500:400}}>{last?`${last.sid===myProfile.id?"You: ":""}${last.txt}`:"Start a conversation"}</div>
-          </div>
-          <div style={{textAlign:"right",flexShrink:0,display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4}}>
-            {last&&<div style={{fontSize:11,color:T.mu,fontFamily:"'JetBrains Mono',monospace"}}>{ago(last.ts)}</div>}
-            {unread>0&&<div style={{background:AC,borderRadius:99,minWidth:20,height:20,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,color:"#fff",fontWeight:700,padding:"0 5px"}}>{unread}</div>}
-            <div style={{position:"relative"}}>
-              <button onClick={e=>{e.stopPropagation();setMenuId(isMenuOpen?null:conv.id);}} style={{background:"none",color:T.mu,padding:"3px",display:"flex",alignItems:"center",borderRadius:6}}><DotsIcon/></button>
-              {isMenuOpen&&<div style={{position:"absolute",top:28,right:0,background:T.card,border:`1px solid ${T.b2}`,borderRadius:12,overflow:"hidden",zIndex:20,minWidth:160,boxShadow:"0 8px 28px rgba(0,0,0,.5)"}}>
-                <button onClick={e=>{e.stopPropagation();onViewProfile&&onViewProfile(other);setMenuId(null);}} style={{width:"100%",padding:"11px 14px",background:"none",textAlign:"left",color:T.txt,fontSize:13,fontWeight:500,borderBottom:`1px solid ${T.b1}`,display:"flex",alignItems:"center",gap:9}}>👤 View Profile</button>
-                <button onClick={e=>{e.stopPropagation();onOpen(conv,other);setMenuId(null);}} style={{width:"100%",padding:"11px 14px",background:"none",textAlign:"left",color:T.txt,fontSize:13,fontWeight:500,borderBottom:`1px solid ${T.b1}`,display:"flex",alignItems:"center",gap:9}}>💬 Open Chat</button>
-                <button onClick={e=>{e.stopPropagation();if(window.confirm("Delete this conversation?"))onDeleteConv(conv.id);setMenuId(null);}} style={{width:"100%",padding:"11px 14px",background:"none",textAlign:"left",color:"#c06060",fontSize:13,fontWeight:500,display:"flex",alignItems:"center",gap:9}}>🗑️ Delete Chat</button>
-              </div>}
-            </div>
-          </div>
-        </div>
-      </div>;
-    })}
   </div>;
 }
-
 function RateModal({target,raterId,raterName,existing,T,onClose,onSubmit}){
   const isBiz=target?.account_type==="business";
   const cats=getCats(target);
@@ -651,103 +589,6 @@ function MsgStatus({m,myId}){
   if(st==="delivered")return<span style={{fontSize:11,color:"#7a8098",marginLeft:4}}>✓✓</span>;
   return<span style={{fontSize:11,color:"#4e5270",marginLeft:4}}>✓</span>;
 }
-d:T.bg,display:"flex",flexDirection:"column"}}>
-    {/* Header */}
-    <div style={{background:T.nav,borderBottom:`1px solid ${T.b1}`,padding:"12px 16px",paddingTop:"max(12px,env(safe-area-inset-top))",display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
-      <button onClick={onBack} style={{background:"none",color:T.txt,padding:"4px",display:"flex",alignItems:"center"}}><BackIcon/></button>
-      <div style={{display:"flex",alignItems:"center",gap:10,flex:1,cursor:"pointer",minWidth:0}} onClick={()=>onViewProfile&&onViewProfile(conv.other)}>
-        <Ava p={conv.other} size={38} T={T}/>
-        <div style={{flex:1}}>
-          <div style={{fontWeight:600,fontSize:15,color:T.txt}}>{conv.other?.name}</div>
-          <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:T.mu}}>{conv.other?.handle}</div>
-        </div>
-      </div>
-      <div style={{position:"relative"}}>
-        <button onClick={()=>setShowMenu(v=>!v)} style={{background:"none",color:T.mu,width:34,height:34,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",border:`1px solid ${T.b1}`}}><DotsIcon/></button>
-        {showMenu&&<div onClick={()=>setShowMenu(false)} style={{position:"fixed",inset:0,zIndex:10}}/>}
-        {showMenu&&<div style={{position:"absolute",top:40,right:0,background:T.card,border:`1px solid ${T.b2}`,borderRadius:13,overflow:"hidden",zIndex:20,minWidth:180,boxShadow:"0 8px 32px rgba(0,0,0,.5)"}}>
-          {[
-            {icon:"🔔",label:notifMuted?"Unmute":"Mute Notifications",fn:()=>{setNotifMuted(v=>!v);setShowMenu(false);}},
-            {icon:"🗑️",label:"Clear Chat",fn:()=>{if(window.confirm("Clear all messages?"))onClearChat(conv.id);setShowMenu(false);}},
-            {icon:"🚫",label:"Block User",fn:()=>{onBlockUser(conv.other?.id);onBack();},red:true},
-            {icon:"🚩",label:"Report User",fn:()=>{onReportUser(conv.other);setShowMenu(false);},red:true},
-          ].map(item=><button key={item.label} onClick={item.fn} style={{width:"100%",padding:"12px 16px",background:"none",textAlign:"left",color:item.red?"#c06060":T.txt,fontSize:13,fontWeight:500,borderBottom:`1px solid ${T.b1}`,display:"flex",alignItems:"center",gap:10}}><span>{item.icon}</span>{item.label}</button>)}
-        </div>}
-      </div>
-    </div>
-
-    {/* Messages */}
-    <div onClick={()=>{setShowEmoji(false);}} style={{flex:1,overflowY:"auto",padding:"16px 14px",display:"flex",flexDirection:"column",gap:6}}>
-      {msgs.length===0&&<div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",color:T.mu,fontSize:14,flexDirection:"column",gap:8,marginTop:60}}><Ava p={conv.other} size={56} T={T}/><span>Say hello to {conv.other?.name}!</span></div>}
-      {msgs.map((m,i)=>{
-        // ── Date separator ──
-        const prevMsg=msgs[i-1];
-        const mDate=m.ts?new Date(m.ts):null;
-        const pDate=prevMsg?.ts?new Date(prevMsg.ts):null;
-        const showDate=mDate&&(!pDate||mDate.toDateString()!==pDate.toDateString());
-        const dateLabel=mDate?formatDateLabel(mDate):"";
-        const mine=m.sid===myProfile.id;
-        const showAva=!mine&&(i===0||msgs[i-1]?.sid!==m.sid);
-        const isProfileCard=m.txt?.startsWith("__PROFILE__");
-        return<React.Fragment key={m.dbId||i}>
-          {showDate&&<div style={{display:"flex",alignItems:"center",gap:8,margin:"8px 0"}}>
-            <div style={{flex:1,height:1,background:T.b1}}/>
-            <div style={{fontSize:10,color:T.mu,background:T.faint,borderRadius:8,padding:"3px 10px",fontFamily:"'JetBrains Mono',monospace",fontWeight:600,letterSpacing:".04em",flexShrink:0}}>{dateLabel}</div>
-            <div style={{flex:1,height:1,background:T.b1}}/>
-          </div>}
-          <div style={{display:"flex",flexDirection:mine?"row-reverse":"row",gap:8,alignItems:"flex-end"}}>
-            {!mine&&<div style={{width:28,flexShrink:0}}>{showAva&&<Ava p={conv.other} size={26} T={T}/>}</div>}
-            <div style={{maxWidth:"78%"}}>
-              <div style={{
-                background:isProfileCard?"transparent":mine?`linear-gradient(135deg,${myProfile.color}dd,${myProfile.color}99)`:T.card,
-                border:isProfileCard?`1.5px solid ${T.b2}`:mine?"none":`1px solid ${T.b1}`,
-                borderRadius:mine?"18px 18px 4px 18px":"18px 18px 18px 4px",
-                padding:isProfileCard?"0":"10px 14px",
-                overflow:"hidden",
-                color:mine?"#fff":T.txt,fontSize:14,lineHeight:1.5,wordBreak:"break-word"
-              }}>
-                <MsgText txt={m.txt} mine={mine} T={T} onViewProfile={p=>{
-                  const full=(profiles||[]).find(x=>x.id===(p.profileId||p.id))||p;
-                  onViewProfile&&onViewProfile(full);
-                }}/>
-              </div>
-              <div style={{display:"flex",alignItems:"center",justifyContent:mine?"flex-end":"flex-start",gap:3,marginTop:3}}>
-                <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:9,color:T.mu}}>{fmtTime(m.ts)}</span>
-                {mine&&<MsgStatus m={m} myId={myProfile.id}/>}
-              </div>
-            </div>
-          </div>
-        </React.Fragment>;
-      })}
-      <div ref={endRef}/>
-    </div>
-
-    {/* Input bar — ALWAYS above emoji panel */}
-    <div style={{background:T.nav,flexShrink:0}}>
-      {/* Emoji picker */}
-      {showEmoji&&<div style={{borderTop:`1px solid ${T.b1}`}}>
-        <div style={{display:"flex",overflowX:"auto",borderBottom:`1px solid ${T.b1}`,padding:"6px 8px 0"}}>
-          {EMOJI_CATS.map(c=><button key={c.id} onClick={()=>setEmojiCat(c.id)} style={{fontSize:18,padding:"4px 8px",borderRadius:"8px 8px 0 0",background:emojiCat===c.id?T.faint:"transparent",border:"none",borderBottom:emojiCat===c.id?`2px solid ${myProfile.color}`:"2px solid transparent",flexShrink:0,cursor:"pointer",opacity:c.id==="recent"&&recentEmojis.length===0?.4:1}}>{c.label}</button>)}
-        </div>
-        <div style={{display:"flex",flexWrap:"wrap",padding:"8px 10px",height:180,overflowY:"auto",gap:2,alignContent:"flex-start"}}>
-          {currentEmojis.map((e,i)=><button key={i} onClick={()=>addEmoji(e)} style={{background:"none",fontSize:24,width:40,height:40,borderRadius:8,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{e}</button>)}
-        </div>
-      </div>}
-      {/* Text input row */}
-      <div style={{padding:"10px 14px",paddingBottom:"max(14px,env(safe-area-inset-bottom))",borderTop:`1px solid ${T.b1}`,display:"flex",gap:8,alignItems:"center"}}>
-        <button onClick={toggleEmoji} style={{width:38,height:38,borderRadius:"50%",background:showEmoji?`${myProfile.color}22`:T.faint,border:`1px solid ${showEmoji?myProfile.color+"50":T.b1}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>😊</button>
-        <input ref={inputRef} value={txt}
-          onChange={e=>{setTxt(e.target.value);if(showEmoji)setShowEmoji(false);}}
-          onFocus={()=>setShowEmoji(false)}
-          onKeyDown={e=>e.key==="Enter"&&send()}
-          placeholder="Message…"
-          style={{flex:1,padding:"12px 16px",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:24,color:T.txt,fontSize:14,outline:"none"}}/>
-        <button onClick={send} style={{width:42,height:42,borderRadius:"50%",background:txt.trim()?`linear-gradient(135deg,${myProfile.color}dd,${myProfile.color}99)`:T.faint,display:"flex",alignItems:"center",justifyContent:"center",color:txt.trim()?"#fff":T.mu,flexShrink:0,transition:"background .15s"}}><SendIcon/></button>
-      </div>
-    </div>
-  </div>;
-}
-
 
 function SearchTab({profiles,myId,following,T,onView,onFollow,onUnfollow,onRate,myProfile}){
   const [q,setQ]=useState("");
