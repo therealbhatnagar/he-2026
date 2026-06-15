@@ -1354,6 +1354,13 @@ function PhotoModal(props){
   return React.createElement(Mod, props);
 }
 
+/* ── QR MODAL — bridge to js/components/qr.js ── */
+function QRModal(props){
+  const Mod = window.HE_COMPONENTS && window.HE_COMPONENTS.QRModal;
+  if(!Mod) return null;
+  return React.createElement(Mod, props);
+}
+
 /* ── SCORE CARD MODAL — rich visual design ── */
 function ScoreCardModal({profile,T,onClose}){
   const isBiz=profile.account_type==="business";
@@ -2012,7 +2019,7 @@ function ChatScreen(props){
 /* ── INBOX TAB — implemented in js/components/messenger.js ── */
 function InboxTab({convs,myProfile,T,onOpen,onDeleteConv,onViewProfile}){
   const Mod=window.HE_COMPONENTS&&window.HE_COMPONENTS.MessengerInbox;
-  if(!Mod)return<div style={{padding:20,color:T.mu,textAlign:"center"}}>Loading…</div>;
+  if(!Mod)return<div style={{padding:40,color:T.mu,textAlign:"center",fontSize:13}}>No messages yet</div>;
   return React.createElement(Mod,{
     convs,myProfile,T,
     onOpen:conv=>onOpen(conv,conv.other),
