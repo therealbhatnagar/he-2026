@@ -273,6 +273,19 @@ function TierBadge({sc,size="md",isBiz=false,showLevel=true}){
   </span>;
 }
 
+/* ── EXTERNAL COMPONENT BRIDGE ──
+   qr.js / cropper.js are loaded as separate script tags and reference these
+   via window.HE_* (see header comments in those files). Publishing only —
+   no implementation changes, no renames. */
+window.HE_getProfileUrl = getProfileUrl;
+window.HE_pScore = pScore;
+window.HE_tierOf = tierOf;
+window.HE_AC = AC;
+window.HE_BIZ_TYPES = BIZ_TYPES;
+window.HE_Spinner = Spinner;
+window.HE_TierBadge = TierBadge;
+window.HE_CamIcon = CamIcon;
+
 function Ava({p,size=46,T,badge,onClick,ring}){
   const c=p?.color||AC;
   const sc=pScore(p||{});const t=tierOf(sc??0);const isFama=t.label==="HighEnough";
