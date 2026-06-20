@@ -299,7 +299,7 @@ function Ava({p,size=46,T,badge,onClick,ring}){
 function Tag({label,color}){return<span style={{background:`${color}14`,border:`1px solid ${color}28`,borderRadius:5,padding:"2px 9px",fontSize:11,color,fontWeight:600,whiteSpace:"nowrap"}}>{label}</span>;}
 function Pill({on,onChange,color}){return<div onClick={()=>onChange(!on)} style={{width:44,height:24,borderRadius:99,background:on?color:"#222236",position:"relative",cursor:"pointer",transition:"background .2s",flexShrink:0}}><div style={{position:"absolute",top:3,left:on?20:3,width:18,height:18,borderRadius:"50%",background:"#fff",transition:"left .2s"}}/></div>;}
 function Toast({msg,T}){return msg?<div style={{position:"fixed",bottom:92,left:"50%",transform:"translateX(-50%)",background:T.surf,border:`1px solid ${T.b2}`,borderRadius:12,padding:"11px 22px",color:T.txt,fontSize:13,fontWeight:600,zIndex:600,whiteSpace:"nowrap",animation:"fu .2s ease",boxShadow:"0 12px 40px rgba(0,0,0,.5)"}}>{msg}</div>:null;}
-
+function SRow({label,desc,val,onChange,T}){return<div style={{display:"flex",alignItems:"center",gap:12,padding:"3px 0"}}><div style={{flex:1}}><div style={{fontSize:14,color:T.txt,fontWeight:500}}>{label}</div>{desc&&<div style={{fontSize:12,color:T.mu,marginTop:1}}>{desc}</div>}</div><Pill on={val} onChange={onChange} color={AC}/></div>;}
 function Overlay({onBg,children,T,wide,bottom}){
   if(bottom) return<div onClick={e=>e.target===e.currentTarget&&onBg()} style={{position:"fixed",inset:0,zIndex:300,background:T.ov,backdropFilter:"blur(8px)",display:"flex",alignItems:"flex-end"}}>
     <div style={{background:T.card,borderRadius:"22px 22px 0 0",padding:"20px 18px 34px",width:"100%",maxHeight:"90vh",overflowY:"auto",WebkitOverflowScrolling:"touch",animation:"slideUp .25s ease",border:`1px solid ${T.b1}`,borderBottom:"none"}}>
@@ -313,6 +313,390 @@ function Overlay({onBg,children,T,wide,bottom}){
     </div>
   </div>;
 }
+function AuthScreen({T,onAuthed,authError,onClearAuthError}){
+  const [view,setView]=useState("login");
+  const [email,setEmail]=useState("");
+  const [pass,setPass]=useState("");
+  const [name,setName]=useState("");
+  const [loading,setLoading]=useState(false);
+  const [gLoading,setGLoading]=useState(false);
+  const [msg,setMsg]=useState({text:"",error:false});
+  const [showPass,setShowPass]=useState(false);
+  const [googleNotSetup,setGoogleNotSetup]=useState(false);
+
+  useEffect(()=>{
+    if(authError){setMsg({text:authError,error:true});onClearAuthError?.();}
+  },[authError]);
+
+  const inp={width:"100%",padding:"14px 16px",background:T.inp,border:`1px solid ${T.b1}`,borderRadius:14,color:T.txt,fontSize:15,outline:"none",boxSizing:"border-box",fontFamily:"'Inter',sans-serif",transition:"border-color .2s"};
+
+  async function signInGoogle(){
+    setGLoading(true);setMsg({text:"",error:false});setGoogleNotSetup(false);
+    try{
+      const {error}=await sb.auth.signInWithOAuth({
+        provider:"google",
+        options:{redirectTo:"https://highenough.in"}
+      });
+      if(error){
+        if(error.message?.toLowerCase().includes("provider")||error.status===400){
+          setGoogleNotSetup(true);
+        } else {
+          setMsg({text:"Google sign-in failed: "+error.message,error:true});
+        }
+      }
+    }catch(e){
+      setMsg({text:"Google sign-in unavailable. Use email/password below.",error:true});
+    }finally{setGLoading(false);}
+  }
+
+  async function resolveEmail(input){
+    const v=input.trim();
+    if(v.includes("@")&&v.includes(".")){return{email:v,err:null};}
+    if(v.startsWith("@")||(!v.includes(".")&&!v.includes("#")&&v.length>2&&v.length<32&&!/^[A-F0-9]{6}$/i.test(v))){
+      const handle=v.startsWith("@")?v:"@"+v;
+      const {data,error}=await sb.from("profiles").select("email").ilike("handle",handle).maybeSingle();
+      if(data?.email)return{email:data.email,err:null};
+      return{email:null,err:"No account found with that username."};
+    }
+    const uid=v.replace(/^#/,"").toUpperCase();
+    if(/^[A-Z0-9]{6}$/.test(uid)){
+      const {data}=await sb.from("profiles").select("email").eq("short_id",uid).maybeSingle();
+      if(data?.email)return{email:data.email,err:null};
+      return{email:null,err:"No account found with that UID."};
+    }
+    return{email:v,err:null};
+  }
+
+  async function go(){
+    const rawInput=email.trim();
+    if(!rawInput)return setMsg({text:"Enter your email, @handle or #UID",error:true});
+    if(view==="signup"&&!name.trim())return setMsg({text:"Enter your name",error:true});
+    if(!pass)return setMsg({text:"Enter your password",error:true});
+    if(pass.length<6)return setMsg({text:"Password must be 6+ characters",error:true});
+
+    setLoading(true);setMsg({text:"",error:false});
+    try{
+      if(view==="signup"){
+        const emailToUse=rawInput.includes("@")&&rawInput.includes(".")?rawInput:rawInput;
+
+        const {data:deletedRow}=await sb.from("deleted_accounts")
+          .select("auth_id,email").eq("email",emailToUse).maybeSingle();
+
+        if(deletedRow){
+          const {data:signUpData,error:signUpErr}=await sb.auth.signUp({
+            email:emailToUse,password:pass,
+            options:{data:{full_name:name.trim()},emailRedirectTo:"https://highenough.in"}
+          });
+          if(!signUpErr&&signUpData?.user){
+            const oldId=deletedRow.auth_id;
+            await Promise.all([
+              sb.from("profiles").delete().eq("id",oldId),
+              sb.from("ratings").delete().eq("rater_id",oldId),
+              sb.from("ratings").delete().eq("target_id",oldId),
+              sb.from("follows").delete().eq("follower_id",oldId),
+              sb.from("follows").delete().eq("following_id",oldId),
+              sb.from("messages").delete().eq("sender_id",oldId),
+              sb.from("messages").delete().eq("receiver_id",oldId),
+              sb.from("notifications").delete().eq("actor_id",oldId),
+              sb.from("notifications").delete().eq("target_id",oldId),
+              sb.from("deleted_accounts").delete().eq("email",emailToUse),
+            ]);
+            if(signUpData.session){
+              if(onAuthed)onAuthed(signUpData.user);
+            } else {
+              setMsg({text:"✅ Account created! Check your email to confirm, then login.",error:false});
+            }
+            return;
+          }
+          const {data:signInData,error:signInErr}=await sb.auth.signInWithPassword({email:emailToUse,password:pass});
+          if(!signInErr&&signInData?.user){
+            const oldId=signInData.user.id;
+            await Promise.all([
+              sb.from("profiles").delete().eq("id",oldId),
+              sb.from("ratings").delete().eq("rater_id",oldId),
+              sb.from("ratings").delete().eq("target_id",oldId),
+              sb.from("follows").delete().eq("follower_id",oldId),
+              sb.from("follows").delete().eq("following_id",oldId),
+              sb.from("messages").delete().eq("sender_id",oldId),
+              sb.from("messages").delete().eq("receiver_id",oldId),
+              sb.from("notifications").delete().eq("actor_id",oldId),
+              sb.from("notifications").delete().eq("target_id",oldId),
+              sb.from("deleted_accounts").delete().eq("email",emailToUse),
+            ]);
+            if(onAuthed)onAuthed(signInData.user);
+            return;
+          }
+          return setMsg({text:"This email was used before. To start fresh, use the same password you had previously, or reset your password.",error:true});
+        }
+
+        const {data,error}=await sb.auth.signUp({
+          email:emailToUse,
+          password:pass,
+          options:{data:{full_name:name.trim()},emailRedirectTo:"https://highenough.in"}
+        });
+        if(error){
+          if(error.message?.toLowerCase().includes("already registered")||
+             error.message?.toLowerCase().includes("already exists")){
+            return setMsg({text:"This email already has an account. Try logging in instead.",error:true});
+          }
+          return setMsg({text:error.message,error:true});
+        }
+        if(!data.session)setMsg({text:"✅ Account created! Check your email to confirm, then login.",error:false});
+      } else {
+        const {email:emailToUse,err}=await resolveEmail(rawInput);
+        if(err)return setMsg({text:err,error:true});
+
+        const {data,error}=await sb.auth.signInWithPassword({email:emailToUse,password:pass});
+        if(error){
+          const msg=error.message.toLowerCase().includes("invalid")||error.message.toLowerCase().includes("credentials")
+            ?"Incorrect email or password. Please try again."
+            :error.message;
+          return setMsg({text:msg,error:true});
+        }
+        if(data?.user)onAuthed?.(data.user);
+      }
+    }catch(e){
+      setMsg({text:e.message||"Something went wrong. Please try again.",error:true});
+    }finally{setLoading(false);}
+  }
+
+  async function goForgot(){
+    const emailToUse=email.trim();
+    if(!emailToUse)return setMsg({text:"Enter your email first",error:true});
+    setLoading(true);setMsg({text:"",error:false});
+    try{
+      const {error}=await sb.auth.resetPasswordForEmail(emailToUse,{redirectTo:"https://highenough.in"});
+      if(error)return setMsg({text:error.message,error:true});
+      setMsg({text:"Password reset link sent to your email.",error:false});
+      setView("login");
+    }catch(e){setMsg({text:e.message||"Something went wrong",error:true});}
+    finally{setLoading(false);}
+  }
+
+  return<div style={{minHeight:"100vh",background:T.bg,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24,position:"relative",overflow:"hidden"}}>
+    <div style={{position:"absolute",top:-140,right:-110,width:400,height:400,borderRadius:"50%",background:`radial-gradient(circle,${AC}10,transparent 68%)`,pointerEvents:"none"}}/>
+    <div style={{position:"absolute",bottom:-120,left:-90,width:320,height:320,borderRadius:"50%",background:`radial-gradient(circle,${AC}0b,transparent 68%)`,pointerEvents:"none"}}/>
+    <div style={{width:"100%",maxWidth:380,position:"relative",animation:"ci .4s ease"}}>
+      <div style={{textAlign:"center",marginBottom:40}}>
+        <div style={{fontWeight:800,fontSize:46,letterSpacing:"-2px",lineHeight:1,color:T.txt}}>High<span style={{color:AC,fontWeight:300,letterSpacing:"0.04em"}}>Enough</span></div>
+        <div style={{fontSize:11,color:T.mu,marginTop:8,letterSpacing:"0.18em",textTransform:"uppercase",fontWeight:500}}>Rate · Rise · Repeat</div>
+      </div>
+
+      <button onClick={signInGoogle} disabled={gLoading} style={{width:"100%",padding:"13px 0",background:T.card,border:`1px solid ${T.b1}`,borderRadius:14,color:T.txt,fontWeight:600,fontSize:14,display:"flex",alignItems:"center",justifyContent:"center",gap:10,marginBottom:googleNotSetup?0:16,transition:"all .2s"}}>
+        {gLoading?<Spinner/>:<svg width="18" height="18" viewBox="0 0 18 18"><path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z" fill="#4285F4"/><path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 009 18z" fill="#34A853"/><path d="M3.964 10.71A5.41 5.41 0 013.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 000 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/><path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 00.957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/></svg>}
+        {gLoading?"Signing in…":"Continue with Google"}
+      </button>
+
+      {googleNotSetup&&<div style={{margin:"10px 0 16px",padding:"14px 16px",background:"#c08a2e18",border:"1px solid #c08a2e40",borderRadius:12,fontSize:12,color:"#c08a2e",lineHeight:1.7}}>
+        <div style={{fontWeight:700,marginBottom:6}}>⚙️ Google Sign-In Setup Required</div>
+        <div>Go to your <strong>Supabase Dashboard</strong> → Authentication → Providers → Enable <strong>Google</strong> → Add Client ID &amp; Secret.</div>
+        <div style={{marginTop:6,opacity:.8}}>Use email/password below in the meantime.</div>
+      </div>}
+
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
+        <div style={{flex:1,height:1,background:T.b1}}/><span style={{fontSize:12,color:T.mu}}>or</span><div style={{flex:1,height:1,background:T.b1}}/>
+      </div>
+
+      <div style={{display:"flex",background:T.faint,borderRadius:14,padding:4,marginBottom:24,border:`1px solid ${T.b1}`}}>
+        {[["login","Login"],["signup","Sign Up"]].map(([m,l])=><button key={m} onClick={()=>{setView(m);setMsg({text:"",error:false});}} style={{flex:1,padding:"11px 0",borderRadius:11,background:view===m?T.card:"transparent",color:view===m?T.txt:T.mu,fontWeight:view===m?700:400,fontSize:14,border:view===m?`1px solid ${T.b1}`:"1px solid transparent",transition:"all .15s"}}>{l}</button>)}
+      </div>
+
+      <div style={{display:"flex",flexDirection:"column",gap:12}}>
+        {view==="signup"&&<input value={name} onChange={e=>setName(e.target.value)} placeholder="Your full name" style={inp} onKeyDown={e=>e.key==="Enter"&&go()}/>}
+        <input type="text" value={email} onChange={e=>setEmail(e.target.value)} placeholder="Email, @handle or #UID" style={inp} onKeyDown={e=>e.key==="Enter"&&go()} autoComplete="username"/>
+        <div style={{position:"relative"}}>
+          <input type={showPass?"text":"password"} value={pass} onChange={e=>setPass(e.target.value)} placeholder="Password (min 6 chars)" style={{...inp,paddingRight:72}} onKeyDown={e=>e.key==="Enter"&&go()}/>
+          <button onClick={()=>setShowPass(v=>!v)} style={{position:"absolute",right:14,top:"50%",transform:"translateY(-50%)",background:"none",color:T.mu,fontSize:12,fontWeight:600}}>{showPass?"Hide":"Show"}</button>
+        </div>
+      </div>
+
+      {msg.text&&<div style={{margin:"14px 0 0",padding:"11px 14px",borderRadius:11,fontSize:13,background:msg.error?"#a0303018":"#10a37f18",border:`1px solid ${msg.error?"#a0303040":"#10a37f40"}`,color:msg.error?"#d06060":"#10a37f"}}>{msg.text}</div>}
+
+      <button onClick={go} disabled={loading} style={{width:"100%",marginTop:18,padding:"15px 0",background:loading?T.faint:`linear-gradient(135deg,${AC}e0,${AC}90)`,borderRadius:14,color:loading?T.mu:"#fff",fontWeight:700,fontSize:16,display:"flex",alignItems:"center",justifyContent:"center",gap:10,transition:"all .2s"}}>
+        {loading?<><Spinner/>Please wait…</>:view==="login"?"Login →":"Create Account →"}
+      </button>
+
+      {view==="login"&&<button onClick={goForgot} disabled={loading} style={{width:"100%",marginTop:14,padding:"10px 0",background:"none",color:T.mu,fontSize:13}}>Forgot password?</button>}
+
+      <p style={{textAlign:"center",fontSize:11,color:T.mu,marginTop:20,opacity:.6}}>By continuing you agree to our Terms & Privacy Policy</p>
+    </div>
+  </div>;
+    }
+function ProfileSetup({user,T,onDone}){
+  const [step,setStep]=useState("type");
+  const [acType,setAcType]=useState("personal");
+  const [bizType,setBizType]=useState("general");
+  const [nm,setNm]=useState(user.user_metadata?.full_name||"");
+  const [hd,setHd]=useState("");
+  const [bio,setBio]=useState("");
+  const [col,setCol]=useState(PALETTE[0]);
+  const [photo,setPhoto]=useState(null);
+  const [loading,setLoading]=useState(false);
+  const [err,setErr]=useState("");
+  const [hdStatus,setHdStatus]=useState(null);
+  const hdTimer=useRef(null);
+  const inp={width:"100%",padding:"13px 14px",background:T.inp,border:`1px solid ${T.b1}`,borderRadius:13,color:T.txt,fontSize:14,outline:"none",boxSizing:"border-box"};
+
+  async function checkHandle(val){
+    const clean=val.trim().replace(/^@/,"").toLowerCase();
+    if(!clean){setHdStatus(null);return;}
+    setHdStatus("checking");
+    const {data}=await sb.from("profiles").select("id").eq("handle","@"+clean).maybeSingle();
+    setHdStatus(data?"taken":"ok");
+  }
+
+  function onHdChange(val){
+    setHd(val);
+    clearTimeout(hdTimer.current);
+    hdTimer.current=setTimeout(()=>checkHandle(val),600);
+  }
+
+  function pickPhoto(){
+    const inp=document.createElement("input");inp.type="file";inp.accept="image/*";
+    inp.onchange=e=>{
+      const f=e.target.files[0];if(!f)return;
+      const r=new FileReader();r.onload=ev=>setPhoto(ev.target.result);r.readAsDataURL(f);
+    };
+    inp.click();
+  }
+
+  async function create(){
+    if(!nm.trim()) return setErr("Please enter your name");
+    if(hdStatus==="checking") return setErr("Please wait while we check that username…");
+    if(hdStatus==="taken") return setErr("That username is already taken. Choose another.");
+    setLoading(true);setErr("");
+    const sid=shortId(user.id);
+    let cleanHd=hd.trim().replace(/^@/,"").toLowerCase().replace(/[^a-z0-9_]/g,"");
+    if(!cleanHd) cleanHd=nm.trim().split(" ")[0].toLowerCase().replace(/[^a-z0-9]/g,"");
+    const finalHandle="@"+cleanHd;
+
+    const dbProfile={
+      id:user.id,
+      name:nm.trim(),
+      handle:finalHandle,
+      bio:bio.trim(),
+      color:col,
+      age:null,
+      photo:photo||null,
+      interests:[],
+      links:{biz_type:acType==="business"?bizType:undefined},
+      email:user.email||"",
+      short_id:sid,
+      account_type:acType,
+      followers_count:0,
+      following_count:0,
+      created_at:new Date().toISOString()
+    };
+
+    const withBizType={...dbProfile,biz_type:acType==="business"?bizType:null};
+
+    try{
+      let error;
+      ({error}=await sb.from("profiles").upsert(withBizType,{onConflict:"id"}));
+      if(error?.message?.includes("biz_type")){
+        ({error}=await sb.from("profiles").upsert(dbProfile,{onConflict:"id"}));
+      }
+      if(error){
+        console.error("Profile save error:",error);
+        if(error.code==="23505")setErr("Username already taken. Try a different one.");
+        else setErr("Could not save: "+error.message);
+        setLoading(false);return;
+      }
+      const finalProfile={...withBizType,biz_type:acType==="business"?bizType:null};
+      onDone(finalProfile);
+    }catch(e){setErr("Unexpected error: "+e.message);setLoading(false);}
+  }
+
+  if(step==="type") return<div style={{minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
+    <div style={{width:"100%",maxWidth:380,animation:"ci .4s ease"}}>
+      <div style={{textAlign:"center",marginBottom:32}}><div style={{fontWeight:800,fontSize:36,letterSpacing:"-2px",color:T.txt}}>High<span style={{color:AC,fontWeight:300,letterSpacing:"0.04em"}}>Enough</span></div><div style={{fontSize:13,color:T.mu,marginTop:8}}>What kind of account do you want?</div></div>
+      <div style={{display:"flex",flexDirection:"column",gap:14,marginBottom:24}}>
+        {[{id:"personal",emoji:"👤",title:"Personal",desc:"For individuals — rate friends, build your social rep & climb personal tiers"},
+          {id:"business",emoji:"💼",title:"Business / Professional",desc:"For businesses, brands, freelancers & service providers — let customers rate their experience"}].map(t=>
+          <div key={t.id} onClick={()=>setAcType(t.id)} style={{padding:"18px 16px",background:acType===t.id?`${AC}10`:T.faint,border:`1.5px solid ${acType===t.id?AC+"60":T.b1}`,borderRadius:16,cursor:"pointer",transition:"all .15s"}}>
+            <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:6}}>
+              <span style={{fontSize:28}}>{t.emoji}</span>
+              <div style={{fontWeight:700,fontSize:16,color:T.txt}}>{t.title}</div>
+              {acType===t.id&&<div style={{marginLeft:"auto",width:18,height:18,borderRadius:"50%",background:AC,display:"flex",alignItems:"center",justifyContent:"center"}}><svg width="10" height="10" viewBox="0 0 10 10" fill="none"><polyline points="1.5,5 4,7.5 8.5,2.5" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg></div>}
+            </div>
+            <div style={{fontSize:12,color:T.mu,lineHeight:1.5}}>{t.desc}</div>
+          </div>)}
+      </div>
+      <button onClick={()=>setStep(acType==="business"?"biztype":"details")} style={{width:"100%",padding:"14px 0",background:`linear-gradient(135deg,${AC}e0,${AC}90)`,borderRadius:13,color:"#fff",fontWeight:700,fontSize:15}}>Continue →</button>
+    </div>
+  </div>;
+
+  if(step==="biztype") return<div style={{minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
+    <div style={{width:"100%",maxWidth:380,animation:"ci .4s ease"}}>
+      <div style={{textAlign:"center",marginBottom:28}}>
+        <div style={{fontWeight:800,fontSize:36,letterSpacing:"-2px",color:T.txt}}>High<span style={{color:AC,fontWeight:300,letterSpacing:"0.04em"}}>Enough</span></div>
+        <div style={{fontSize:13,color:T.mu,marginTop:8}}>What best describes your business or profession?</div>
+        <div style={{fontSize:11,color:T.mu,marginTop:4,opacity:.7}}>This determines your rating categories</div>
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:24,maxHeight:"52vh",overflowY:"auto"}}>
+        {BIZ_TYPES.map(bt=>{const cats=BIZ_CAT_MAP[bt.id]||[];return<div key={bt.id} onClick={()=>setBizType(bt.id)} style={{padding:"13px 16px",background:bizType===bt.id?`${AC}14`:T.faint,border:`1.5px solid ${bizType===bt.id?AC+"60":T.b1}`,borderRadius:13,cursor:"pointer",transition:"all .15s",display:"flex",alignItems:"flex-start",gap:12}}>
+          <span style={{fontSize:22,flexShrink:0,marginTop:1}}>{bt.emoji}</span>
+          <div style={{flex:1}}>
+            <div style={{fontWeight:600,fontSize:14,color:T.txt,marginBottom:5}}>{bt.label}</div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
+              {cats.map(c=><span key={c.id} style={{fontSize:10,color:bizType===bt.id?AC:T.mu,background:bizType===bt.id?`${AC}10`:T.b1,borderRadius:4,padding:"2px 8px",border:`1px solid ${bizType===bt.id?AC+"30":"transparent"}`}}>{c.emoji} {c.label}</span>)}
+            </div>
+          </div>
+          {bizType===bt.id&&<div style={{width:16,height:16,borderRadius:"50%",background:AC,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginTop:2}}><svg width="8" height="8" viewBox="0 0 10 10" fill="none"><polyline points="1.5,5 4,7.5 8.5,2.5" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg></div>}
+        </div>;})}
+      </div>
+      <div style={{display:"flex",gap:8}}>
+        <button onClick={()=>setStep("type")} style={{flex:1,padding:"13px 0",background:T.faint,border:`1px solid ${T.b1}`,borderRadius:13,color:T.mu,fontWeight:600,fontSize:14}}>← Back</button>
+        <button onClick={()=>setStep("details")} style={{flex:2,padding:"13px 0",background:`linear-gradient(135deg,${AC}e0,${AC}90)`,borderRadius:13,color:"#fff",fontWeight:700,fontSize:14}}>Continue →</button>
+      </div>
+    </div>
+  </div>;
+
+  const hdClean=hd.trim().replace(/^@/,"");
+  const hdBorderColor=hdStatus==="taken"?"#e0466e":hdStatus==="ok"?"#2cba9a":T.b1;
+  const hdIcon=hdStatus==="taken"?"✕":hdStatus==="ok"?"✓":hdStatus==="checking"?"…":"";
+  const hdIconColor=hdStatus==="taken"?"#e0466e":hdStatus==="ok"?"#2cba9a":T.mu;
+
+  return<div style={{minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
+    <div style={{width:"100%",maxWidth:380,animation:"ci .4s ease"}}>
+      <div style={{textAlign:"center",marginBottom:24}}><div style={{fontWeight:800,fontSize:36,letterSpacing:"-2px",color:T.txt}}>High<span style={{color:AC,fontWeight:300,letterSpacing:"0.04em"}}>Enough</span></div><div style={{fontSize:13,color:T.mu,marginTop:8}}>{acType==="business"?"Set up your business profile":"Set up your profile"}</div></div>
+
+      <div style={{display:"flex",justifyContent:"center",marginBottom:14}}>
+        <div style={{position:"relative",cursor:"pointer"}} onClick={pickPhoto}>
+          <div style={{width:86,height:86,borderRadius:"50%",background:photo?"transparent":`${col}18`,border:`2px solid ${col}`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:28,color:col,fontFamily:"'JetBrains Mono',monospace",overflow:"hidden"}}>
+            {photo?<img src={photo} style={{width:"100%",height:"100%",objectFit:"cover"}} alt=""/>:ini(nm||"?")}
+          </div>
+          <div style={{position:"absolute",bottom:-2,right:-2,width:26,height:26,borderRadius:"50%",background:col,border:`2px solid ${T.bg}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12}}>📷</div>
+        </div>
+      </div>
+
+      <div style={{display:"flex",gap:6,justifyContent:"center",marginBottom:20}}>{PALETTE.map(c=><div key={c} onClick={()=>setCol(c)} style={{width:22,height:22,borderRadius:"50%",background:c,cursor:"pointer",outline:col===c?`2.5px solid ${T.txt}`:"2.5px solid transparent",outlineOffset:2,transform:col===c?"scale(1.2)":"scale(1)",transition:"transform .11s"}}/>)}</div>
+
+      <input value={nm} onChange={e=>setNm(e.target.value)} placeholder={acType==="business"?"Business / Brand Name *":"Your full name *"} style={{...inp,marginBottom:11}}/>
+
+      <div style={{position:"relative",marginBottom:11}}>
+        <input value={hd} onChange={e=>onHdChange(e.target.value)} placeholder="@username (optional)" style={{...inp,border:`1px solid ${hdBorderColor}`,paddingRight:32}}/>
+        {hdStatus&&<span style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",fontSize:14,fontWeight:700,color:hdIconColor}}>{hdIcon}</span>}
+      </div>
+      {hdStatus==="taken"&&<div style={{fontSize:11,color:"#e0466e",marginBottom:8,marginTop:-8}}>Username @{hdClean} is already taken</div>}
+      {hdStatus==="ok"&&<div style={{fontSize:11,color:"#2cba9a",marginBottom:8,marginTop:-8}}>@{hdClean} is available ✓</div>}
+
+      {acType==="business"&&<input value={bio} onChange={e=>setBio(e.target.value)} placeholder="What do you offer? (optional)" style={{...inp,marginBottom:11}}/>}
+      {acType==="personal"&&<input value={bio} onChange={e=>setBio(e.target.value)} placeholder="Bio (optional)" style={{...inp,marginBottom:11}}/>}
+
+      <div style={{background:`${AC}10`,border:`1px solid ${AC}25`,borderRadius:10,padding:"8px 12px",marginBottom:16,display:"flex",alignItems:"center",gap:8,fontSize:12,color:T.mu}}>
+        <span>{acType==="business"?(BIZ_TYPES.find(b=>b.id===bizType)?.emoji||"💼"):"👤"}</span>
+        <span>{acType==="business"?(BIZ_TYPES.find(b=>b.id===bizType)?.label||"Business / Professional")+" · Professional account":"Personal account — friends score your personality"}</span>
+        <button onClick={()=>setStep(acType==="business"?"biztype":"type")} style={{marginLeft:"auto",background:"none",color:AC,fontSize:11,fontWeight:600}}>Change</button>
+      </div>
+      {err&&<div style={{color:"#d06060",fontSize:13,marginBottom:12,padding:"9px 12px",background:"#a0303018",borderRadius:9,border:"1px solid #a0303030"}}>{err}</div>}
+      <button disabled={loading||hdStatus==="taken"} onClick={create} style={{width:"100%",padding:"14px 0",background:(loading||hdStatus==="taken")?T.faint:`linear-gradient(135deg,${col}e0,${col}90)`,borderRadius:13,color:(loading||hdStatus==="taken")?T.mu:"#fff",fontWeight:700,fontSize:15,display:"flex",alignItems:"center",justifyContent:"center",gap:10}}>
+        {loading?<><Spinner/>Saving…</>:"Create Profile →"}
+      </button>
+    </div>
+  </div>;
+          }
+
 function RateModal({target,raterId,raterName,existing,T,onClose,onSubmit}){
   const isBiz=target?.account_type==="business";
   const cats=getCats(target);
