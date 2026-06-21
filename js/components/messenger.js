@@ -9,8 +9,8 @@
   // ── EMOJI DATA ──────────────────────────────────────────────────────────────
   const EMOJI_DATA={
     recent:{icon:"🕐",label:"Recent"},
-    smileys:{icon:"😀",label:"Smileys",list:["😀","😃","😄","😁","😆","😅","🤣","😂","🙂","🙃","😉","😊","😇","🥰","😍","🤩","😘","😗","😚","😙","🥲","😋","😛","😜","🤪","😝","🤑","🤗","🫡","🤭","🫢","🤫","🤔","🫤","🤐","🤨","😐","😑","😶","😏","😒","🙄","😬","🤥","😌","😔","😪","🤤","😴","😷","🤒","🤕","🤢","🤮","🤧","🥵","🥶","🥴","😵","🤯","🤠","🥳","🥸","😎","🤓","🧐","😕","😟","🙁","☹️","😮","😯","😲","😳","🥺","😦","😧","😨","😰","😥","😢","😭","😱","😖","😣","😞","😓","😩","😫","🥱","😤","😡","😠","🤬","😈","👿","💀","☠️","💩","🤡","👹","👺","👻","👽","👾","🤖"]},
-    people:{icon:"👋",label:"People",list:["👋","🤚","🖐️","✋","🖖","🫱","🫲","👌","🤌","🤏","✌️","🤞","🫰","🤟","🤘","🤙","👈","👉","👆","👇","☝️","🫵","👍","👎","✊","👊","🤛","🤜","👏","🙌","🫶","👐","🤲","🙏","✍️","💅","💪","🦾","🦵","🦶","👂","🦻","👃","👀","👁️","👅","👄","🫦","💋","👶","🧒","👦","👧","🧑","👱","👨","🧔","👩","🧓","👴","👵","🙍","🙎","🙅","🙆","💁","🙋","🧏","🙇","🤦","🤷"]},
+    smileys:{icon:"😀",label:"Smileys",list:["😀","😃","😄","😁","😆","😅","🤣","😂","🙂","🙃","😉","😊","😇","🥰","😍","🤩","😘","😗","😚","😙","🥲","😋","😛","😜","🤪","😝","🤑","🤗","🤭","🤫","🤔","🤐","🤨","😐","😑","😶","😏","😒","🙄","😬","🤥","😌","😔","😪","🤤","😴","😷","🤒","🤕","🤢","🤮","🤧","🥵","🥶","🥴","😵","🤯","🤠","🥳","🥸","😎","🤓","🧐","😕","😟","🙁","☹️","😮","😯","😲","😳","🥺","😦","😧","😨","😰","😥","😢","😭","😱","😖","😣","😞","😓","😩","😫","🥱","😤","😡","😠","🤬","😈","👿","💀","☠️","💩","🤡","👹","👺","👻","👽","👾","🤖"]},
+    people:{icon:"👋",label:"People",list:["👋","🤚","🖐️","✋","🖖","👌","🤌","🤏","✌️","🤞","🤟","🤘","🤙","👈","👉","👆","👇","☝️","👍","👎","✊","👊","🤛","🤜","👏","🙌","👐","🤲","🙏","✍️","💅","💪","🦾","🦵","🦶","👂","🦻","👃","👀","👁️","👅","👄","💋","👶","🧒","👦","👧","🧑","👱","👨","🧔","👩","🧓","👴","👵","🙍","🙎","🙅","🙆","💁","🙋","🧏","🙇","🤦","🤷"]},
     animals:{icon:"🐶",label:"Animals",list:["🐶","🐱","🐭","🐹","🐰","🦊","🐻","🐼","🐻‍❄️","🐨","🐯","🦁","🐮","🐷","🐸","🐵","🙈","🙉","🙊","🐔","🐧","🐦","🐤","🦆","🦅","🦉","🦇","🐺","🐗","🐴","🦄","🐝","🐛","🦋","🐌","🐞","🐜","🦟","🦗","🕷️","🦂","🐢","🐍","🦎","🦖","🦕","🐙","🦑","🦐","🦀","🐡","🐠","🐟","🐬","🐳","🐋","🦈","🦭","🐊","🐅","🐆","🦓","🦍","🦧","🐘","🦛","🦏","🐪","🐫","🦒","🦘","🐃","🐂","🐄","🐎","🐖","🐑","🦙","🐐","🦌","🐕","🐩","🦮","🐈","🐈‍⬛","🐓","🦃","🦤","🦚","🦜","🦢","🦩","🕊️","🐇","🦝","🦨","🦡","🦫","🦦","🦥","🐁","🐀","🐿️","🦔"]},
     food:{icon:"🍎",label:"Food",list:["🍎","🍐","🍊","🍋","🍌","🍉","🍇","🍓","🫐","🍈","🍒","🍑","🥭","🍍","🥥","🥝","🍅","🍆","🥑","🥦","🥬","🥒","🌶️","🫑","🧄","🧅","🥔","🍠","🥜","🍞","🥐","🥖","🫓","🥨","🧀","🥚","🍳","🧈","🥞","🧇","🥓","🥩","🍗","🍖","🌭","🍔","🍟","🍕","🫔","🌮","🌯","🥙","🧆","🍱","🍘","🍙","🍚","🍛","🍜","🍝","🍢","🍣","🍤","🍥","🥮","🍡","🥟","🦪","🍦","🍧","🍨","🍩","🍪","🎂","🍰","🧁","🥧","🍫","🍬","🍭","🍯","🍼","🥛","☕","🫖","🍵","🧃","🥤","🧋","🍶","🍺","🍻","🥂","🍷","🥃","🍸","🍹","🧉","🍾"]},
     travel:{icon:"✈️",label:"Travel",list:["🚗","🚕","🚙","🚌","🚎","🏎️","🚓","🚑","🚒","🚐","🛻","🚚","🚛","🚜","🏍️","🛵","🚲","🛴","⛽","🚨","🚥","🚦","🛑","🚧","⚓","⛵","🛶","🚤","🛳️","🚢","✈️","🛩️","🛫","🛬","🪂","💺","🚁","🚀","🛸","🌍","🌎","🌏","🗺️","🧭","🏔️","⛰️","🌋","🗻","🏕️","🏖️","🏜️","🏝️","🏟️","🏛️","🏗️","🏘️","🏠","🏡","🏢","🏣","🏤","🏥","🏦","🏨","🏩","🏪","🏫","🏭","🏯","🏰","💒","🗼","🗽","⛪","🕌","🛕","🕍","⛩️","🕋"]},
@@ -24,6 +24,33 @@
     try{
       const r=[e,...getRecentEmojis().filter(x=>x!==e)].slice(0,40);
       localStorage.setItem("he_recent",JSON.stringify(r));
+    }catch{}
+  }
+
+  // ── MESSAGE TIMESTAMP FORMAT ──────────────────────────────────────────────
+  // Today → time only · Yesterday → "Yesterday, time" · Same week → weekday + time · Older → date + time
+  function formatMsgTime(ts){
+    if(!ts)return"";
+    const d=new Date(ts);
+    const now=new Date();
+    const time=d.toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
+    const startOfDay=x=>{const c=new Date(x);c.setHours(0,0,0,0);return c;};
+    const diffDays=Math.round((startOfDay(now)-startOfDay(d))/86400000);
+    if(diffDays<=0)return time;
+    if(diffDays===1)return`Yesterday, ${time}`;
+    if(diffDays<7)return`${d.toLocaleDateString([],{weekday:"long"})}, ${time}`;
+    return`${d.toLocaleDateString([],{day:"numeric",month:"short"})}, ${time}`;
+  }
+
+  // ── "DELETE FOR ME" — local-only, per device, never touches the server ────
+  function getHiddenMsgs(convId){
+    try{return new Set(JSON.parse(localStorage.getItem("he_hidden_"+convId)||"[]"));}catch{return new Set();}
+  }
+  function hideMsgLocally(convId,msgId){
+    try{
+      const cur=getHiddenMsgs(convId);
+      cur.add(msgId);
+      localStorage.setItem("he_hidden_"+convId,JSON.stringify([...cur]));
     }catch{}
   }
 
@@ -89,6 +116,7 @@
       onSend(txt.trim());
       setTxt("");
       setShowEmoji(false);
+      if(inputRef.current)inputRef.current.style.height="auto";
       setTimeout(()=>inputRef.current?.focus(),50);
     }
 
@@ -140,7 +168,14 @@
         try{
           const segs=[...new Intl.Segmenter().segment(before)].map(s=>s.segment);
           segs.pop();nb=segs.join('');
-        }catch{const a=[...before];a.pop();nb=a.join('');}
+        }catch{
+          // Intl.Segmenter unsupported — emoji-aware fallback so backspace
+          // removes a whole compound emoji (ZWJ/variation/skin-tone/flag)
+          // in one press instead of leaving dangling invisible characters.
+          const clusterRe=/(?:\p{Regional_Indicator}\p{Regional_Indicator})|(?:\p{Emoji}(?:\p{Emoji_Modifier}|\uFE0F)?(?:\u200D\p{Emoji}(?:\p{Emoji_Modifier}|\uFE0F)?)*)|./gsu;
+          const segs=before.match(clusterRe)||[];
+          segs.pop();nb=segs.join('');
+        }
         newVal=nb+cur.slice(start);
         newPos=nb.length;
       } else {return;}
@@ -221,7 +256,7 @@
   function MsgTick({m,myId}){
     if(!m||m.sid!==myId)return null;
     const isPending=!m.dbId||String(m.dbId).startsWith("temp_");
-    if(isPending)return<span title="Sending" style={{fontSize:10,color:"#8e8e93",marginLeft:3,opacity:.6}}>⏱</span>;
+    if(isPending)return<span title="Sending" style={{fontSize:11,color:"#8e8e93",marginLeft:3,opacity:.6}}>✓</span>;
     const st=m.status||"sent";
     if(st==="seen")
       return<span title="Seen" style={{fontSize:11,color:"#7864DC",marginLeft:3,letterSpacing:"-2px",fontWeight:700}}>✓✓</span>;
@@ -231,22 +266,77 @@
   }
 
   // ── CHAT SCREEN ──────────────────────────────────────────────────────────────
+  const STATUS_RANK={sent:1,delivered:2,seen:3};
   function ChatScreen({conv,myProfile,profiles,T,onBack,onSend,onMarkRead,onClearChat,onBlockUser,onReportUser,onViewProfile}){
     const endRef=useRef(null);
+    const scrollRef=useRef(null);
+    const prevLenRef=useRef(0);
+    const pressTimer=useRef(null);
     const msgs=conv.messages||[];
     const other=conv.other||{};
+    const [hidden,setHidden]=useState(()=>getHiddenMsgs(conv.id));
+    const [menuFor,setMenuFor]=useState(null);
+    const [copiedId,setCopiedId]=useState(null);
+    const statusRankRef=useRef(new Map());
+
+    // Status must only move forward (sent → delivered → seen), regardless
+    // of out-of-order optimistic/realtime updates arriving from app.js.
+    function effectiveStatus(m){
+      if(!m.dbId||String(m.dbId).startsWith("temp_"))return m.status; // pending — MsgTick handles this separately
+      const incoming=m.status||"sent";
+      const incomingRank=STATUS_RANK[incoming]||1;
+      const seenRank=statusRankRef.current.get(m.dbId)||0;
+      if(incomingRank>=seenRank){
+        statusRankRef.current.set(m.dbId,incomingRank);
+        return incoming;
+      }
+      // A lower-rank update arrived after a higher one — keep the higher status on screen.
+      return Object.keys(STATUS_RANK).find(k=>STATUS_RANK[k]===seenRank)||incoming;
+    }
+
+    useEffect(()=>{setHidden(getHiddenMsgs(conv.id));},[conv.id]);
+
+    function startPress(id){
+      pressTimer.current=setTimeout(()=>setMenuFor(id),450);
+    }
+    function cancelPress(){
+      clearTimeout(pressTimer.current);
+    }
+    function doCopy(text,id){
+      navigator.clipboard?.writeText(text).catch(()=>{});
+      setCopiedId(id);
+      setTimeout(()=>setCopiedId(null),1100);
+      setMenuFor(null);
+    }
+    function doDeleteForMe(id){
+      hideMsgLocally(conv.id,id);
+      setHidden(h=>new Set([...h,id]));
+      setMenuFor(null);
+    }
 
     // Mark read when chat opens or new messages arrive
     useEffect(()=>{
       if(conv?.id)onMarkRead(conv.id,other?.id);
       endRef.current?.scrollIntoView({behavior:"instant"});
+      prevLenRef.current=msgs.length;
     },[conv?.id]);
 
     useEffect(()=>{
       if(conv?.id&&msgs.some(m=>m.sid!==myProfile.id&&m.read===false)){
         onMarkRead(conv.id,other?.id);
       }
-      endRef.current?.scrollIntoView({behavior:"smooth"});
+      const grew=msgs.length>prevLenRef.current;
+      prevLenRef.current=msgs.length;
+      if(!grew)return;
+      // Always follow your own outgoing message. For incoming messages,
+      // only auto-scroll if you're already near the bottom — otherwise
+      // this would yank you away from history you scrolled up to read.
+      const justSent=msgs[msgs.length-1]?.sid===myProfile.id;
+      const el=scrollRef.current;
+      const nearBottom=el?(el.scrollHeight-el.scrollTop-el.clientHeight<120):true;
+      if(justSent||nearBottom){
+        endRef.current?.scrollIntoView({behavior:"smooth"});
+      }
     },[msgs.length]);
 
     // Visibility re-mark
@@ -257,6 +347,7 @@
     },[conv?.id]);
 
     const col=myProfile.color||"#7864DC";
+    const visibleMsgs=msgs.filter(m=>!hidden.has(m.dbId));
 
     return(
       <div style={{position:"fixed",inset:0,zIndex:400,background:"#fff",display:"flex",flexDirection:"column"}}>
@@ -278,14 +369,16 @@
         </div>
 
         {/* Messages */}
-        <div style={{flex:1,overflowY:"auto",padding:"12px 12px 4px",display:"flex",flexDirection:"column",gap:2}}>
-          {msgs.map((m,i)=>{
+        <div ref={scrollRef} style={{flex:1,overflowY:"auto",padding:"12px 12px 4px",display:"flex",flexDirection:"column",gap:2}}>
+          {visibleMsgs.map((m,i)=>{
             const mine=m.sid===myProfile.id;
-            const prev=msgs[i-1];
+            const prev=visibleMsgs[i-1];
             const mDate=m.ts?new Date(m.ts):null;
             const pDate=prev?.ts?new Date(prev.ts):null;
             const showDate=mDate&&(!pDate||mDate.toDateString()!==pDate.toDateString());
             const showAvatar=!mine&&(!prev||prev.sid!==m.sid||showDate);
+            const canAct=m.dbId&&!String(m.dbId).startsWith("temp_"); // only fully-sent messages can be copied/deleted-for-me
+            const menuOpen=canAct&&menuFor===m.dbId;
             return(
               <React.Fragment key={m.dbId||i}>
                 {showDate&&(
@@ -313,18 +406,36 @@
                     </div>
                   )}
                   {/* Bubble */}
-                  <div style={{maxWidth:"72%"}}>
-                    <div style={{
-                      background:mine?`linear-gradient(135deg,${col}e8,${col}b0)`:"#f2f2f7",
-                      borderRadius:mine?"18px 18px 4px 18px":"18px 18px 18px 4px",
-                      padding:"9px 13px",
-                      color:mine?"#fff":"#000",
-                      fontSize:15,lineHeight:1.4,wordBreak:"break-word",
-                    }}>{m.txt}</div>
+                  <div style={{maxWidth:"72%",position:"relative"}}>
+                    <div
+                      onPointerDown={()=>canAct&&startPress(m.dbId)}
+                      onPointerUp={cancelPress}
+                      onPointerLeave={cancelPress}
+                      style={{
+                        background:mine?`linear-gradient(135deg,${col}e8,${col}b0)`:"#f2f2f7",
+                        borderRadius:mine?"18px 18px 4px 18px":"18px 18px 18px 4px",
+                        padding:"9px 13px",
+                        color:mine?"#fff":"#000",
+                        fontSize:15,lineHeight:1.4,wordBreak:"break-word",
+                        userSelect:"none",WebkitUserSelect:"none",
+                      }}>{m.txt}</div>
                     <div style={{fontSize:10,color:"#8e8e93",marginTop:2,textAlign:mine?"right":"left",paddingLeft:4,paddingRight:4,display:"flex",alignItems:"center",justifyContent:mine?"flex-end":"flex-start",gap:2}}>
-                      {window.HE_UTILS.fmtTime(m.ts)}
-                      <MsgTick m={m} myId={myProfile.id}/>
+                      {copiedId===m.dbId?"Copied":window.HE_UTILS.fmtTime(m.ts)}
+                      <MsgTick m={{...m,status:effectiveStatus(m)}} myId={myProfile.id}/>
                     </div>
+                    {menuOpen&&(
+                      <>
+                        <div onClick={()=>setMenuFor(null)} style={{position:"fixed",inset:0,zIndex:9}}/>
+                        <div onClick={e=>e.stopPropagation()} style={{
+                          position:"absolute",top:-8,zIndex:10,
+                          [mine?"right":"left"]:0,transform:"translateY(-100%)",
+                          background:"#fff",borderRadius:12,boxShadow:"0 4px 24px rgba(0,0,0,.18)",overflow:"hidden",minWidth:150,
+                        }}>
+                          <button onClick={()=>doCopy(m.txt,m.dbId)} style={{display:"block",width:"100%",padding:"11px 16px",textAlign:"left",background:"none",border:"none",fontSize:14,color:"#000",borderBottom:"1px solid #f2f2f7"}}>Copy</button>
+                          <button onClick={()=>doDeleteForMe(m.dbId)} style={{display:"block",width:"100%",padding:"11px 16px",textAlign:"left",background:"none",border:"none",fontSize:14,color:"#ff3b30"}}>Delete for me</button>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
               </React.Fragment>
@@ -368,7 +479,7 @@
         <div style={{flex:1,minWidth:0}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:8}}>
             <div style={{fontWeight:unread>0?700:500,fontSize:15,color:"#000",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{other.name}</div>
-            <div style={{fontSize:11,color:"#8e8e93",flexShrink:0}}>{last?.ts?window.HE_UTILS.ago(last.ts):""}</div>
+            <div style={{fontSize:11,color:"#8e8e93",flexShrink:0}}>{last?.ts?formatMsgTime(last.ts):""}</div>
           </div>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginTop:2}}>
             <div style={{fontSize:13,color:unread>0?"#000":"#8e8e93",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>
