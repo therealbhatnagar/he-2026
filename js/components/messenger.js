@@ -1,31 +1,10 @@
 // ── HIGHENOUGH MESSENGER ──────────────────────────────────────────────────────
-// Clean DM system — Inbox + ChatScreen + EmojiTray + MessageInput
+// Clean DM system — Inbox + ChatScreen + MessageInput
 // Registered on window.HE_COMPONENTS
 // Depends on: HE_UTILS (format.js), window.HE_AC, window.HE_pScore, window.HE_tierOf
 // ─────────────────────────────────────────────────────────────────────────────
 (function(){
   const {useState,useEffect,useRef,useCallback,useMemo}=React;
-
-  // ── EMOJI DATA ──────────────────────────────────────────────────────────────
-  const EMOJI_DATA={
-    recent:{icon:"🕐",label:"Recent"},
-    smileys:{icon:"😀",label:"Smileys",list:["😀","😃","😄","😁","😆","😅","🤣","😂","🙂","🙃","😉","😊","😇","🥰","😍","🤩","😘","😗","😚","😙","🥲","😋","😛","😜","🤪","😝","🤑","🤗","🫡","🤭","🫢","🤫","🤔","🫤","🤐","🤨","😐","😑","😶","😏","😒","🙄","😬","🤥","😌","😔","😪","🤤","😴","😷","🤒","🤕","🤢","🤮","🤧","🥵","🥶","🥴","😵","🤯","🤠","🥳","🥸","😎","🤓","🧐","😕","😟","🙁","☹️","😮","😯","😲","😳","🥺","😦","😧","😨","😰","😥","😢","😭","😱","😖","😣","😞","😓","😩","😫","🥱","😤","😡","😠","🤬","😈","👿","💀","☠️","💩","🤡","👹","👺","👻","👽","👾","🤖"]},
-    people:{icon:"👋",label:"People",list:["👋","🤚","🖐️","✋","🖖","🫱","🫲","👌","🤌","🤏","✌️","🤞","🫰","🤟","🤘","🤙","👈","👉","👆","👇","☝️","🫵","👍","👎","✊","👊","🤛","🤜","👏","🙌","🫶","👐","🤲","🙏","✍️","💅","💪","🦾","🦵","🦶","👂","🦻","👃","👀","👁️","👅","👄","🫦","💋","👶","🧒","👦","👧","🧑","👱","👨","🧔","👩","🧓","👴","👵","🙍","🙎","🙅","🙆","💁","🙋","🧏","🙇","🤦","🤷"]},
-    animals:{icon:"🐶",label:"Animals",list:["🐶","🐱","🐭","🐹","🐰","🦊","🐻","🐼","🐻‍❄️","🐨","🐯","🦁","🐮","🐷","🐸","🐵","🙈","🙉","🙊","🐔","🐧","🐦","🐤","🦆","🦅","🦉","🦇","🐺","🐗","🐴","🦄","🐝","🐛","🦋","🐌","🐞","🐜","🦟","🦗","🕷️","🦂","🐢","🐍","🦎","🦖","🦕","🐙","🦑","🦐","🦀","🐡","🐠","🐟","🐬","🐳","🐋","🦈","🦭","🐊","🐅","🐆","🦓","🦍","🦧","🐘","🦛","🦏","🐪","🐫","🦒","🦘","🐃","🐂","🐄","🐎","🐖","🐑","🦙","🐐","🦌","🐕","🐩","🦮","🐈","🐈‍⬛","🐓","🦃","🦤","🦚","🦜","🦢","🦩","🕊️","🐇","🦝","🦨","🦡","🦫","🦦","🦥","🐁","🐀","🐿️","🦔"]},
-    food:{icon:"🍎",label:"Food",list:["🍎","🍐","🍊","🍋","🍌","🍉","🍇","🍓","🫐","🍈","🍒","🍑","🥭","🍍","🥥","🥝","🍅","🍆","🥑","🥦","🥬","🥒","🌶️","🫑","🧄","🧅","🥔","🍠","🥜","🍞","🥐","🥖","🫓","🥨","🧀","🥚","🍳","🧈","🥞","🧇","🥓","🥩","🍗","🍖","🌭","🍔","🍟","🍕","🫔","🌮","🌯","🥙","🧆","🍱","🍘","🍙","🍚","🍛","🍜","🍝","🍢","🍣","🍤","🍥","🥮","🍡","🥟","🦪","🍦","🍧","🍨","🍩","🍪","🎂","🍰","🧁","🥧","🍫","🍬","🍭","🍯","🍼","🥛","☕","🫖","🍵","🧃","🥤","🧋","🍶","🍺","🍻","🥂","🍷","🥃","🍸","🍹","🧉","🍾"]},
-    travel:{icon:"✈️",label:"Travel",list:["🚗","🚕","🚙","🚌","🚎","🏎️","🚓","🚑","🚒","🚐","🛻","🚚","🚛","🚜","🏍️","🛵","🚲","🛴","⛽","🚨","🚥","🚦","🛑","🚧","⚓","⛵","🛶","🚤","🛳️","🚢","✈️","🛩️","🛫","🛬","🪂","💺","🚁","🚀","🛸","🌍","🌎","🌏","🗺️","🧭","🏔️","⛰️","🌋","🗻","🏕️","🏖️","🏜️","🏝️","🏟️","🏛️","🏗️","🏘️","🏠","🏡","🏢","🏣","🏤","🏥","🏦","🏨","🏩","🏪","🏫","🏭","🏯","🏰","💒","🗼","🗽","⛪","🕌","🛕","🕍","⛩️","🕋"]},
-    objects:{icon:"💡",label:"Objects",list:["⌚","📱","💻","⌨️","🖥️","🖨️","📺","📷","📸","📹","🎥","📞","☎️","📡","🔋","🔌","💡","🔦","🕯️","🧯","💰","💴","💵","💶","💷","💸","💳","💹","📈","📉","📊","📋","📌","📍","📎","📏","📐","✂️","🗃️","🗄️","🗑️","🔒","🔓","🔑","🗝️","🔨","⚒️","🛠️","⚔️","🛡️","🔧","🔩","⚙️","🗜️","⚖️","🔗","🔬","🔭","💉","💊","🩹","🚪","🛗","🪞","🪟","🛏️","🛋️","🪑","🚽","🚿","🛁","🧴","🧷","🧹","🧺","🧻","🧼","🛒"]},
-    symbols:{icon:"❤️",label:"Symbols",list:["❤️","🧡","💛","💚","💙","💜","🖤","🤍","🤎","💔","❣️","💕","💞","💓","💗","💖","💘","💝","💟","☮️","✝️","☪️","🕉️","☸️","✡️","🔯","🕎","☯️","☦️","🛐","⛎","♈","♉","♊","♋","♌","♍","♎","♏","♐","♑","♒","♓","🆔","⚛️","🉑","☢️","☣️","📴","📳","🈶","🈚","🈸","🈺","✴️","🆚","💮","🉐","㊙️","㊗️","🈴","🈵","🈹","🈲","🅰️","🅱️","🆎","🆑","🅾️","🆘","❌","⭕","🛑","⛔","📛","🚫","💯","💢","♨️","♻️","✅","❎","🆗","🆙","🆒","🆕","🆓","⬆️","➡️","⬇️","⬅️","↕️","↔️","🔃","🔄","🔙","🔚","🔛","🔜","🔝"]},
-  };
-  const EMOJI_CATS=Object.keys(EMOJI_DATA).filter(k=>k!=="recent");
-
-  function getRecentEmojis(){try{return JSON.parse(localStorage.getItem("he_recent")||"[]");}catch{return[];}}
-  function saveRecentEmoji(e){
-    try{
-      const r=[e,...getRecentEmojis().filter(x=>x!==e)].slice(0,40);
-      localStorage.setItem("he_recent",JSON.stringify(r));
-    }catch{}
-  }
 
   // ── MESSAGE TIMESTAMP FORMAT ──────────────────────────────────────────────
   // Today → time only · Yesterday → "Yesterday, time" · Same week → weekday + time · Older → date + time
@@ -54,54 +33,10 @@
     }catch{}
   }
 
-  // ── EMOJI TRAY ──────────────────────────────────────────────────────────────
-  function EmojiTray({color,onEmoji,onBackspace,inputRef}){
-    const [cat,setCat]=useState("smileys");
-    const [recent,setRecent]=useState(getRecentEmojis);
-
-    const emojis=cat==="recent"
-      ?(recent.length?recent:EMOJI_DATA.smileys.list)
-      :(EMOJI_DATA[cat]?.list||[]);
-
-    function tapEmoji(e){
-      onEmoji(e);
-      saveRecentEmoji(e);
-      setRecent(getRecentEmojis());
-    }
-
-    return(
-      <div style={{background:"#fff",borderTop:"1px solid #e5e5ea",flexShrink:0}}>
-        {/* Category row */}
-        <div style={{display:"flex",alignItems:"center",overflowX:"auto",borderBottom:"1px solid #e5e5ea",padding:"2px 4px 0",scrollbarWidth:"none"}}>
-          <button onClick={()=>setCat("recent")} style={{fontSize:18,padding:"6px 8px",borderRadius:"8px 8px 0 0",background:cat==="recent"?"#f2f2f7":"transparent",border:"none",borderBottom:cat==="recent"?`2px solid ${color}`:"2px solid transparent",flexShrink:0,opacity:recent.length?1:.4}}>🕐</button>
-          {EMOJI_CATS.map(k=>(
-            <button key={k} onClick={()=>setCat(k)} style={{fontSize:18,padding:"6px 8px",borderRadius:"8px 8px 0 0",background:cat===k?"#f2f2f7":"transparent",border:"none",borderBottom:cat===k?`2px solid ${color}`:"2px solid transparent",flexShrink:0}}>{EMOJI_DATA[k].icon}</button>
-          ))}
-          <div style={{flex:1}}/>
-          <button
-            onClick={onBackspace}
-            style={{fontSize:16,padding:"4px 10px",background:"#f2f2f7",border:"1px solid #e5e5ea",borderRadius:8,color:"#666",flexShrink:0,margin:"4px 4px 6px"}}
-          >⌫</button>
-        </div>
-        {/* Emoji grid */}
-        <div style={{display:"flex",flexWrap:"wrap",padding:"6px 4px",height:200,overflowY:"auto",alignContent:"flex-start",gap:0}}>
-          {emojis.map((e,i)=>(
-            <button key={i} onClick={()=>tapEmoji(e)}
-              style={{fontSize:26,width:"12.5%",height:44,background:"none",border:"none",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,borderRadius:8}}>
-              {e}
-            </button>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
   // ── MESSAGE INPUT ────────────────────────────────────────────────────────────
   function MessageInput({color,onSend,placeholder}){
     const [txt,setTxt]=useState("");
-    const [showEmoji,setShowEmoji]=useState(false);
     const inputRef=useRef(null);
-    const selRef=useRef({start:0,end:0}); // track cursor before emoji panel opens
 
     function handleChange(e){
       setTxt(e.target.value);
@@ -111,100 +46,29 @@
       if(!txt.trim())return;
       onSend(txt.trim());
       setTxt("");
-      setShowEmoji(false);
       if(inputRef.current)inputRef.current.style.height="auto";
-      setTimeout(()=>inputRef.current?.focus(),50);
-    }
-
-    function toggleEmoji(){
-      if(!showEmoji){
-        // Save cursor position before blur
-        const inp=inputRef.current;
-        if(inp){selRef.current={start:inp.selectionStart,end:inp.selectionEnd};}
-        inp?.blur();
-        setShowEmoji(true);
-      } else {
-        setShowEmoji(false);
-        // Restore cursor — synchronous, so the keyboard starts opening
-        // immediately as the panel collapses, not after a visible gap.
-        const inp=inputRef.current;
-        if(inp){
-          inp.focus();
-          inp.selectionStart=selRef.current.start;
-          inp.selectionEnd=selRef.current.end;
-        }
-      }
-    }
-
-    function insertEmoji(e){
-      const inp=inputRef.current;
-      const start=selRef.current.start;
-      const end=selRef.current.end;
-      const cur=inp?inp.value:txt;
-      const newVal=cur.slice(0,start)+e+cur.slice(end);
-      const newPos=start+e.length;
-      setTxt(newVal);
-      selRef.current={start:newPos,end:newPos};
-      // Don't focus input (would close keyboard on mobile)
-    }
-
-    function doBackspace(){
-      const start=selRef.current.start;
-      const end=selRef.current.end;
-      const cur=txt;
-      let newVal,newPos;
-      if(start!==end){
-        // Delete selection
-        newVal=cur.slice(0,start)+cur.slice(end);
-        newPos=start;
-      } else if(start>0){
-        // Delete one grapheme cluster before cursor
-        const before=cur.slice(0,start);
-        let nb;
-        try{
-          const segs=[...new Intl.Segmenter().segment(before)].map(s=>s.segment);
-          segs.pop();nb=segs.join('');
-        }catch{
-          // Intl.Segmenter unsupported — emoji-aware fallback so backspace
-          // removes a whole compound emoji (ZWJ/variation/skin-tone/flag)
-          // in one press instead of leaving dangling invisible characters.
-          const clusterRe=/(?:\p{Regional_Indicator}\p{Regional_Indicator})|(?:\p{Emoji}(?:\p{Emoji_Modifier}|\uFE0F)?(?:\u200D\p{Emoji}(?:\p{Emoji_Modifier}|\uFE0F)?)*)|./gsu;
-          const segs=before.match(clusterRe)||[];
-          segs.pop();nb=segs.join('');
-        }
-        newVal=nb+cur.slice(start);
-        newPos=nb.length;
-      } else {return;}
-      setTxt(newVal);
-      selRef.current={start:newPos,end:newPos};
+      // No refocus hack needed — the send button prevents default on
+      // pointerdown below, so the textarea never loses focus in the first
+      // place, and the keyboard never closes/reopens around a send.
     }
 
     const hasText=txt.trim().length>0;
 
     return(
       <div style={{flexShrink:0}}>
-        {/* Input row */}
         <div style={{
           display:"flex",alignItems:"flex-end",gap:8,
           padding:"8px 12px",
-          paddingBottom:showEmoji?"8px":"max(12px,env(safe-area-inset-bottom))",
+          paddingBottom:"max(12px,env(safe-area-inset-bottom))",
           borderTop:"1px solid #e5e5ea",
           background:"#fff",
         }}>
-          {/* Emoji toggle */}
-          <button onClick={toggleEmoji} style={{
-            width:36,height:36,borderRadius:"50%",flexShrink:0,marginBottom:1,
-            background:showEmoji?`${color}20`:"#f2f2f7",
-            border:`1px solid ${showEmoji?color+"50":"#e5e5ea"}`,
-            display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,
-          }}>😊</button>
-          {/* Auto-grow textarea */}
+          {/* Auto-grow textarea — device keyboard's own emoji key is used
+              for emoji; no in-app picker. */}
           <textarea
             ref={inputRef}
             value={txt}
             onChange={handleChange}
-            onSelect={e=>{selRef.current={start:e.target.selectionStart,end:e.target.selectionEnd};}}
-            onFocus={()=>{if(showEmoji)setShowEmoji(false);}}
             placeholder={placeholder||"Message…"}
             rows={1}
             style={{
@@ -222,27 +86,22 @@
               e.target.style.height=Math.min(e.target.scrollHeight,120)+"px";
             }}
           />
-          {/* Send button */}
-          <button onClick={doSend} style={{
-            width:36,height:36,borderRadius:"50%",flexShrink:0,marginBottom:1,
-            background:hasText?`linear-gradient(135deg,${color}dd,${color}99)`:"#f2f2f7",
-            border:"none",display:"flex",alignItems:"center",justifyContent:"center",
-            color:hasText?"#fff":"#aaa",transition:"background .15s",
-          }}>
+          {/* Send button — preventDefault on pointerdown stops it from ever
+              stealing focus from the textarea, so the keyboard stays open. */}
+          <button
+            onPointerDown={e=>e.preventDefault()}
+            onClick={doSend}
+            style={{
+              width:36,height:36,borderRadius:"50%",flexShrink:0,marginBottom:1,
+              background:hasText?`linear-gradient(135deg,${color}dd,${color}99)`:"#f2f2f7",
+              border:"none",display:"flex",alignItems:"center",justifyContent:"center",
+              color:hasText?"#fff":"#aaa",transition:"background .15s",
+            }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
               <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
             </svg>
           </button>
         </div>
-        {/* Emoji tray — below input, hidden with height animation */}
-        {showEmoji&&(
-          <EmojiTray
-            color={color}
-            onEmoji={insertEmoji}
-            onBackspace={doBackspace}
-            inputRef={inputRef}
-          />
-        )}
       </div>
     );
   }
@@ -251,7 +110,7 @@
   function MsgTick({m,myId}){
     if(!m||m.sid!==myId)return null;
     const isPending=!m.dbId||String(m.dbId).startsWith("temp_");
-    if(isPending)return<span title="Sending" style={{fontSize:11,color:"#8e8e93",marginLeft:3,opacity:.6}}>✓</span>;
+    if(isPending)return<span title="Sending" style={{fontSize:10,color:"#8e8e93",marginLeft:3,opacity:.6}}>⏱</span>;
     const st=m.status||"sent";
     if(st==="seen")
       return<span title="Seen" style={{fontSize:11,color:"#7864DC",marginLeft:3,letterSpacing:"-2px",fontWeight:700}}>✓✓</span>;
@@ -315,6 +174,23 @@
       endRef.current?.scrollIntoView({behavior:"instant"});
       prevLenRef.current=msgs.length;
     },[conv?.id]);
+
+    // Keep the latest message visible when the on-screen keyboard opens.
+    // Without this, a shrinking viewport can leave the last message
+    // scrolled out of view behind the keyboard ("message hiding").
+    useEffect(()=>{
+      const vv=window.visualViewport;
+      if(!vv)return;
+      let lastH=vv.height;
+      function onResize(){
+        if(vv.height<lastH-60){ // shrank meaningfully — keyboard likely opened
+          endRef.current?.scrollIntoView({behavior:"instant"});
+        }
+        lastH=vv.height;
+      }
+      vv.addEventListener("resize",onResize);
+      return()=>vv.removeEventListener("resize",onResize);
+    },[]);
 
     useEffect(()=>{
       if(conv?.id&&msgs.some(m=>m.sid!==myProfile.id&&m.read===false)){
@@ -533,7 +409,6 @@
   window.HE_COMPONENTS.MessengerInbox=Inbox;
   window.HE_COMPONENTS.MessengerChatScreen=ChatScreen;
   window.HE_COMPONENTS.MessengerMessageInput=MessageInput;
-  window.HE_COMPONENTS.MessengerEmojiTray=EmojiTray;
   window.HE_COMPONENTS.MessengerMsgTick=MsgTick;
 
 })();
