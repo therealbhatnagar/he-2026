@@ -2933,7 +2933,7 @@ function App(){
           if(m.sender_id!==uid&&m.receiver_id!==uid)return;
           const otherId=m.sender_id===uid?m.receiver_id:m.sender_id;
           const cid=[uid,otherId].sort().join("_");
-          const newMsg={sid:m.sender_id,txt:m.text,ts:new Date(m.created_at).getTime(),read:m.read,status:m.status||"delivered",dbId:m.id};
+          const newMsg={sid:m.sender_id,txt:m.text,ts:new Date(m.created_at).getTime(),read:m.read,status:m.status||"sent",dbId:m.id};
           setConvs(prev=>{
             const ex=prev.find(c=>c.id===cid);
             let next=ex?prev.map(c=>c.id===cid?{...c,messages:[...c.messages.filter(x=>x.dbId!==newMsg.dbId),newMsg]}:c):[...prev,{id:cid,oid:otherId,messages:[newMsg]}];
@@ -3005,9 +3005,9 @@ function App(){
       if(clearingRatingsRef.current)return;
       try{
         const [pr,rr,dr]=await Promise.all([
-          sb.from("profiles").select("*"),
-          sb.from("ratings").select("*"),
-          sb.from("deleted_accounts").select("auth_id"),
+          sb.from("profiles").select("*").limit(200),
+          sb.from("ratings").select("*").limit(500),
+          sb.from("deleted_accounts").select("auth_id").limit(1000),
         ]);
         if(pr.data&&rr.data&&!clearingRatingsRef.current){
           const delSet=new Set((dr.data||[]).map(d=>d.auth_id));
@@ -3030,13 +3030,13 @@ function App(){
     try{
       const mapR=r=>({raterId:r.rater_id,raterName:r.rater_name||"",vibe:r.vibe,humor:r.humor,kindness:r.kindness,rizz:r.rizz,loyalty:r.loyalty,drip:r.drip,ts:new Date(r.updated_at).getTime()});
       const [profRes,ratRes,followRes,myFollowersRes,blockRes,notifRes,delRes]=await Promise.all([
-        sb.from("profiles").select("*"),
-        sb.from("ratings").select("*"),
+        sb.from("profiles").select("*").limit(200),
+        sb.from("ratings").select("*").limit(500),
         sb.from("follows").select("following_id").eq("follower_id",profile.id),
         sb.from("follows").select("follower_id").eq("following_id",profile.id),
         sb.from("blocks").select("blocked_id").eq("blocker_id",profile.id),
         sb.from("notifications").select("*").eq("target_id",profile.id).order("created_at",{ascending:false}).limit(60),
-        sb.from("deleted_accounts").select("auth_id"),
+        sb.from("deleted_accounts").select("auth_id").limit(1000),
       ]);
       if(clearingRatingsRef.current){setRefreshing(false);return;} // re-check after awaits
       const delSet=new Set((delRes.data||[]).map(d=>d.auth_id));
@@ -3318,7 +3318,7 @@ function App(){
     const {data}=await sb.from("messages").insert({sender_id:profile.id,receiver_id:otherId,text:txt,read:false,status:"sent",created_at:new Date().toISOString()}).select().single();
     if(data){
       // Update temp message with real dbId and status=delivered
-      const realMsg={...msg,dbId:data.id,status:"delivered"};
+      const realMsg={...msg,dbId:data.id,status:"sent"};
       setActiveChat(prev=>({...prev,messages:(prev.messages||[]).map(m=>m.dbId===tempId?realMsg:m)}));
       setConvs(prev=>prev.map(c=>c.id===cid?{...c,messages:c.messages.map(m=>m.dbId===tempId?realMsg:m)}:c));
     }
