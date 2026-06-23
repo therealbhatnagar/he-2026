@@ -2613,7 +2613,7 @@ function App(){
       setConvs([]);
       setDeepLinkProfile(null);
       setActiveChat(null);
-      setViewT(null);
+      setProfileStack([]);
       setRateT(null);
       setSettings(false);
       setAuthLoading(false);
@@ -2729,9 +2729,9 @@ function App(){
           if(!existing){
             // Fetch ratings fresh if not already in state
             const {data:dlr}=await sb.from("ratings").select("*").eq("target_id",dlp.id);
-            setViewT({...dlp,ratings:(dlr||[]).map(r=>({raterId:r.rater_id,raterName:r.rater_name||"",vibe:r.vibe,humor:r.humor,kindness:r.kindness,rizz:r.rizz,loyalty:r.loyalty,drip:r.drip,ts:new Date(r.updated_at).getTime()}))});
+            pushProfile({...dlp,ratings:(dlr||[]).map(r=>({raterId:r.rater_id,raterName:r.rater_name||"",vibe:r.vibe,humor:r.humor,kindness:r.kindness,rizz:r.rizz,loyalty:r.loyalty,drip:r.drip,ts:new Date(r.updated_at).getTime()}))});
           } else {
-            setViewT(full);
+            pushProfile(full);
           }
           // Clean the URL so back-navigation doesn't re-trigger the deep link
           window.history.replaceState({},"",window.location.pathname);
@@ -2993,7 +2993,7 @@ function App(){
         const {data:dlp}=await dq.limit(1).maybeSingle();
         if(dlp&&dlp.id!==myProfile.id){
           const {data:dlr}=await sb.from("ratings").select("*").eq("target_id",dlp.id);
-          setViewT({...dlp,ratings:(dlr||[]).map(mapRating)});
+          pushProfile({...dlp,ratings:(dlr||[]).map(mapRating)});
           window.history.replaceState({},"",window.location.pathname);
         }
       }catch(e){console.error("Deep link error:",e);}
@@ -3576,15 +3576,15 @@ function App(){
                 </div>
               </div>
             : <div>
-                {followedPersonal.length>0&&<><div style={{fontWeight:700,fontSize:13,color:T.mu,padding:"4px 0 10px",letterSpacing:".04em",textTransform:"uppercase"}}>👤 People</div><div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:18}}>{followedPersonal.map((p,i)=><FeedCard key={p.id} p={p} myId={profile.id} following={following} T={T} onView={setViewT} onFollow={handleFollow} onUnfollow={handleUnfollow} onRate={handleRate} onMsg={handleMsg} idx={i}/>)}</div></>}
-                {followedBiz.length>0&&<><div style={{fontWeight:700,fontSize:13,color:T.mu,padding:"4px 0 10px",letterSpacing:".04em",textTransform:"uppercase"}}>🏢 Businesses</div><div style={{display:"flex",flexDirection:"column",gap:12}}>{followedBiz.map((p,i)=><FeedCard key={p.id} p={p} myId={profile.id} following={following} T={T} onView={setViewT} onFollow={handleFollow} onUnfollow={handleUnfollow} onRate={handleRate} onMsg={handleMsg} idx={i}/>)}</div></>}
+                {followedPersonal.length>0&&<><div style={{fontWeight:700,fontSize:13,color:T.mu,padding:"4px 0 10px",letterSpacing:".04em",textTransform:"uppercase"}}>👤 People</div><div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:18}}>{followedPersonal.map((p,i)=><FeedCard key={p.id} p={p} myId={profile.id} following={following} T={T} onView={pushProfile} onFollow={handleFollow} onUnfollow={handleUnfollow} onRate={handleRate} onMsg={handleMsg} idx={i}/>)}</div></>}
+                {followedBiz.length>0&&<><div style={{fontWeight:700,fontSize:13,color:T.mu,padding:"4px 0 10px",letterSpacing:".04em",textTransform:"uppercase"}}>🏢 Businesses</div><div style={{display:"flex",flexDirection:"column",gap:12}}>{followedBiz.map((p,i)=><FeedCard key={p.id} p={p} myId={profile.id} following={following} T={T} onView={pushProfile} onFollow={handleFollow} onUnfollow={handleUnfollow} onRate={handleRate} onMsg={handleMsg} idx={i}/>)}</div></>}
               </div>
         }
       </div>}
 
-      {tab==="search"&&<SearchTab profiles={profiles.filter(p=>p.id!==profile.id)} myId={profile.id} following={following} T={T} onView={setViewT} onFollow={handleFollow} onUnfollow={handleUnfollow} onRate={handleRate} myProfile={profile}/>}
+      {tab==="search"&&<SearchTab profiles={profiles.filter(p=>p.id!==profile.id)} myId={profile.id} following={following} T={T} onView={pushProfile} onFollow={handleFollow} onUnfollow={handleUnfollow} onRate={handleRate} myProfile={profile}/>}
 
-      {tab==="board"&&<BoardTab profiles={profiles} myId={profile.id} T={T} onView={setViewT}/>}
+      {tab==="board"&&<BoardTab profiles={profiles} myId={profile.id} T={T} onView={pushProfile}/>}
 
       {tab==="inbox"&&<InboxTab convs={convs.map(c=>{const other=profiles.find(p=>p.id===c.oid);return other?{...c,other}:null;}).filter(Boolean)} profiles={profiles} myProfile={profile} following={following} T={T} onOpen={(conv,other)=>setActiveChat({...conv,other})} onDeleteConv={handleDeleteConv} onViewProfile={pushProfile}/>}
 
@@ -3612,7 +3612,7 @@ function App(){
     {scoreCard  &&<ScoreCardModal profile={scoreCard} T={T} onClose={()=>setScoreCard(null)}/>}
     {reportT    &&<ReportModal target={reportT} T={T} onClose={()=>setReportT(null)} onSubmit={handleReport}/>}
     {showBlocked&&<BlockedListPanel blocked={blocked} profiles={profiles} T={T} onClose={()=>setShowBlocked(false)} onUnblock={handleUnblock}/>}
-    {showNotifs &&<NotifsPanel notifs={notifs} profiles={profiles} T={T} onClose={()=>setShowNotifs(false)} onMark={handleMarkNotif} onView={p=>{setViewT(p);setShowNotifs(false);}}/>}
+    {showNotifs &&<NotifsPanel notifs={notifs} profiles={profiles} T={T} onClose={()=>setShowNotifs(false)} onMark={handleMarkNotif} onView={p=>{pushProfile(p);setShowNotifs(false);}}/>}
     {showAdminLock&&<AdminLock T={T} onClose={()=>setShowAdminLock(false)} onUnlock={()=>{setShowAdminLock(false);setShowAdmin(true);}}/>}
     {showAdmin  &&<AdminPanel profiles={profiles} reports={reports} blocked={blocked} T={T} onClose={()=>setShowAdmin(false)} onDeleteProfile={handleAdminDeleteProfile} onClearRatings={handleAdminClearRatings} onExport={handleExport}/>}
     <Toast msg={toast} T={T}/>
