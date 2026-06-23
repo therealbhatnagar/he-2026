@@ -2472,7 +2472,9 @@ function App(){
 
   // ── Modal / overlay state (declared before back-button handler to avoid stale closures) ──
   const [rateT,setRateT]=useState(null);
-  const [viewT,setViewT]=useState(null);
+  const [profileStack,setProfileStack]=useState([]); // navigation stack: last = currently shown profile
+  function pushProfile(p){setProfileStack(prev=>[...prev,p]);}   // view a new profile on top of the current one
+  function popProfile(){setProfileStack(prev=>prev.slice(0,-1));} // go back one level (empties when nothing left)
   const [qrT,setQRT]=useState(null);
   const [settings,setSettings]=useState(false);
   const [editProfile,setEditProfile]=useState(false);
@@ -2488,7 +2490,7 @@ function App(){
   const adminTimer=useRef(null);
 
   // ── Refs for popstate handler — avoids stale closure on all modal states ──
-  const viewTRef=useRef(null);
+  const profileStackRef=useRef([]);
   const rateTRef=useRef(null);
   const activeChatRef=useRef(null);
   const settingsRef=useRef(false);
@@ -2498,7 +2500,7 @@ function App(){
   const tabRef=useRef("feed");
   const clearingRatingsRef=useRef(false); // blocks realtime re-fetch during category clear
 
-  useEffect(()=>{viewTRef.current=viewT;},[viewT]);
+  useEffect(()=>{profileStackRef.current=profileStack;},[profileStack]);
   useEffect(()=>{rateTRef.current=rateT;},[rateT]);
   useEffect(()=>{activeChatRef.current=activeChat;},[activeChat]);
   useEffect(()=>{settingsRef.current=settings;},[settings]);
@@ -2512,10 +2514,9 @@ function App(){
     window.history.pushState({he:"app"},"");
     function onPop(){
       // Priority: always close overlays before closing underlying screens
-      if(viewTRef.current){setViewT(null);window.history.pushState({he:"app"},"");return;}
+      if(profileStackRef.current.length){popProfile();window.history.pushState({he:"app"},"");return;}
       if(rateTRef.current){setRateT(null);window.history.pushState({he:"app"},"");return;}
       if(activeChatRef.current){setActiveChat(null);window.history.pushState({he:"app"},"");return;}
-      if(viewTRef.current){setViewT(null);window.history.pushState({he:"app"},"");return;}
       if(settingsRef.current){setSettings(false);window.history.pushState({he:"app"},"");return;}
       if(showNotifsRef.current){setShowNotifs(false);window.history.pushState({he:"app"},"");return;}
       if(showAdminRef.current){setShowAdmin(false);window.history.pushState({he:"app"},"");return;}
@@ -3251,12 +3252,12 @@ function App(){
         const ex=p.ratings?.find(r=>r.raterId===sc2.raterId);
         return{...p,ratings:ex?p.ratings.map(r=>r.raterId===sc2.raterId?newR:r):[...(p.ratings||[]),newR]};
       }));
-      // Also update viewT if that profile modal is currently open
-      setViewT(prev=>{
-        if(!prev||prev.id!==tid)return prev;
-        const ex=prev.ratings?.find(r=>r.raterId===sc2.raterId);
-        return{...prev,ratings:ex?prev.ratings.map(r=>r.raterId===sc2.raterId?newR:r):[...(prev.ratings||[]),newR]};
-      });
+      // Also update the profile stack if that profile is open anywhere in it
+      setProfileStack(prev=>prev.map(p=>{
+        if(p.id!==tid)return p;
+        const ex=p.ratings?.find(r=>r.raterId===sc2.raterId);
+        return{...p,ratings:ex?p.ratings.map(r=>r.raterId===sc2.raterId?newR:r):[...(p.ratings||[]),newR]};
+      }));
       const cats=getCats(rateT?.profile||{});
       // scoreGiven = this rater's average across categories (per-rater contribution)
       const scoreGiven=Math.round(cats.reduce((s,c)=>s+(sc2[c.id]||0),0)/cats.length);
@@ -3463,8 +3464,8 @@ function App(){
       <div style={{fontSize:13,color:T.mu}}>Opening chat…</div>
     </div>;
     return<>
-      <ChatScreen conv={{...activeChat,other:freshOther}} myProfile={profile} profiles={profiles} T={T} onBack={()=>setActiveChat(null)} onSend={handleSend} onMarkRead={handleMarkRead} onClearChat={handleClearChat} onBlockUser={(uid)=>{handleBlock(uid);setActiveChat(null);}} onReportUser={(p)=>setReportT(p)} onViewProfile={p=>setViewT(p)}/>
-      {viewT&&<div style={{position:"fixed",inset:0,zIndex:500}}><ProfileModal profile={viewT} myId={profile.id} following={following} profiles={profiles} T={T} onClose={()=>setViewT(null)} onRate={handleRate} onFollow={handleFollow} onUnfollow={handleUnfollow} onBlock={handleBlock} onReport={setReportT} onMsg={p=>{setViewT(null);handleMsg(p);}} onViewOther={p=>setViewT(p)}/></div>}
+      <ChatScreen conv={{...activeChat,other:freshOther}} myProfile={profile} profiles={profiles} T={T} onBack={()=>setActiveChat(null)} onSend={handleSend} onMarkRead={handleMarkRead} onClearChat={handleClearChat} onBlockUser={(uid)=>{handleBlock(uid);setActiveChat(null);}} onReportUser={(p)=>setReportT(p)} onViewProfile={pushProfile}/>
+      {profileStack.length>0&&<div style={{position:"fixed",inset:0,zIndex:500}}><ProfileModal profile={profileStack[profileStack.length-1]} myId={profile.id} following={following} profiles={profiles} T={T} onClose={popProfile} onRate={handleRate} onFollow={handleFollow} onUnfollow={handleUnfollow} onBlock={handleBlock} onReport={setReportT} onMsg={p=>{setProfileStack([]);handleMsg(p);}} onViewOther={pushProfile}/></div>}
       {rateT&&<RateModal target={rateT.profile} raterId={profile.id} existing={rateT.existing} T={T} onClose={()=>setRateT(null)} onSubmit={handleSubmit}/>}
       {reportT&&<ReportModal target={reportT} T={T} onClose={()=>setReportT(null)} onSubmit={handleReport}/>}
       <Toast msg={toast} T={T}/>
@@ -3585,9 +3586,9 @@ function App(){
 
       {tab==="board"&&<BoardTab profiles={profiles} myId={profile.id} T={T} onView={setViewT}/>}
 
-      {tab==="inbox"&&<InboxTab convs={convs.map(c=>{const other=profiles.find(p=>p.id===c.oid);return other?{...c,other}:null;}).filter(Boolean)} profiles={profiles} myProfile={profile} following={following} T={T} onOpen={(conv,other)=>setActiveChat({...conv,other})} onDeleteConv={handleDeleteConv} onViewProfile={p=>setViewT(p)}/>}
+      {tab==="inbox"&&<InboxTab convs={convs.map(c=>{const other=profiles.find(p=>p.id===c.oid);return other?{...c,other}:null;}).filter(Boolean)} profiles={profiles} myProfile={profile} following={following} T={T} onOpen={(conv,other)=>setActiveChat({...conv,other})} onDeleteConv={handleDeleteConv} onViewProfile={pushProfile}/>}
 
-      {tab==="profile"&&<ProfileTab myProfile={profile} myP={myP} T={T} onQR={()=>setQRT(myP)} onSettings={()=>setSettings(true)} onEditProfile={()=>setEditProfile(true)} onEditPhoto={()=>setPhoto(true)} onScoreCard={()=>setScoreCard(myP)} following={following} profiles={profiles} onViewProfile={p=>setViewT(p)}/>}
+      {tab==="profile"&&<ProfileTab myProfile={profile} myP={myP} T={T} onQR={()=>setQRT(myP)} onSettings={()=>setSettings(true)} onEditProfile={()=>setEditProfile(true)} onEditPhoto={()=>setPhoto(true)} onScoreCard={()=>setScoreCard(myP)} following={following} profiles={profiles} onViewProfile={pushProfile}/>}
     </div>
 
     {/* BOTTOM NAV */}
@@ -3603,7 +3604,7 @@ function App(){
     </div>
 
     {rateT      &&<RateModal target={rateT.profile} raterId={profile.id} existing={rateT.existing} T={T} onClose={()=>setRateT(null)} onSubmit={handleSubmit}/>}
-    {viewT      &&<ProfileModal profile={viewT} myId={profile.id} following={following} profiles={profiles} T={T} onClose={()=>setViewT(null)} onRate={handleRate} onFollow={handleFollow} onUnfollow={handleUnfollow} onBlock={handleBlock} onReport={setReportT} onMsg={p=>{setViewT(null);handleMsg(p);}} onViewOther={p=>setViewT(p)}/>}
+    {profileStack.length>0&&<ProfileModal profile={profileStack[profileStack.length-1]} myId={profile.id} following={following} profiles={profiles} T={T} onClose={popProfile} onRate={handleRate} onFollow={handleFollow} onUnfollow={handleUnfollow} onBlock={handleBlock} onReport={setReportT} onMsg={p=>{setProfileStack([]);handleMsg(p);}} onViewOther={pushProfile}/>}
     {qrT        &&<QRModal profile={qrT} T={T} onClose={()=>setQRT(null)}/>}
     {settings   &&<SettingsModal me={profile} prefs={prefs} T={T} onClose={()=>setSettings(false)} onSave={handleSaveProfile} onSavePrefs={handleSavePrefs} onEditPhoto={()=>{setSettings(false);setPhoto(true);}} onShowBlocked={()=>{setSettings(false);setShowBlocked(true);}} onLogout={handleLogout} onDelete={handleDeleteAccount} onQR={()=>{setQRT(myP);setSettings(false);}}/>}
     {editProfile&&<EditProfileModal me={profile} prefs={prefs} T={T} onClose={()=>setEditProfile(false)} onSave={handleSaveProfile} onEditPhoto={()=>{setEditProfile(false);setPhoto(true);}} onQR={()=>{setQRT(myP);setEditProfile(false);}}/>}
