@@ -902,7 +902,7 @@ function ProfileModal({profile,myId,following,profiles,T,onClose,onRate,onFollow
           <div style={{fontSize:22,marginBottom:6}}>👻</div>
           <div style={{fontWeight:700,fontSize:14,color:T.txt,marginBottom:4}}>Still a Ghost</div>
           <div style={{fontSize:12,color:T.mu,lineHeight:1.6}}>{isSelf?"Share your profile to get your first rating!":"No ratings yet — be the first to rate them!"}</div>
-          {!isSelf&&<button onClick={()=>{onClose();onRate(profile,myR);}} style={{marginTop:12,padding:"9px 20px",background:`linear-gradient(135deg,${profile.color}cc,${profile.color}80)`,borderRadius:12,color:"#fff",fontWeight:700,fontSize:12,border:"none",boxShadow:`0 4px 14px ${profile.color}40`}}>{isBiz?"✍️ Be first to review":"⭐ Be first to rate"}</button>}
+          {!isSelf&&<button onClick={()=>onRate(profile,myR)} style={{marginTop:12,padding:"9px 20px",background:`linear-gradient(135deg,${profile.color}cc,${profile.color}80)`,borderRadius:12,color:"#fff",fontWeight:700,fontSize:12,border:"none",boxShadow:`0 4px 14px ${profile.color}40`}}>{isBiz?"✍️ Be first to review":"⭐ Be first to rate"}</button>}
         </div>}
 
         {myR&&!isSelf&&<div style={{background:T.faint,border:`1px solid ${T.b1}`,borderRadius:10,padding:"10px 13px",marginBottom:14}}><div style={{fontSize:10,color:T.mu,marginBottom:6,textTransform:"uppercase",letterSpacing:1,fontWeight:600}}>Your Rating</div><div style={{display:"flex",gap:5,flexWrap:"wrap"}}>{cats.map(c=><Tag key={c.id} label={`${c.emoji} ${myR[c.id]}`} color={T.mu}/>)}</div></div>}
@@ -913,8 +913,8 @@ function ProfileModal({profile,myId,following,profiles,T,onClose,onRate,onFollow
           :<div style={{display:"flex",flexDirection:"column",gap:10}}>
             <div style={{display:"flex",gap:8}}>
               <button onClick={()=>isFollowing?onUnfollow(profile.id):onFollow(profile.id)} style={{flex:2,padding:"14px 0",background:isFollowing?T.faint:`linear-gradient(135deg,${AC}ee,${AC}aa)`,border:isFollowing?`1.5px solid ${T.b2}`:"none",borderRadius:14,color:isFollowing?T.txt:"#fff",fontWeight:700,fontSize:14,boxShadow:isFollowing?"none":`0 6px 20px ${AC}40`,transition:"all .2s"}}>{isFollowing?"Following ✓":"➕ Follow"}</button>
-              <button onClick={()=>{onClose();onRate(profile,myR);}} style={{flex:2,padding:"14px 0",background:`linear-gradient(135deg,${profile.color}cc,${profile.color}80)`,border:"none",borderRadius:14,color:"#fff",fontWeight:700,fontSize:14,boxShadow:`0 6px 20px ${profile.color}40`}}>{myR?`✏️ Edit ${isBiz?"Review":"Rating"}`:isBiz?"✍️ Review":"⭐ Rate"}</button>
-              <button onClick={()=>{onClose();onMsg(profile);}} style={{flex:1,padding:"14px 0",background:T.faint,border:`1.5px solid ${T.b1}`,borderRadius:14,color:T.mu,display:"flex",alignItems:"center",justifyContent:"center"}}><SendIcon/></button>
+              <button onClick={()=>onRate(profile,myR)} style={{flex:2,padding:"14px 0",background:`linear-gradient(135deg,${profile.color}cc,${profile.color}80)`,border:"none",borderRadius:14,color:"#fff",fontWeight:700,fontSize:14,boxShadow:`0 6px 20px ${profile.color}40`}}>{myR?`✏️ Edit ${isBiz?"Review":"Rating"}`:isBiz?"✍️ Review":"⭐ Rate"}</button>
+              <button onClick={()=>onMsg(profile)} style={{flex:1,padding:"14px 0",background:T.faint,border:`1.5px solid ${T.b1}`,borderRadius:14,color:T.mu,display:"flex",alignItems:"center",justifyContent:"center"}}><SendIcon/></button>
             </div>
             {/* Share + Block + Report row */}
             <div style={{display:"flex",gap:8}}>
@@ -928,7 +928,7 @@ function ProfileModal({profile,myId,following,profiles,T,onClose,onRate,onFollow
                 Share
               </button>
               <button onClick={()=>{onBlock(profile.id);onClose();}} style={{flex:1,padding:"11px 0",background:"transparent",border:`1.5px solid ${T.b1}`,borderRadius:12,color:T.mu,fontSize:12,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}><ShieldIcon/>Block</button>
-              <button onClick={()=>{onClose();onReport(profile);}} style={{flex:1,padding:"11px 0",background:"transparent",border:"1.5px solid #8030304a",borderRadius:12,color:"#d07070",fontSize:12,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}><FlagIcon/>Report</button>
+              <button onClick={()=>onReport(profile)} style={{flex:1,padding:"11px 0",background:"transparent",border:"1.5px solid #8030304a",borderRadius:12,color:"#d07070",fontSize:12,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}><FlagIcon/>Report</button>
             </div>
           </div>}
       </div>
@@ -3466,8 +3466,8 @@ function App(){
     return<>
       <ChatScreen conv={{...activeChat,other:freshOther}} myProfile={profile} profiles={profiles} T={T} onBack={()=>setActiveChat(null)} onSend={handleSend} onMarkRead={handleMarkRead} onClearChat={handleClearChat} onBlockUser={(uid)=>{handleBlock(uid);setActiveChat(null);}} onReportUser={(p)=>setReportT(p)} onViewProfile={pushProfile}/>
       {profileStack.length>0&&<div style={{position:"fixed",inset:0,zIndex:500}}><ProfileModal profile={profileStack[profileStack.length-1]} myId={profile.id} following={following} profiles={profiles} T={T} onClose={popProfile} onRate={handleRate} onFollow={handleFollow} onUnfollow={handleUnfollow} onBlock={handleBlock} onReport={setReportT} onMsg={p=>{setProfileStack([]);handleMsg(p);}} onViewOther={pushProfile}/></div>}
-      {rateT&&<RateModal target={rateT.profile} raterId={profile.id} existing={rateT.existing} T={T} onClose={()=>setRateT(null)} onSubmit={handleSubmit}/>}
-      {reportT&&<ReportModal target={reportT} T={T} onClose={()=>setReportT(null)} onSubmit={handleReport}/>}
+      {rateT&&<div style={{position:"fixed",inset:0,zIndex:600}}><RateModal target={rateT.profile} raterId={profile.id} existing={rateT.existing} T={T} onClose={()=>setRateT(null)} onSubmit={handleSubmit}/></div>}
+      {reportT&&<div style={{position:"fixed",inset:0,zIndex:600}}><ReportModal target={reportT} T={T} onClose={()=>setReportT(null)} onSubmit={handleReport}/></div>}
       <Toast msg={toast} T={T}/>
     </>;
   }
@@ -3603,14 +3603,14 @@ function App(){
         </button>)}
     </div>
 
-    {rateT      &&<RateModal target={rateT.profile} raterId={profile.id} existing={rateT.existing} T={T} onClose={()=>setRateT(null)} onSubmit={handleSubmit}/>}
+    {rateT      &&<div style={{position:"fixed",inset:0,zIndex:600}}><RateModal target={rateT.profile} raterId={profile.id} existing={rateT.existing} T={T} onClose={()=>setRateT(null)} onSubmit={handleSubmit}/></div>}
     {profileStack.length>0&&<ProfileModal profile={profileStack[profileStack.length-1]} myId={profile.id} following={following} profiles={profiles} T={T} onClose={popProfile} onRate={handleRate} onFollow={handleFollow} onUnfollow={handleUnfollow} onBlock={handleBlock} onReport={setReportT} onMsg={p=>{setProfileStack([]);handleMsg(p);}} onViewOther={pushProfile}/>}
     {qrT        &&<QRModal profile={qrT} T={T} onClose={()=>setQRT(null)}/>}
     {settings   &&<SettingsModal me={profile} prefs={prefs} T={T} onClose={()=>setSettings(false)} onSave={handleSaveProfile} onSavePrefs={handleSavePrefs} onEditPhoto={()=>{setSettings(false);setPhoto(true);}} onShowBlocked={()=>{setSettings(false);setShowBlocked(true);}} onLogout={handleLogout} onDelete={handleDeleteAccount} onQR={()=>{setQRT(myP);setSettings(false);}}/>}
     {editProfile&&<EditProfileModal me={profile} prefs={prefs} T={T} onClose={()=>setEditProfile(false)} onSave={handleSaveProfile} onEditPhoto={()=>{setEditProfile(false);setPhoto(true);}} onQR={()=>{setQRT(myP);setEditProfile(false);}}/>}
     {photo      &&<PhotoModal profile={profile} T={T} onClose={()=>setPhoto(false)} onSave={handleSavePhoto}/>}
     {scoreCard  &&<ScoreCardModal profile={scoreCard} T={T} onClose={()=>setScoreCard(null)}/>}
-    {reportT    &&<ReportModal target={reportT} T={T} onClose={()=>setReportT(null)} onSubmit={handleReport}/>}
+    {reportT    &&<div style={{position:"fixed",inset:0,zIndex:600}}><ReportModal target={reportT} T={T} onClose={()=>setReportT(null)} onSubmit={handleReport}/></div>}
     {showBlocked&&<BlockedListPanel blocked={blocked} profiles={profiles} T={T} onClose={()=>setShowBlocked(false)} onUnblock={handleUnblock}/>}
     {showNotifs &&<NotifsPanel notifs={notifs} profiles={profiles} T={T} onClose={()=>setShowNotifs(false)} onMark={handleMarkNotif} onView={p=>{pushProfile(p);setShowNotifs(false);}}/>}
     {showAdminLock&&<AdminLock T={T} onClose={()=>setShowAdminLock(false)} onUnlock={()=>{setShowAdminLock(false);setShowAdmin(true);}}/>}
