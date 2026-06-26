@@ -32,6 +32,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON, {
     storage: window.localStorage,
   }
 });
+console.log("[HE_DEBUG] Supabase client initialized. URL:",SUPABASE_URL,"| navigator.onLine:",navigator.onLine);
 const BASE_URL="https://highenough.in";
 const getProfileUrl=p=>{
   const handle=(p.handle||"").replace(/^@/,"").trim();
@@ -3206,11 +3207,32 @@ function App(){
 
   function handleRate(p,ex){if(blocked.includes(p.id))return pop("You've blocked this user");pushRoute('rate',{profile:p,existing:ex});}
 
+  async function upsertRatingWithRetry(payload,opts,attempt=1){
+    const{error}=await sb.from("ratings").upsert(payload,opts);
+    if(error){
+      console.log("[HE_DEBUG] ratings upsert attempt",attempt,"failed —",
+        "name:",error.name,"| message:",error.message,"| code:",error.code,
+        "| status:",error.status,"| navigator.onLine:",navigator.onLine);
+    }
+    if(error&&!error.code&&attempt<2){
+      // No .code means this isn't a structured Postgrest/RLS error — it's a
+      // transport-level failure (e.g. "TypeError: Failed to fetch"), which is
+      // usually transient. Worth one quick retry before surfacing it to the user.
+      await new Promise(r=>setTimeout(r,800));
+      return upsertRatingWithRetry(payload,opts,attempt+1);
+    }
+    return{error};
+  }
+
   async function handleSubmit(tid,sc2){
     const rateEntry=navStack[navStack.length-1];
     const isEdit=!!rateEntry?.data?.existing;
     try{
-      const {error}=await sb.from("ratings").upsert(
+      const{data:sessionData}=await sb.auth.getSession();
+      console.log("[HE_DEBUG] handleSubmit starting — session present:",!!sessionData?.session,
+        "| user id matches profile:",sessionData?.session?.user?.id===profile.id,
+        "| navigator.onLine:",navigator.onLine);
+      const {error}=await upsertRatingWithRetry(
         {rater_id:sc2.raterId,target_id:tid,rater_name:profile.name,
          vibe:sc2.vibe,humor:sc2.humor,kindness:sc2.kindness,
          rizz:sc2.rizz,loyalty:sc2.loyalty,drip:sc2.drip,
