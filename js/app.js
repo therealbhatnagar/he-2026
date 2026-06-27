@@ -314,7 +314,7 @@ function Overlay({onBg,children,T,wide,bottom}){
     </div>
   </div>;
 }
-function AuthScreen({T,onAuthed,authError,onClearAuthError}){
+function AuthScreen({T,onAuthed,authError,onClearAuthError,onRecoverySignIn}){
   const [view,setView]=useState("login");
   const [email,setEmail]=useState("");
   const [pass,setPass]=useState("");
@@ -380,69 +380,58 @@ function AuthScreen({T,onAuthed,authError,onClearAuthError}){
       if(view==="signup"){
         const emailToUse=rawInput.includes("@")&&rawInput.includes(".")?rawInput:rawInput;
 
-        const {data:deletedRow}=await sb.from("deleted_accounts")
-          .select("auth_id,email").eq("email",emailToUse).maybeSingle();
+        const {data:signUpData,error:signUpErr}=await sb.auth.signUp({
+          email:emailToUse,password:pass,
+          options:{data:{full_name:name.trim()},emailRedirectTo:"https://highenough.in"}
+        });
 
-        if(deletedRow){
-          const {data:signUpData,error:signUpErr}=await sb.auth.signUp({
-            email:emailToUse,password:pass,
-            options:{data:{full_name:name.trim()},emailRedirectTo:"https://highenough.in"}
-          });
-          if(!signUpErr&&signUpData?.user){
-            const oldId=deletedRow.auth_id;
-            await Promise.all([
-              sb.from("profiles").delete().eq("id",oldId),
-              sb.from("ratings").delete().eq("rater_id",oldId),
-              sb.from("ratings").delete().eq("target_id",oldId),
-              sb.from("follows").delete().eq("follower_id",oldId),
-              sb.from("follows").delete().eq("following_id",oldId),
-              sb.from("messages").delete().eq("sender_id",oldId),
-              sb.from("messages").delete().eq("receiver_id",oldId),
-              sb.from("notifications").delete().eq("actor_id",oldId),
-              sb.from("notifications").delete().eq("target_id",oldId),
-              sb.from("deleted_accounts").delete().eq("email",emailToUse),
-            ]);
-            if(signUpData.session){
-              if(onAuthed)onAuthed(signUpData.user);
-            } else {
-              setMsg({text:"✅ Account created! Check your email to confirm, then login.",error:false});
-            }
-            return;
+        if(!signUpErr&&signUpData?.user){
+          if(signUpData.session){
+            if(onAuthed)onAuthed(signUpData.user);
+          } else {
+            setMsg({text:"✅ Account created! Check your email to confirm, then login.",error:false});
           }
+          return;
+        }
+
+        const isDup=signUpErr?.message?.toLowerCase().includes("already registered")||
+                    signUpErr?.message?.toLowerCase().includes("already exists");
+
+        if(isDup){
+          // This email already has a Supabase Auth identity — either a
+          // genuinely existing account, or a deleted one whose auth record
+          // was never actually removed. Try the password they just typed:
+          // if it matches, we're authenticated, and can now reliably check
+          // (and clean up) deleted_accounts ourselves under normal RLS,
+          // since this is no longer an anonymous request.
           const {data:signInData,error:signInErr}=await sb.auth.signInWithPassword({email:emailToUse,password:pass});
           if(!signInErr&&signInData?.user){
-            const oldId=signInData.user.id;
-            await Promise.all([
-              sb.from("profiles").delete().eq("id",oldId),
-              sb.from("ratings").delete().eq("rater_id",oldId),
-              sb.from("ratings").delete().eq("target_id",oldId),
-              sb.from("follows").delete().eq("follower_id",oldId),
-              sb.from("follows").delete().eq("following_id",oldId),
-              sb.from("messages").delete().eq("sender_id",oldId),
-              sb.from("messages").delete().eq("receiver_id",oldId),
-              sb.from("notifications").delete().eq("actor_id",oldId),
-              sb.from("notifications").delete().eq("target_id",oldId),
-              sb.from("deleted_accounts").delete().eq("email",emailToUse),
-            ]);
+            const uid=signInData.user.id;
+            console.log("[HE_DEBUG] signup-recovery signInWithPassword succeeded — uid:",uid);
+            onRecoverySignIn?.(uid); // tell the global auth listener to defer to us for this sign-in
+            const {data:deletedRow}=await sb.from("deleted_accounts").select("auth_id").eq("auth_id",uid).maybeSingle();
+            console.log("[HE_DEBUG] signup-recovery deleted_accounts check — found row:",!!deletedRow);
+            if(deletedRow){
+              await Promise.all([
+                sb.from("profiles").delete().eq("id",uid),
+                sb.from("ratings").delete().eq("rater_id",uid),
+                sb.from("ratings").delete().eq("target_id",uid),
+                sb.from("follows").delete().eq("follower_id",uid),
+                sb.from("follows").delete().eq("following_id",uid),
+                sb.from("messages").delete().eq("sender_id",uid),
+                sb.from("messages").delete().eq("receiver_id",uid),
+                sb.from("notifications").delete().eq("actor_id",uid),
+                sb.from("notifications").delete().eq("target_id",uid),
+                sb.from("deleted_accounts").delete().eq("auth_id",uid),
+              ]);
+            }
             if(onAuthed)onAuthed(signInData.user);
             return;
           }
-          return setMsg({text:"This email was used before. To start fresh, use the same password you had previously, or reset your password.",error:true});
+          return setMsg({text:"This email already has an account. Try logging in instead, or use 'Forgot password' if it's yours.",error:true});
         }
 
-        const {data,error}=await sb.auth.signUp({
-          email:emailToUse,
-          password:pass,
-          options:{data:{full_name:name.trim()},emailRedirectTo:"https://highenough.in"}
-        });
-        if(error){
-          if(error.message?.toLowerCase().includes("already registered")||
-             error.message?.toLowerCase().includes("already exists")){
-            return setMsg({text:"This email already has an account. Try logging in instead.",error:true});
-          }
-          return setMsg({text:error.message,error:true});
-        }
-        if(!data.session)setMsg({text:"✅ Account created! Check your email to confirm, then login.",error:false});
+        return setMsg({text:signUpErr?.message||"Something went wrong. Please try again.",error:true});
       } else {
         const {email:emailToUse,err}=await resolveEmail(rawInput);
         if(err)return setMsg({text:err,error:true});
@@ -523,6 +512,20 @@ function AuthScreen({T,onAuthed,authError,onClearAuthError}){
     </div>
   </div>;
     }
+
+function AccountDeletedScreen({T,onBack}){
+  return<div style={{minHeight:"100vh",background:T.bg,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24,textAlign:"center"}}>
+    <div style={{fontSize:46,marginBottom:18}}>🗑️</div>
+    <div style={{fontWeight:800,fontSize:22,color:T.txt,marginBottom:10}}>This account was deleted</div>
+    <p style={{fontSize:14,color:T.mu,maxWidth:340,lineHeight:1.6,marginBottom:28}}>
+      This account was permanently deleted and can't be recovered. If you'd like to start fresh, you can create a brand new account using the same email.
+    </p>
+    <button onClick={onBack} style={{padding:"13px 28px",background:`linear-gradient(135deg,${AC}e0,${AC}90)`,borderRadius:14,color:"#fff",fontWeight:700,fontSize:14,border:"none"}}>
+      Back to Sign Up / Login
+    </button>
+  </div>;
+}
+
 function ProfileSetup({user,T,onDone}){
   const [step,setStep]=useState("type");
   const [acType,setAcType]=useState("personal");
@@ -2433,6 +2436,7 @@ function parseDeepLink(){
 function App(){
   const [authUser,setAuthUser]=useState(null);
   const [authError,setAuthError]=useState("");
+  const [accountDeleted,setAccountDeleted]=useState(false);
   const [profile,setProfile]=useState(null);
   const [profileFetched,setProfileFetched]=useState(false);
   // authLoading: false because HE_BOOT() already resolved before React mounted.
@@ -2518,6 +2522,8 @@ function App(){
   const pendingDlRef=useRef(parseDeepLink());
   // Tracks which user ID is currently being booted so SIGNED_IN doesn't double-fire
   const bootingUserIdRef=useRef(null);
+  const bootUserRef=useRef(null);
+  const recoverySuppressUidRef=useRef(null);
 
   useEffect(()=>{profileRef.current=profile;},[profile]);
   useEffect(()=>{profilesRef.current=profiles;},[profiles]);
@@ -2537,14 +2543,15 @@ function App(){
       if(profileLoadingRef.current && bootingUserIdRef.current===user.id)return;
       profileLoadingRef.current=true;
       bootingUserIdRef.current=user.id;
-
       // Always check deleted on ALL paths
       const deleted=await isDeletedAccount(user.id);
+      console.log("[HE_DEBUG] bootUser — uid:",user.id,"| deleted account check:",deleted);
       if(deleted){
         const {data:existingProfile}=await sb.from("profiles").select("id").eq("id",user.id).maybeSingle();
         if(existingProfile){
-          // Profile still exists — this is a re-login on a deleted account
-          // Wipe everything and let them start fresh (same flow as re-signup)
+          // Defensive cleanup only — we're not letting them continue in
+          // either way, but a deleted account should never leave a live
+          // profile row sitting around.
           await Promise.all([
             sb.from("profiles").delete().eq("id",user.id),
             sb.from("ratings").delete().eq("rater_id",user.id),
@@ -2555,19 +2562,25 @@ function App(){
             sb.from("messages").delete().eq("receiver_id",user.id),
             sb.from("notifications").delete().eq("actor_id",user.id),
             sb.from("notifications").delete().eq("target_id",user.id),
-            sb.from("deleted_accounts").delete().eq("auth_id",user.id),
           ]);
-          // Fall through — no profile row means ProfileSetup will show
-        }else{
-          // No profile row and in deleted list — clean up stale record and proceed
-          await sb.from("deleted_accounts").delete().eq("auth_id",user.id);
         }
+        // This is a LOGIN (password or Google) to a deleted account — not a
+        // signup. Block entry and show a dedicated screen instead of
+        // silently continuing in as if fresh. To start over, the user needs
+        // to explicitly go through Sign Up, which handles a deleted email
+        // correctly on its own (see AuthScreen's signup recovery flow).
+        await sb.auth.signOut();
+        setAccountDeleted(true);
+        profileLoadingRef.current=false;
+        bootingUserIdRef.current=null;
+        return;
       }
 
       setAuthError("");
       setAuthUser(user);
       loadProfile(user.id, dl);
     }
+    bootUserRef.current=bootUser;
 
     // clearSession — called only on confirmed intentional or unrecoverable logout
     function clearSession(){
@@ -2636,9 +2649,13 @@ function App(){
         // Skip if this exact user is already loaded or currently being loaded
         if(profileRef.current?.id===uid)return;
         if(bootingUserIdRef.current===uid)return;
+        // Skip if AuthScreen's signup-recovery flow is explicitly handling
+        // this exact sign-in itself (it still has its own deleted_accounts
+        // check + wipe to run before deciding what happens next).
+        if(recoverySuppressUidRef.current===uid){recoverySuppressUidRef.current=null;return;}
         // New user (Google OAuth / email confirm) — run full boot with deleted check
         profileLoadingRef.current=false;
-        await bootUser(session.user, pendingDlRef.current);
+        await bootUserRef.current?.(session.user, pendingDlRef.current);
       }
 
       // ── Token silently refreshed ──────────────────────────────────────
@@ -2725,6 +2742,7 @@ function App(){
   async function loadProfile(userId,dl=null){
     try{
       let {data,error}=await sb.from("profiles").select("*").eq("id",userId).maybeSingle();
+      console.log("[HE_DEBUG] loadProfile — uid:",userId,"| profile row found:",!!data,"| error:",error?.message||null);
 
       if(error){
         console.error("loadProfile error:",error);
@@ -2742,6 +2760,7 @@ function App(){
       }
 
       if(data){
+        console.log("[HE_DEBUG] onboarding decision — existing profile, entering app");
         const fullProfile={...data,account_type:data.account_type||"personal"};
         setProfile(fullProfile);setProfileFetched(true);
         // Groups loaded from Supabase in loadAppData
@@ -2753,6 +2772,7 @@ function App(){
           if(cu?.email){
             const {data:ep}=await sb.from("profiles").select("id,email,name").eq("email",cu.email).maybeSingle();
             if(ep&&ep.id!==userId){
+              console.log("[HE_DEBUG] onboarding decision — blocked: email linked to a different auth method");
               setAuthError("This email is linked to a different login method. Please use that to sign in.");
               await sb.auth.signOut();
               profileLoadingRef.current=false;
@@ -2762,6 +2782,7 @@ function App(){
           }
         }catch{}
         // Genuinely new user — show ProfileSetup
+        console.log("[HE_DEBUG] onboarding decision — no profile row, routing to ProfileSetup");
         setProfileFetched(true);
         setAuthLoading(false);
         profileLoadingRef.current=false;
@@ -3050,11 +3071,12 @@ function App(){
   async function handleAuthed(user){
     if(!user?.id)return;
     if(bootingUserIdRef.current===user.id)return; // already booting this user
+    console.log("[HE_DEBUG] handleAuthed — auth user id:",user.id);
     profileLoadingRef.current=true;
     bootingUserIdRef.current=user.id;
     setAuthError("");
     setAuthUser(user);
-    loadProfile(user.id, pendingDlRef.current);
+    await bootUserRef.current?.(user, pendingDlRef.current);
   }
   async function handleProfileCreated(p){
     setProfile(p);
@@ -3444,10 +3466,15 @@ function App(){
     </div>;
   }
 
+  // 2.5 Blocked: this was a login/Google attempt on a deleted account
+  if(accountDeleted){
+    return<AccountDeletedScreen T={DK} onBack={()=>setAccountDeleted(false)}/>;
+  }
+
   // 3. No authenticated user — show login or public profile
   if(!authUser){
     if(deepLinkProfile)return<PublicProfilePage profile={deepLinkProfile} onJoin={()=>setDeepLinkProfile(null)}/>;
-    return<AuthScreen T={DK} onAuthed={handleAuthed} authError={authError} onClearAuthError={()=>setAuthError("")}/>;
+    return<AuthScreen T={DK} onAuthed={handleAuthed} authError={authError} onClearAuthError={()=>setAuthError("")} onRecoverySignIn={uid=>{recoverySuppressUidRef.current=uid;}}/>;
   }
 
   // 3. User authenticated, waiting for profile row from DB
