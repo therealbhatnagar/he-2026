@@ -3248,14 +3248,18 @@ function App(){
         const ex=p.ratings?.find(r=>r.raterId===sc2.raterId);
         return{...p,ratings:ex?p.ratings.map(r=>r.raterId===sc2.raterId?newR:r):[...(p.ratings||[]),newR]};
       }));
-      const cats=getCats(rateEntry?.data?.profile||{});
-      // scoreGiven = this rater's average across categories (per-rater contribution)
-      const scoreGiven=Math.round(cats.reduce((s,c)=>s+(sc2[c.id]||0),0)/cats.length);
-      await sb.from("notifications").insert({
-        target_id:tid,actor_id:profile.id,actor_name:profile.name,
-        type:isEdit?"edit":"rating",text:isEdit?"updated their rating of you":"rated you",
-        score:scoreGiven,read:false,created_at:new Date().toISOString()
-      });
+      // Notification is best-effort — its failure must never block the
+      // rating save itself (already committed above) or the UI sync that
+      // follows. Isolated in its own try/catch for exactly that reason.
+      try{
+        await sb.from("notifications").insert({
+          target_id:tid,actor_id:profile.id,actor_name:profile.name,
+          type:isEdit?"edit":"rating",text:isEdit?"updated their rating of you":"rated you",
+          read:false,created_at:new Date().toISOString()
+        });
+      }catch(notifErr){
+        console.warn("Notification insert failed (non-blocking):",notifErr);
+      }
       // Update any matching 'profile' entry in the stack AND pop the rate
       // modal in one atomic transition — no separate calls, no timing gap.
       setNavStack(prev=>prev
