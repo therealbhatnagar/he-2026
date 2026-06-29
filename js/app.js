@@ -3173,12 +3173,17 @@ function App(){
       try{
         const {data:sessionData}=await sb.auth.getSession();
         const token=sessionData?.session?.access_token;
-        await fetch("https://jwtopqlofxtuwevhmbqo.supabase.co/functions/v1/delete-auth-user",{
+        const resp=await fetch("https://jwtopqlofxtuwevhmbqo.supabase.co/functions/v1/delete-auth-user",{
           method:"POST",
           headers:{"Content-Type":"application/json","Authorization":`Bearer ${token}`},
           body:JSON.stringify({auth_id:uid})
         });
-      }catch(e){console.warn("Edge function delete-auth-user failed (non-critical):",e);}
+        const respBody=await resp.text().catch(()=>"<unreadable>");
+        console.log("[HE_DEBUG] delete-auth-user edge function — status:",resp.status,"| ok:",resp.ok,"| body:",respBody);
+        if(!resp.ok){
+          console.error("[HE_DEBUG] delete-auth-user FAILED — auth.users row for",uid,"was NOT removed. Google/password recovery will rely entirely on the deleted_accounts table from here.");
+        }
+      }catch(e){console.warn("[HE_DEBUG] delete-auth-user fetch threw (edge function unreachable?):",e);}
     }catch(e){console.error("Delete cleanup error:",e);}
     // Mark intentional — lets SIGNED_OUT → clearSession redirect to login cleanly
     localStorage.setItem("he_intent_signout","true");
@@ -3453,6 +3458,17 @@ function App(){
         sb.from("blocks").delete().eq("blocked_id",id),
       ]);
       await sb.from("profiles").delete().eq("id",id);
+      try{
+        const {data:sessionData}=await sb.auth.getSession();
+        const token=sessionData?.session?.access_token;
+        const resp=await fetch("https://jwtopqlofxtuwevhmbqo.supabase.co/functions/v1/delete-auth-user",{
+          method:"POST",
+          headers:{"Content-Type":"application/json","Authorization":`Bearer ${token}`},
+          body:JSON.stringify({auth_id:id})
+        });
+        const respBody=await resp.text().catch(()=>"<unreadable>");
+        console.log("[HE_DEBUG] (admin) delete-auth-user edge function — status:",resp.status,"| ok:",resp.ok,"| body:",respBody);
+      }catch(e){console.warn("[HE_DEBUG] (admin) delete-auth-user fetch threw:",e);}
     }catch(e){console.error("Admin delete error:",e);}
     setProfiles(prev=>prev.filter(p=>p.id!==id));
     pop("Account permanently deleted ✓");
