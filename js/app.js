@@ -2530,6 +2530,17 @@ function App(){
 
   useEffect(()=>{
 
+    async function findDeletedAccountRow(user){
+      try{
+        const {data:byId}=await sb.from("deleted_accounts").select("auth_id,email").eq("auth_id",user.id).maybeSingle();
+        if(byId)return byId;
+        if(user.email){
+          const {data:byEmail}=await sb.from("deleted_accounts").select("auth_id,email").eq("email",user.email).maybeSingle();
+          if(byEmail)return byEmail;
+        }
+        return null;
+      }catch{return null;}
+    }
     async function isDeletedAccount(uid){
       try{
         const {data}=await sb.from("deleted_accounts").select("auth_id").eq("auth_id",uid).maybeSingle();
@@ -2543,7 +2554,49 @@ function App(){
       if(profileLoadingRef.current && bootingUserIdRef.current===user.id)return;
       profileLoadingRef.current=true;
       bootingUserIdRef.current=user.id;
-      // Always check deleted on ALL paths
+      const provider=user.app_metadata?.provider;
+      const isGoogle=provider==="google";
+
+      if(isGoogle){
+        // Google has no separate "sign up" vs "log in" button — one tap
+        // serves both intents, so a deleted account must never just block
+        // here the way a password LOGIN does. Always auto-recover instead,
+        // matching the email signup-recovery flow's behavior.
+        const delRow=await findDeletedAccountRow(user);
+        console.log("[HE_DEBUG] bootUser (Google) — uid:",user.id,"| email:",user.email,"| deleted row found:",!!delRow,delRow?`(matched ${delRow.auth_id===user.id?"auth_id":"email"})`:"");
+        if(delRow){
+          const oldId=delRow.auth_id;
+          await Promise.all([
+            sb.from("profiles").delete().eq("id",oldId),
+            sb.from("ratings").delete().eq("rater_id",oldId),
+            sb.from("ratings").delete().eq("target_id",oldId),
+            sb.from("follows").delete().eq("follower_id",oldId),
+            sb.from("follows").delete().eq("following_id",oldId),
+            sb.from("messages").delete().eq("sender_id",oldId),
+            sb.from("messages").delete().eq("receiver_id",oldId),
+            sb.from("notifications").delete().eq("actor_id",oldId),
+            sb.from("notifications").delete().eq("target_id",oldId),
+            sb.from("deleted_accounts").delete().eq("auth_id",oldId),
+          ]);
+          if(oldId!==user.id){
+            // Defensive — clean up under the current uid too, just in case.
+            await Promise.all([
+              sb.from("profiles").delete().eq("id",user.id),
+              sb.from("ratings").delete().eq("rater_id",user.id),
+              sb.from("ratings").delete().eq("target_id",user.id),
+              sb.from("follows").delete().eq("follower_id",user.id),
+              sb.from("follows").delete().eq("following_id",user.id),
+            ]);
+          }
+          console.log("[HE_DEBUG] bootUser (Google) — deleted account auto-recovered, proceeding to ProfileSetup");
+        }
+        setAuthError("");
+        setAuthUser(user);
+        loadProfile(user.id, dl);
+        return;
+      }
+
+      // Password path — unchanged: a LOGIN to a deleted account blocks.
       const deleted=await isDeletedAccount(user.id);
       console.log("[HE_DEBUG] bootUser — uid:",user.id,"| deleted account check:",deleted);
       if(deleted){
@@ -2564,10 +2617,10 @@ function App(){
             sb.from("notifications").delete().eq("target_id",user.id),
           ]);
         }
-        // This is a LOGIN (password or Google) to a deleted account — not a
-        // signup. Block entry and show a dedicated screen instead of
-        // silently continuing in as if fresh. To start over, the user needs
-        // to explicitly go through Sign Up, which handles a deleted email
+        // This is a LOGIN (password) to a deleted account — not a signup.
+        // Block entry and show a dedicated screen instead of silently
+        // continuing in as if fresh. To start over, the user needs to
+        // explicitly go through Sign Up, which handles a deleted email
         // correctly on its own (see AuthScreen's signup recovery flow).
         await sb.auth.signOut();
         setAccountDeleted(true);
@@ -2616,6 +2669,7 @@ function App(){
         clearTimeout(splashTimer);
         console.log("[BOOT] INITIAL_SESSION — session:",!!session,"prefetched:",!!HE_PREFETCHED_SESSION);
         const effectiveSession=session||HE_PREFETCHED_SESSION;
+        console.log("[HE_DEBUG] INITIAL_SESSION — user id:",effectiveSession?.user?.id||null,"| provider:",effectiveSession?.user?.app_metadata?.provider||null);
 
         if(effectiveSession?.user){
           await bootUser(effectiveSession.user, pendingDlRef.current);
@@ -3648,8 +3702,8 @@ function App(){
       return null;
     })}
     {qrT        &&<QRModal profile={qrT} T={T} onClose={()=>setQRT(null)}/>}
-    {settings   &&<SettingsModal me={profile} prefs={prefs} T={T} onClose={()=>setSettings(false)} onSave={handleSaveProfile} onSavePrefs={handleSavePrefs} onEditPhoto={()=>{setSettings(false);setPhoto(true);}} onShowBlocked={()=>{setSettings(false);setShowBlocked(true);}} onLogout={handleLogout} onDelete={handleDeleteAccount} onQR={()=>{setQRT(myP);setSettings(false);}}/>}
-    {editProfile&&<EditProfileModal me={profile} prefs={prefs} T={T} onClose={()=>setEditProfile(false)} onSave={handleSaveProfile} onEditPhoto={()=>{setEditProfile(false);setPhoto(true);}} onQR={()=>{setQRT(myP);setEditProfile(false);}}/>}
+    {settings   &&<SettingsModal me={profile} prefs={prefs} T={T} onClose={()=>setSettings(false)} onSave={handleSaveProfile} onSavePrefs={handleSavePrefs} onEditPhoto={()=>{setSettings(false);setPhoto(true);}} onShowBlocked={()=>{setSettings(false);setShowBlocked(true);}} onLogout={handleLogout} onDelete={handleDeleteAccount} onQR={()=>setQRT(myP)}/>}
+    {editProfile&&<EditProfileModal me={profile} prefs={prefs} T={T} onClose={()=>setEditProfile(false)} onSave={handleSaveProfile} onEditPhoto={()=>{setEditProfile(false);setPhoto(true);}} onQR={()=>setQRT(myP)}/>}
     {photo      &&<PhotoModal profile={profile} T={T} onClose={()=>setPhoto(false)} onSave={handleSavePhoto}/>}
     {scoreCard  &&<ScoreCardModal profile={scoreCard} T={T} onClose={()=>setScoreCard(null)}/>}
     {showBlocked&&<BlockedListPanel blocked={blocked} profiles={profiles} T={T} onClose={()=>setShowBlocked(false)} onUnblock={handleUnblock}/>}
