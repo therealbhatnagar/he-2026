@@ -2602,7 +2602,7 @@ function App(){
         }
         setAuthError("");
         setAuthUser(user);
-        loadProfile(user.id, dl);
+        loadProfile(user.id, dl, user);
         return;
       }
 
@@ -2641,7 +2641,7 @@ function App(){
 
       setAuthError("");
       setAuthUser(user);
-      loadProfile(user.id, dl);
+      loadProfile(user.id, dl, user);
     }
     bootUserRef.current=bootUser;
 
@@ -2728,7 +2728,7 @@ function App(){
         if(!profileRef.current&&!profileLoadingRef.current){
           profileLoadingRef.current=true;
           bootingUserIdRef.current=session.user.id;
-          loadProfile(session.user.id, null);
+          loadProfile(session.user.id, null, session.user);
         }
       }
 
@@ -2747,7 +2747,7 @@ function App(){
               if(!profileRef.current&&!profileLoadingRef.current){
                 profileLoadingRef.current=true;
                 bootingUserIdRef.current=s2.user.id;
-                loadProfile(s2.user.id, null);
+                loadProfile(s2.user.id, null, s2.user);
               }
               return;
             }
@@ -2803,7 +2803,7 @@ function App(){
     return()=>document.removeEventListener("visibilitychange",onVisible);
   },[]);
 
-  async function loadProfile(userId,dl=null){
+  async function loadProfile(userId,dl=null,authUser=null){
     try{
       let {data,error}=await sb.from("profiles").select("*").eq("id",userId).maybeSingle();
       console.log("[HE_DEBUG] loadProfile — uid:",userId,"| profile row found:",!!data,"| error:",error?.message||null);
@@ -2832,7 +2832,7 @@ function App(){
       }else{
         // No profile row — check for cross-provider collision
         try{
-          const {data:{user:cu}}=await sb.auth.getUser();
+          const cu=authUser||(await sb.auth.getUser()).data?.user;
           if(cu?.email){
             const {data:ep}=await sb.from("profiles").select("id,email,name").eq("email",cu.email).maybeSingle();
             if(ep&&ep.id!==userId){
@@ -3151,7 +3151,7 @@ function App(){
     bootingUserIdRef.current=user.id;
     setAuthError("");
     setAuthUser(user);
-    loadProfile(user.id, pendingDlRef.current);
+    loadProfile(user.id, pendingDlRef.current, user);
   }
   async function handleProfileCreated(p){
     setProfile(p);
