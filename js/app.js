@@ -49,12 +49,9 @@ let HE_BOOT_READY=false;
 async function HE_BOOT(){
   try{
     console.log("[BOOT] HE_BOOT start");
-    const el=document.getElementById("splash-status");
-    if(el)el.textContent="Restoring session…";
     const {data:{session}}=await sb.auth.getSession();
     HE_PREFETCHED_SESSION=session;
     console.log("[BOOT] HE_BOOT session:",session?"found":"none");
-    if(el)el.textContent=session?"Welcome back…":"Ready";
   }catch(e){console.warn("[BOOT] Pre-boot getSession failed:",e);}
   finally{HE_BOOT_READY=true;console.log("[BOOT] HE_BOOT_READY=true");}
 }
