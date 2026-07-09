@@ -37,7 +37,7 @@
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%2309090f'/><text y='.85em' font-size='52' x='8' font-family='system-ui,sans-serif' font-weight='900' fill='%23f0f0ff'>Hi</text><text y='.85em' font-size='52' x='52' font-family='system-ui,sans-serif' font-weight='300' fill='%237b72e9'>E</text></svg>"/>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-<script src="https://unpkg.com/@babel/standalone@7.23.2/babel.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet"/>
 <style>
@@ -74,7 +74,7 @@ button:active{opacity:.8;transform:scale(.96)}
 </style>
 </head>
 <body>
-<div id="splash" style="position:fixed;inset:0;background:#09090f;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;z-index:9999;transition:opacity .3s"><div style="font-weight:800;font-size:42px;letter-spacing:-2px;color:#dde0f0;line-height:1">High<span style="color:#7b72e9;font-weight:300;letter-spacing:.04em">Enough</span></div><div style="width:20px;height:20px;border:2px solid #1c1c2c;border-top-color:#7b72e9;border-radius:50%;animation:spin .55s linear infinite"></div><div id="splash-status" style="font-size:11px;color:#3a3a5a;margin-top:4px;font-family:'JetBrains Mono',monospace;letter-spacing:.05em">Loading…</div></div>
+<div id="splash" style="position:fixed;inset:0;background:#09090f;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;z-index:9999;transition:opacity .3s"><div style="font-weight:800;font-size:42px;letter-spacing:-2px;color:#dde0f0;line-height:1">High<span style="color:#7b72e9;font-weight:300;letter-spacing:.04em">Enough</span></div><div style="width:20px;height:20px;border:2px solid #1c1c2c;border-top-color:#7b72e9;border-radius:50%;animation:spin .55s linear infinite"></div></div>
 <div id="root"></div>
 <!-- Utils: pure helpers, no React, no JSX, loaded before app.js -->
 <script src="./js/utils/format.js"></script>
