@@ -779,6 +779,7 @@ function ProfileModal({profile,myId,following,profiles,T,onClose,onRate,onFollow
   const cats=getCats(profile);
   const isFollowing=following.includes(profile.id);
   const sc=pScore(profile),n=(profile.ratings||[]).length,t=tierOf(sc??0,isBiz);
+  console.log("[HE_DEBUG] ProfileModal — id:",profile.id,"| handle:",profile.handle,"| account_type:",profile.account_type,"| isBiz:",isBiz,"| sc:",sc,"| tier:",t?.label);
   const pct=tierPct(sc??0,isBiz);
   const allTiers=getTiers(profile);
   const next=sc!=null?allTiers[allTiers.indexOf(t)+1]:null;
