@@ -779,7 +779,6 @@ function ProfileModal({profile,myId,following,profiles,T,onClose,onRate,onFollow
   const cats=getCats(profile);
   const isFollowing=following.includes(profile.id);
   const sc=pScore(profile),n=(profile.ratings||[]).length,t=tierOf(sc??0,isBiz);
-  console.log("[HE_DEBUG] ProfileModal — id:",profile.id,"| handle:",profile.handle,"| account_type:",profile.account_type,"| isBiz:",isBiz,"| sc:",sc,"| tier:",t?.label);
   const pct=tierPct(sc??0,isBiz);
   const allTiers=getTiers(profile);
   const next=sc!=null?allTiers[allTiers.indexOf(t)+1]:null;
@@ -898,10 +897,10 @@ function ProfileModal({profile,myId,following,profiles,T,onClose,onRate,onFollow
           </div>
         </div>;})}
         </div>:<div style={{background:`linear-gradient(135deg,${t.grad[0]}30,${t.grad[1]}18)`,border:`1px solid ${t.color}25`,borderRadius:14,padding:"20px 16px",marginBottom:8,textAlign:"center",position:"relative",overflow:"hidden"}}>
-          <div style={{position:"absolute",right:-10,top:-10,fontSize:72,opacity:.07,pointerEvents:"none"}}>👻</div>
-          <div style={{fontSize:22,marginBottom:6}}>👻</div>
-          <div style={{fontWeight:700,fontSize:14,color:T.txt,marginBottom:4}}>Still a Ghost</div>
-          <div style={{fontSize:12,color:T.mu,lineHeight:1.6}}>{isSelf?"Share your profile to get your first rating!":"No ratings yet — be the first to rate them!"}</div>
+          <div style={{position:"absolute",right:-10,top:-10,fontSize:72,opacity:.07,pointerEvents:"none"}}>{isBiz?t.emoji:"👻"}</div>
+          <div style={{fontSize:22,marginBottom:6}}>{isBiz?t.emoji:"👻"}</div>
+          <div style={{fontWeight:700,fontSize:14,color:T.txt,marginBottom:4}}>{isBiz?`${t.emoji} ${t.label}`:"Still a Ghost"}</div>
+          <div style={{fontSize:12,color:T.mu,lineHeight:1.6}}>{isBiz?(isSelf?"Share your profile to get your first review!":"Be the first to review this profile!"):(isSelf?"Share your profile to get your first rating!":"No ratings yet — be the first to rate them!")}</div>
           {!isSelf&&<button onClick={()=>onRate(profile,myR)} style={{marginTop:12,padding:"9px 20px",background:`linear-gradient(135deg,${profile.color}cc,${profile.color}80)`,borderRadius:12,color:"#fff",fontWeight:700,fontSize:12,border:"none",boxShadow:`0 4px 14px ${profile.color}40`}}>{isBiz?"✍️ Be first to review":"⭐ Be first to rate"}</button>}
         </div>}
 
