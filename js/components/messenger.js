@@ -34,7 +34,7 @@
   }
 
   // ── MESSAGE INPUT ────────────────────────────────────────────────────────────
-  function MessageInput({color,onSend,placeholder}){
+  function MessageInput({color,onSend,placeholder,T}){
     const [txt,setTxt]=useState("");
     const inputRef=useRef(null);
 
@@ -60,8 +60,8 @@
           display:"flex",alignItems:"flex-end",gap:8,
           padding:"8px 12px",
           paddingBottom:"max(12px,env(safe-area-inset-bottom))",
-          borderTop:"1px solid #e5e5ea",
-          background:"#fff",
+          borderTop:`1px solid ${T.b1}`,
+          background:T.bg,
         }}>
           {/* Auto-grow textarea — device keyboard's own emoji key is used
               for emoji; no in-app picker. */}
@@ -73,8 +73,8 @@
             rows={1}
             style={{
               flex:1,padding:"9px 14px",
-              background:"#f2f2f7",border:"none",
-              borderRadius:20,color:"#000",fontSize:15,
+              background:T.inp,border:"none",
+              borderRadius:20,color:T.txt,fontSize:15,
               outline:"none",resize:"none",
               lineHeight:1.4,
               maxHeight:120,overflowY:"auto",
@@ -93,9 +93,9 @@
             onClick={doSend}
             style={{
               width:36,height:36,borderRadius:"50%",flexShrink:0,marginBottom:1,
-              background:hasText?`linear-gradient(135deg,${color}dd,${color}99)`:"#f2f2f7",
+              background:hasText?`linear-gradient(135deg,${color}dd,${color}99)`:T.faint,
               border:"none",display:"flex",alignItems:"center",justifyContent:"center",
-              color:hasText?"#fff":"#aaa",transition:"background .15s",
+              color:hasText?"#fff":T.mu,transition:"background .15s",
             }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
               <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
@@ -221,9 +221,9 @@
     const visibleMsgs=msgs.filter(m=>!hidden.has(m.dbId));
 
     return(
-      <div style={{position:"fixed",inset:0,zIndex:400,background:"#fff",display:"flex",flexDirection:"column"}}>
+      <div style={{position:"fixed",inset:0,zIndex:400,background:T.bg,display:"flex",flexDirection:"column"}}>
         {/* Header */}
-        <div style={{background:"#fff",borderBottom:"1px solid #e5e5ea",padding:"10px 14px",paddingTop:"max(10px,env(safe-area-inset-top))",display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
+        <div style={{background:T.bg,borderBottom:`1px solid ${T.b1}`,padding:"10px 14px",paddingTop:"max(10px,env(safe-area-inset-top))",display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
           <button onClick={onBack} style={{background:"none",border:"none",color:col,fontSize:24,padding:"0 4px",display:"flex",alignItems:"center"}}>‹</button>
           <div onClick={()=>onViewProfile&&onViewProfile(other)} style={{display:"flex",alignItems:"center",gap:10,flex:1,cursor:"pointer",minWidth:0}}>
             <div style={{width:38,height:38,borderRadius:"50%",overflow:"hidden",flexShrink:0,background:`${other.color||col}18`,border:`2px solid ${other.color||col}40`,display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -233,8 +233,8 @@
               }
             </div>
             <div style={{minWidth:0}}>
-              <div style={{fontWeight:700,fontSize:15,color:"#000",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{other.name}</div>
-              {other.handle&&<div style={{fontSize:11,color:"#8e8e93",fontFamily:"monospace"}}>{other.handle}</div>}
+              <div style={{fontWeight:700,fontSize:15,color:T.txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{other.name}</div>
+              {other.handle&&<div style={{fontSize:11,color:T.mu,fontFamily:"monospace"}}>{other.handle}</div>}
             </div>
           </div>
         </div>
@@ -254,11 +254,11 @@
               <React.Fragment key={m.dbId||i}>
                 {showDate&&(
                   <div style={{display:"flex",alignItems:"center",gap:8,margin:"8px 0"}}>
-                    <div style={{flex:1,height:1,background:"#e5e5ea"}}/>
-                    <div style={{fontSize:11,color:"#8e8e93",background:"#f2f2f7",borderRadius:8,padding:"2px 10px",fontWeight:600,flexShrink:0}}>
+                    <div style={{flex:1,height:1,background:T.b1}}/>
+                    <div style={{fontSize:11,color:T.mu,background:T.faint,borderRadius:8,padding:"2px 10px",fontWeight:600,flexShrink:0}}>
                       {window.HE_UTILS.formatDateLabel(mDate)}
                     </div>
-                    <div style={{flex:1,height:1,background:"#e5e5ea"}}/>
+                    <div style={{flex:1,height:1,background:T.b1}}/>
                   </div>
                 )}
                 <div style={{display:"flex",flexDirection:mine?"row-reverse":"row",gap:6,alignItems:"flex-end",marginTop:showAvatar?6:1}}>
@@ -283,14 +283,14 @@
                       onPointerUp={cancelPress}
                       onPointerLeave={cancelPress}
                       style={{
-                        background:mine?`linear-gradient(135deg,${col}e8,${col}b0)`:"#f2f2f7",
+                        background:mine?`linear-gradient(135deg,${col}e8,${col}b0)`:T.faint,
                         borderRadius:mine?"18px 18px 4px 18px":"18px 18px 18px 4px",
                         padding:"9px 13px",
-                        color:mine?"#fff":"#000",
+                        color:mine?"#fff":T.txt,
                         fontSize:15,lineHeight:1.4,wordBreak:"break-word",
                         userSelect:"none",WebkitUserSelect:"none",
                       }}>{m.txt}</div>
-                    <div style={{fontSize:10,color:"#8e8e93",marginTop:2,textAlign:mine?"right":"left",paddingLeft:4,paddingRight:4,display:"flex",alignItems:"center",justifyContent:mine?"flex-end":"flex-start",gap:2}}>
+                    <div style={{fontSize:10,color:T.mu,marginTop:2,textAlign:mine?"right":"left",paddingLeft:4,paddingRight:4,display:"flex",alignItems:"center",justifyContent:mine?"flex-end":"flex-start",gap:2}}>
                       {copiedId===m.dbId?"Copied":window.HE_UTILS.fmtTime(m.ts)}
                       <MsgTick m={{...m,status:effectiveStatus(m)}} myId={myProfile.id}/>
                     </div>
@@ -300,9 +300,9 @@
                         <div onClick={e=>e.stopPropagation()} style={{
                           position:"absolute",top:-8,zIndex:10,
                           [mine?"right":"left"]:0,transform:"translateY(-100%)",
-                          background:"#fff",borderRadius:12,boxShadow:"0 4px 24px rgba(0,0,0,.18)",overflow:"hidden",minWidth:150,
+                          background:T.card,borderRadius:12,boxShadow:"0 4px 24px rgba(0,0,0,.18)",overflow:"hidden",minWidth:150,
                         }}>
-                          <button onClick={()=>doCopy(m.txt,m.dbId)} style={{display:"block",width:"100%",padding:"11px 16px",textAlign:"left",background:"none",border:"none",fontSize:14,color:"#000",borderBottom:"1px solid #f2f2f7"}}>Copy</button>
+                          <button onClick={()=>doCopy(m.txt,m.dbId)} style={{display:"block",width:"100%",padding:"11px 16px",textAlign:"left",background:"none",border:"none",fontSize:14,color:T.txt,borderBottom:`1px solid ${T.b1}`}}>Copy</button>
                           <button onClick={()=>doDeleteForMe(m.dbId)} style={{display:"block",width:"100%",padding:"11px 16px",textAlign:"left",background:"none",border:"none",fontSize:14,color:"#ff3b30"}}>Delete for me</button>
                         </div>
                       </>
@@ -320,6 +320,7 @@
           color={col}
           onSend={txt=>onSend(conv.id,txt)}
           placeholder={`Message ${other.name||""}…`}
+          T={T}
         />
       </div>
     );
@@ -349,21 +350,21 @@
         {/* Content */}
         <div style={{flex:1,minWidth:0}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:8}}>
-            <div style={{fontWeight:unread>0?700:500,fontSize:15,color:"#000",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{other.name}</div>
-            <div style={{fontSize:11,color:"#8e8e93",flexShrink:0}}>{last?.ts?formatMsgTime(last.ts):""}</div>
+            <div style={{fontWeight:unread>0?700:500,fontSize:15,color:T.txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{other.name}</div>
+            <div style={{fontSize:11,color:T.mu,flexShrink:0}}>{last?.ts?formatMsgTime(last.ts):""}</div>
           </div>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginTop:2}}>
-            <div style={{fontSize:13,color:unread>0?"#000":"#8e8e93",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>
-              {isMe&&<span style={{color:"#8e8e93"}}>You: </span>}{lastTxt}
+            <div style={{fontSize:13,color:unread>0?T.txt:T.mu,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>
+              {isMe&&<span style={{color:T.mu}}>You: </span>}{lastTxt}
             </div>
             {unread>0&&<div style={{minWidth:18,height:18,borderRadius:99,background:col,color:"#fff",fontSize:11,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 4px",flexShrink:0}}>{unread>9?"9+":unread}</div>}
-            <button onClick={e=>{e.stopPropagation();setShowMenu(m=>!m);}} style={{background:"none",border:"none",color:"#8e8e93",fontSize:18,padding:"0 4px",flexShrink:0}}>···</button>
+            <button onClick={e=>{e.stopPropagation();setShowMenu(m=>!m);}} style={{background:"none",border:"none",color:T.mu,fontSize:18,padding:"0 4px",flexShrink:0}}>···</button>
           </div>
         </div>
         {/* Context menu */}
         {showMenu&&(
-          <div onClick={e=>e.stopPropagation()} style={{position:"absolute",right:16,top:40,background:"#fff",borderRadius:12,boxShadow:"0 4px 24px rgba(0,0,0,.15)",zIndex:10,overflow:"hidden",minWidth:140}}>
-            <button onClick={()=>{onViewProfile&&onViewProfile(other);setShowMenu(false);}} style={{display:"block",width:"100%",padding:"12px 16px",textAlign:"left",background:"none",border:"none",fontSize:14,color:"#000",borderBottom:"1px solid #f2f2f7"}}>View Profile</button>
+          <div onClick={e=>e.stopPropagation()} style={{position:"absolute",right:16,top:40,background:T.card,borderRadius:12,boxShadow:"0 4px 24px rgba(0,0,0,.15)",zIndex:10,overflow:"hidden",minWidth:140}}>
+            <button onClick={()=>{onViewProfile&&onViewProfile(other);setShowMenu(false);}} style={{display:"block",width:"100%",padding:"12px 16px",textAlign:"left",background:"none",border:"none",fontSize:14,color:T.txt,borderBottom:`1px solid ${T.b1}`}}>View Profile</button>
             <button onClick={()=>{onDelete&&onDelete(conv.id);setShowMenu(false);}} style={{display:"block",width:"100%",padding:"12px 16px",textAlign:"left",background:"none",border:"none",fontSize:14,color:"#ff3b30"}}>Delete Chat</button>
           </div>
         )}
@@ -380,9 +381,9 @@
     });
 
     if(!sorted.length)return(
-      <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:300,gap:12,color:"#8e8e93"}}>
+      <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:300,gap:12,color:T.mu}}>
         <div style={{fontSize:48}}>💬</div>
-        <div style={{fontWeight:600,fontSize:16,color:"#000"}}>No messages yet</div>
+        <div style={{fontWeight:600,fontSize:16,color:T.txt}}>No messages yet</div>
         <div style={{fontSize:13,textAlign:"center",maxWidth:200}}>Tap the send icon on a profile to start chatting</div>
       </div>
     );
