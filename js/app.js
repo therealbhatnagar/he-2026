@@ -490,7 +490,7 @@ function AuthScreen({T,onAuthed,authError,onClearAuthError,onRecoverySignIn}){
 
       <div style={{display:"flex",flexDirection:"column",gap:12}}>
         {view==="signup"&&<input value={name} onChange={e=>setName(e.target.value)} placeholder="Your full name" style={inp} onKeyDown={e=>e.key==="Enter"&&go()}/>}
-        <input type="text" value={email} onChange={e=>setEmail(e.target.value)} placeholder="Email, @handle or #UID" style={inp} onKeyDown={e=>e.key==="Enter"&&go()} autoComplete="username"/>
+        <input type="text" value={email} onChange={e=>setEmail(e.target.value)} placeholder={view==="signup"?"Email address":"Email, @handle or #UID"} style={inp} onKeyDown={e=>e.key==="Enter"&&go()} autoComplete="username"/>
         <div style={{position:"relative"}}>
           <input type={showPass?"text":"password"} value={pass} onChange={e=>setPass(e.target.value)} placeholder="Password (min 6 chars)" style={{...inp,paddingRight:72}} onKeyDown={e=>e.key==="Enter"&&go()}/>
           <button onClick={()=>setShowPass(v=>!v)} style={{position:"absolute",right:14,top:"50%",transform:"translateY(-50%)",background:"none",color:T.mu,fontSize:12,fontWeight:600}}>{showPass?"Hide":"Show"}</button>
