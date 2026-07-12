@@ -321,6 +321,8 @@ function AuthScreen({T,onAuthed,authError,onClearAuthError,onRecoverySignIn}){
   const [msg,setMsg]=useState({text:"",error:false});
   const [showPass,setShowPass]=useState(false);
   const [googleNotSetup,setGoogleNotSetup]=useState(false);
+  const [showTerms,setShowTerms]=useState(false);
+  const [showPrivacy,setShowPrivacy]=useState(false);
 
   useEffect(()=>{
     if(authError){setMsg({text:authError,error:true});onClearAuthError?.();}
@@ -460,7 +462,8 @@ function AuthScreen({T,onAuthed,authError,onClearAuthError,onRecoverySignIn}){
     finally{setLoading(false);}
   }
 
-  return<div style={{minHeight:"100vh",background:T.bg,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24,position:"relative",overflow:"hidden"}}>
+  return<>{/* AuthScreen */}
+  <div style={{minHeight:"100vh",background:T.bg,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24,position:"relative",overflow:"hidden"}}>
     <div style={{position:"absolute",top:-140,right:-110,width:400,height:400,borderRadius:"50%",background:`radial-gradient(circle,${AC}10,transparent 68%)`,pointerEvents:"none"}}/>
     <div style={{position:"absolute",bottom:-120,left:-90,width:320,height:320,borderRadius:"50%",background:`radial-gradient(circle,${AC}0b,transparent 68%)`,pointerEvents:"none"}}/>
     <div style={{width:"100%",maxWidth:380,position:"relative",animation:"ci .4s ease"}}>
@@ -505,10 +508,18 @@ function AuthScreen({T,onAuthed,authError,onClearAuthError,onRecoverySignIn}){
 
       {view==="login"&&<button onClick={goForgot} disabled={loading} style={{width:"100%",marginTop:14,padding:"10px 0",background:"none",color:T.mu,fontSize:13}}>Forgot password?</button>}
 
-      <p style={{textAlign:"center",fontSize:11,color:T.mu,marginTop:20,opacity:.6}}>By continuing you agree to our Terms & Privacy Policy</p>
+      <p style={{textAlign:"center",fontSize:11,color:T.mu,marginTop:20,opacity:.6}}>
+        By continuing you agree to our{" "}
+        <span onClick={()=>setShowTerms(true)} style={{color:AC,cursor:"pointer",textDecoration:"underline",textUnderlineOffset:2}}>Terms of Service</span>
+        {" "}and{" "}
+        <span onClick={()=>setShowPrivacy(true)} style={{color:AC,cursor:"pointer",textDecoration:"underline",textUnderlineOffset:2}}>Privacy Policy</span>
+      </p>
     </div>
-  </div>;
-    }
+  </div>
+  {showTerms&&<TermsOfService T={T} onClose={()=>setShowTerms(false)}/>}
+  {showPrivacy&&<PrivacyPolicy T={T} onClose={()=>setShowPrivacy(false)}/>}
+  </>
+}
 
 function AccountDeletedScreen({T,onBack}){
   return<div style={{minHeight:"100vh",background:T.bg,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24,textAlign:"center"}}>
@@ -1514,6 +1525,33 @@ function PrivacyPolicy({T,onClose}){
         {h:"10. Children",b:"HighEnough is not intended for users under the age of 13. If we become aware that a child under 13 has created an account, we will delete it promptly."},
         {h:"11. Changes to This Policy",b:"We may update this privacy policy. Any significant changes will be communicated via a notice in the app. Your continued use of the app after changes constitutes acceptance."},
         {h:"12. Contact",b:"For privacy-related questions or data deletion requests, contact us at: privacy@highenough.in or through the app's support channel."},
+      ].map(({h,b})=><div key={h}>
+        <div style={{fontWeight:700,color:T.txt,marginBottom:4,fontSize:13}}>{h}</div>
+        <div>{b}</div>
+      </div>)}
+    </div>
+    <button onClick={onClose} style={{marginTop:18,width:"100%",padding:"12px 0",background:`linear-gradient(135deg,${AC}e0,${AC}90)`,borderRadius:11,color:"#fff",fontWeight:700,fontSize:14}}>Close</button>
+  </Overlay>;
+}
+
+function TermsOfService({T,onClose}){
+  return<Overlay onBg={onClose} T={T} wide>
+    <div style={{fontWeight:700,fontSize:18,color:T.txt,marginBottom:4}}>Terms of Service</div>
+    <div style={{fontSize:11,color:T.mu,marginBottom:16}}>Last updated: June 2025</div>
+    <div style={{maxHeight:"62vh",overflowY:"auto",display:"flex",flexDirection:"column",gap:14,fontSize:13,lineHeight:1.75,color:T.mu}}>
+      {[
+        {h:"1. Introduction",b:"Welcome to HighEnough. By accessing or using our platform, you agree to be bound by these Terms of Service. Please read them carefully before creating an account."},
+        {h:"2. Eligibility",b:"You must be at least 13 years old to use HighEnough. By creating an account, you confirm that you meet this requirement and have the legal capacity to agree to these terms."},
+        {h:"3. Accounts",b:"You are responsible for maintaining the security of your account credentials. You must provide accurate information when creating your account. One person may not maintain more than one personal account."},
+        {h:"4. User Responsibilities",b:"You are solely responsible for any content you post, ratings you give, and interactions you have on HighEnough. You agree not to use the platform for any unlawful or harmful purpose."},
+        {h:"5. Community Rules",b:"HighEnough is built on mutual respect. Harassment, hate speech, impersonation, spam, and any form of abusive behaviour are strictly prohibited and may result in immediate account suspension."},
+        {h:"6. Ratings & Reviews",b:"Ratings must reflect genuine personal experience or opinion. Coordinated rating campaigns, fake reviews, and manipulation of the rating system are prohibited. We reserve the right to remove ratings that violate these rules."},
+        {h:"7. Business & Professional Accounts",b:"Business and Professional accounts are subject to the same rules as personal accounts. You must accurately represent your business or professional identity. Misleading or deceptive business profiles will be removed."},
+        {h:"8. Intellectual Property",b:"HighEnough and its original content, features, and functionality are owned by the HighEnough team. You retain ownership of content you create, but grant us a licence to display it within the platform."},
+        {h:"9. Suspension & Termination",b:"We reserve the right to suspend or terminate accounts that violate these terms, without prior notice. You may delete your own account at any time from Settings → Account → Delete Account."},
+        {h:"10. Disclaimer",b:"HighEnough is provided on an 'as is' and 'as available' basis. We make no warranties, express or implied, regarding the reliability, accuracy, or availability of the platform."},
+        {h:"11. Limitation of Liability",b:"To the maximum extent permitted by law, HighEnough shall not be liable for any indirect, incidental, or consequential damages arising from your use of the platform."},
+        {h:"12. Contact",b:"For questions about these Terms of Service, contact us at: support@highenough.in or through the app's support channel."},
       ].map(({h,b})=><div key={h}>
         <div style={{fontWeight:700,color:T.txt,marginBottom:4,fontSize:13}}>{h}</div>
         <div>{b}</div>
