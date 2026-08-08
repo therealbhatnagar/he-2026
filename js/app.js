@@ -2500,7 +2500,7 @@ function App(){
 
   // ── Modal / overlay state (declared before back-button handler to avoid stale closures) ──
   const [navStack,setNavStack]=useState([]); // unified history: {type:'profile'|'people'|'rate'|'report', data}
-  function pushRoute(type,data){setNavStack(prev=>[...prev,{type,data}]);}
+  function pushRoute(type,data){setNavStack(prev=>[...prev,{type,data,_key:Date.now().toString()+Math.random().toString(36).slice(2)}]);}
   function popRoute(){setNavStack(prev=>prev.slice(0,-1));}
   const [qrT,setQRT]=useState(null);
   const [settings,setSettings]=useState(false);
@@ -3669,10 +3669,10 @@ function App(){
       <ChatScreen conv={{...activeChat,other:freshOther}} myProfile={profile} profiles={profiles} T={T} onBack={()=>setActiveChat(null)} onSend={handleSend} onMarkRead={handleMarkRead} onClearChat={handleClearChat} onBlockUser={(uid)=>{handleBlock(uid);setActiveChat(null);}} onReportUser={(p)=>pushRoute('report',{profile:p})} onViewProfile={p=>pushRoute('profile',p)}/>
       {navStack.map((r,i)=>{
         const z=500+i;
-        if(r.type==="profile")return<div key={i} style={{position:"fixed",inset:0,zIndex:z}}><ProfileModal profile={r.data} myId={profile.id} following={following} profiles={profiles} T={T} onClose={popRoute} onRate={handleRate} onFollow={handleFollow} onUnfollow={handleUnfollow} onBlock={handleBlock} onReport={p=>pushRoute('report',{profile:p})} onMsg={p=>{setNavStack([]);handleMsg(p);}} onViewOther={p=>pushRoute('profile',p)} onOpenList={(title,people)=>pushRoute('people',{title,people})}/></div>;
-        if(r.type==="people")return<div key={i} style={{position:"fixed",inset:0,zIndex:z}}><PeopleListModal title={r.data.title} people={r.data.people} T={T} onClose={popRoute} onView={p=>pushRoute('profile',p)}/></div>;
-        if(r.type==="rate")return<div key={i} style={{position:"fixed",inset:0,zIndex:z}}><RateModal target={r.data.profile} raterId={profile.id} existing={r.data.existing} T={T} onClose={popRoute} onSubmit={handleSubmit}/></div>;
-        if(r.type==="report")return<div key={i} style={{position:"fixed",inset:0,zIndex:z}}><ReportModal target={r.data.profile} T={T} onClose={popRoute} onSubmit={handleReport}/></div>;
+        if(r.type==="profile")return<div key={r._key} style={{position:"fixed",inset:0,zIndex:z}}><ProfileModal profile={r.data} myId={profile.id} following={following} profiles={profiles} T={T} onClose={popRoute} onRate={handleRate} onFollow={handleFollow} onUnfollow={handleUnfollow} onBlock={handleBlock} onReport={p=>pushRoute('report',{profile:p})} onMsg={p=>{setNavStack([]);handleMsg(p);}} onViewOther={p=>pushRoute('profile',p)} onOpenList={(title,people)=>pushRoute('people',{title,people})}/></div>;
+        if(r.type==="people")return<div key={r._key} style={{position:"fixed",inset:0,zIndex:z}}><PeopleListModal title={r.data.title} people={r.data.people} T={T} onClose={popRoute} onView={p=>pushRoute('profile',p)}/></div>;
+        if(r.type==="rate")return<div key={r._key} style={{position:"fixed",inset:0,zIndex:z}}><RateModal target={r.data.profile} raterId={profile.id} existing={r.data.existing} T={T} onClose={popRoute} onSubmit={handleSubmit}/></div>;
+        if(r.type==="report")return<div key={r._key} style={{position:"fixed",inset:0,zIndex:z}}><ReportModal target={r.data.profile} T={T} onClose={popRoute} onSubmit={handleReport}/></div>;
         return null;
       })}
       <Toast msg={toast} T={T}/>
@@ -3812,10 +3812,10 @@ function App(){
 
     {navStack.map((r,i)=>{
       const z=500+i;
-      if(r.type==="profile")return<div key={i} style={{position:"fixed",inset:0,zIndex:z}}><ProfileModal profile={r.data} myId={profile.id} following={following} profiles={profiles} T={T} onClose={popRoute} onRate={handleRate} onFollow={handleFollow} onUnfollow={handleUnfollow} onBlock={handleBlock} onReport={p=>pushRoute('report',{profile:p})} onMsg={p=>{setNavStack([]);handleMsg(p);}} onViewOther={p=>pushRoute('profile',p)} onOpenList={(title,people)=>pushRoute('people',{title,people})}/></div>;
-      if(r.type==="people")return<div key={i} style={{position:"fixed",inset:0,zIndex:z}}><PeopleListModal title={r.data.title} people={r.data.people} T={T} onClose={popRoute} onView={p=>pushRoute('profile',p)}/></div>;
-      if(r.type==="rate")return<div key={i} style={{position:"fixed",inset:0,zIndex:z}}><RateModal target={r.data.profile} raterId={profile.id} existing={r.data.existing} T={T} onClose={popRoute} onSubmit={handleSubmit}/></div>;
-      if(r.type==="report")return<div key={i} style={{position:"fixed",inset:0,zIndex:z}}><ReportModal target={r.data.profile} T={T} onClose={popRoute} onSubmit={handleReport}/></div>;
+      if(r.type==="profile")return<div key={r._key} style={{position:"fixed",inset:0,zIndex:z}}><ProfileModal profile={r.data} myId={profile.id} following={following} profiles={profiles} T={T} onClose={popRoute} onRate={handleRate} onFollow={handleFollow} onUnfollow={handleUnfollow} onBlock={handleBlock} onReport={p=>pushRoute('report',{profile:p})} onMsg={p=>{setNavStack([]);handleMsg(p);}} onViewOther={p=>pushRoute('profile',p)} onOpenList={(title,people)=>pushRoute('people',{title,people})}/></div>;
+      if(r.type==="people")return<div key={r._key} style={{position:"fixed",inset:0,zIndex:z}}><PeopleListModal title={r.data.title} people={r.data.people} T={T} onClose={popRoute} onView={p=>pushRoute('profile',p)}/></div>;
+      if(r.type==="rate")return<div key={r._key} style={{position:"fixed",inset:0,zIndex:z}}><RateModal target={r.data.profile} raterId={profile.id} existing={r.data.existing} T={T} onClose={popRoute} onSubmit={handleSubmit}/></div>;
+      if(r.type==="report")return<div key={r._key} style={{position:"fixed",inset:0,zIndex:z}}><ReportModal target={r.data.profile} T={T} onClose={popRoute} onSubmit={handleReport}/></div>;
       return null;
     })}
     {qrT        &&<QRModal profile={qrT} T={T} onClose={()=>setQRT(null)}/>}
