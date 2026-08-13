@@ -2547,19 +2547,26 @@ function App(){
   useEffect(()=>{
     window.history.pushState({he:"app"},"");
     function onPop(){
+      console.log("[BACK] fired");
+      console.log("[BACK] navStack length:",navStackRef.current.length);
+      console.log("[BACK] navStack:",navStackRef.current);
+      console.log("[BACK] activeChat:",activeChatRef.current);
+      console.log("[BACK] tab:",tabRef.current);
+      console.log("[BACK] history length:",window.history.length);
       // Priority: always close overlays before closing underlying screens
-      if(navStackRef.current.length){popRoute();window.history.pushState({he:"app"},"");return;}
-      if(activeChatRef.current){setActiveChat(null);window.history.pushState({he:"app"},"");return;}
-      if(qrTRef.current){setQRT(null);window.history.pushState({he:"app"},"");return;}
-      if(settingsRef.current){setSettings(false);window.history.pushState({he:"app"},"");return;}
-      if(editProfileRef.current){setEditProfile(false);window.history.pushState({he:"app"},"");return;}
-      if(photoRef.current){setPhoto(false);window.history.pushState({he:"app"},"");return;}
-      if(scoreCardRef.current){setScoreCard(null);window.history.pushState({he:"app"},"");return;}
-      if(showBlockedRef.current){setShowBlocked(false);window.history.pushState({he:"app"},"");return;}
-      if(showNotifsRef.current){setShowNotifs(false);window.history.pushState({he:"app"},"");return;}
-      if(showAdminRef.current){setShowAdmin(false);window.history.pushState({he:"app"},"");return;}
-      if(showAdminLockRef.current){setShowAdminLock(false);window.history.pushState({he:"app"},"");return;}
-      if(tabRef.current!=="feed"){setTab("feed");window.history.pushState({he:"app"},"");return;}
+      if(navStackRef.current.length){console.log("[BACK] branch: navStack");popRoute();window.history.pushState({he:"app"},"");return;}
+      if(activeChatRef.current){console.log("[BACK] branch: activeChat");setActiveChat(null);window.history.pushState({he:"app"},"");return;}
+      if(qrTRef.current){console.log("[BACK] branch: qrT");setQRT(null);window.history.pushState({he:"app"},"");return;}
+      if(settingsRef.current){console.log("[BACK] branch: settings");setSettings(false);window.history.pushState({he:"app"},"");return;}
+      if(editProfileRef.current){console.log("[BACK] branch: editProfile");setEditProfile(false);window.history.pushState({he:"app"},"");return;}
+      if(photoRef.current){console.log("[BACK] branch: photo");setPhoto(false);window.history.pushState({he:"app"},"");return;}
+      if(scoreCardRef.current){console.log("[BACK] branch: scoreCard");setScoreCard(null);window.history.pushState({he:"app"},"");return;}
+      if(showBlockedRef.current){console.log("[BACK] branch: showBlocked");setShowBlocked(false);window.history.pushState({he:"app"},"");return;}
+      if(showNotifsRef.current){console.log("[BACK] branch: showNotifs");setShowNotifs(false);window.history.pushState({he:"app"},"");return;}
+      if(showAdminRef.current){console.log("[BACK] branch: showAdmin");setShowAdmin(false);window.history.pushState({he:"app"},"");return;}
+      if(showAdminLockRef.current){console.log("[BACK] branch: showAdminLock");setShowAdminLock(false);window.history.pushState({he:"app"},"");return;}
+      if(tabRef.current!=="feed"){console.log("[BACK] branch: tab -> feed");setTab("feed");window.history.pushState({he:"app"},"");return;}
+      console.log("[BACK] branch: no navigation state");
     }
     window.addEventListener("popstate",onPop);
     return()=>window.removeEventListener("popstate",onPop);
