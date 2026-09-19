@@ -2478,6 +2478,19 @@ function parseDeepLink(){
 
 
 function App(){
+  // [DIAG] One-time boot readout of the persisted Back diagnostic — survives
+  // app exit/relaunch, unlike console.log. Read-only; touches nothing else.
+  useEffect(()=>{
+    try{
+      const raw=localStorage.getItem("he_back_diag");
+      if(raw){
+        console.log("[BACK][BOOT] Persisted diagnostic from previous session (up to last 20 events):");
+        console.log(JSON.parse(raw));
+      } else {
+        console.log("[BACK][BOOT] No persisted Back diagnostic found.");
+      }
+    }catch(e){console.log("[BACK][BOOT] Failed to read diagnostic:",e);}
+  },[]);
   const [authUser,setAuthUser]=useState(null);
   const [authError,setAuthError]=useState("");
   const [accountDeleted,setAccountDeleted]=useState(false);
@@ -2546,6 +2559,30 @@ function App(){
   // ── Android / browser back button handler — reads from refs, never stale ──
   useEffect(()=>{
     window.history.pushState({he:"app"},"");
+    // [DIAG] Persistent Back diagnostic — survives app exit/relaunch, unlike console.log.
+    // Purely observational: reads existing refs, writes to its own localStorage key only.
+    // Wrapped in try/catch so a storage failure can never affect real navigation.
+    function heBackDiag(branch){
+      try{
+        const key="he_back_diag";
+        let arr=[];
+        try{arr=JSON.parse(localStorage.getItem(key)||"[]");}catch{arr=[];}
+        const lastN=arr.length?arr[arr.length-1].n:0;
+        arr.push({
+          n:lastN+1,
+          t:Date.now(),
+          navLen:navStackRef.current.length,
+          nav:navStackRef.current.map(r=>r&&r.type),
+          chat:!!activeChatRef.current,
+          chatId:(activeChatRef.current&&activeChatRef.current.id)||null,
+          tab:tabRef.current,
+          histLen:window.history.length,
+          branch,
+        });
+        if(arr.length>20)arr=arr.slice(-20);
+        localStorage.setItem(key,JSON.stringify(arr));
+      }catch(e){}
+    }
     function onPop(){
       console.log("[BACK] fired");
       console.log("[BACK] navStack length:",navStackRef.current.length);
@@ -2554,19 +2591,20 @@ function App(){
       console.log("[BACK] tab:",tabRef.current);
       console.log("[BACK] history length:",window.history.length);
       // Priority: always close overlays before closing underlying screens
-      if(navStackRef.current.length){console.log("[BACK] branch: navStack");popRoute();window.history.pushState({he:"app"},"");return;}
-      if(activeChatRef.current){console.log("[BACK] branch: activeChat");setActiveChat(null);window.history.pushState({he:"app"},"");return;}
-      if(qrTRef.current){console.log("[BACK] branch: qrT");setQRT(null);window.history.pushState({he:"app"},"");return;}
-      if(settingsRef.current){console.log("[BACK] branch: settings");setSettings(false);window.history.pushState({he:"app"},"");return;}
-      if(editProfileRef.current){console.log("[BACK] branch: editProfile");setEditProfile(false);window.history.pushState({he:"app"},"");return;}
-      if(photoRef.current){console.log("[BACK] branch: photo");setPhoto(false);window.history.pushState({he:"app"},"");return;}
-      if(scoreCardRef.current){console.log("[BACK] branch: scoreCard");setScoreCard(null);window.history.pushState({he:"app"},"");return;}
-      if(showBlockedRef.current){console.log("[BACK] branch: showBlocked");setShowBlocked(false);window.history.pushState({he:"app"},"");return;}
-      if(showNotifsRef.current){console.log("[BACK] branch: showNotifs");setShowNotifs(false);window.history.pushState({he:"app"},"");return;}
-      if(showAdminRef.current){console.log("[BACK] branch: showAdmin");setShowAdmin(false);window.history.pushState({he:"app"},"");return;}
-      if(showAdminLockRef.current){console.log("[BACK] branch: showAdminLock");setShowAdminLock(false);window.history.pushState({he:"app"},"");return;}
-      if(tabRef.current!=="feed"){console.log("[BACK] branch: tab -> feed");setTab("feed");window.history.pushState({he:"app"},"");return;}
+      if(navStackRef.current.length){console.log("[BACK] branch: navStack");heBackDiag("navStack");popRoute();window.history.pushState({he:"app"},"");return;}
+      if(activeChatRef.current){console.log("[BACK] branch: activeChat");heBackDiag("activeChat");setActiveChat(null);window.history.pushState({he:"app"},"");return;}
+      if(qrTRef.current){console.log("[BACK] branch: qrT");heBackDiag("qrT");setQRT(null);window.history.pushState({he:"app"},"");return;}
+      if(settingsRef.current){console.log("[BACK] branch: settings");heBackDiag("settings");setSettings(false);window.history.pushState({he:"app"},"");return;}
+      if(editProfileRef.current){console.log("[BACK] branch: editProfile");heBackDiag("editProfile");setEditProfile(false);window.history.pushState({he:"app"},"");return;}
+      if(photoRef.current){console.log("[BACK] branch: photo");heBackDiag("photo");setPhoto(false);window.history.pushState({he:"app"},"");return;}
+      if(scoreCardRef.current){console.log("[BACK] branch: scoreCard");heBackDiag("scoreCard");setScoreCard(null);window.history.pushState({he:"app"},"");return;}
+      if(showBlockedRef.current){console.log("[BACK] branch: showBlocked");heBackDiag("showBlocked");setShowBlocked(false);window.history.pushState({he:"app"},"");return;}
+      if(showNotifsRef.current){console.log("[BACK] branch: showNotifs");heBackDiag("showNotifs");setShowNotifs(false);window.history.pushState({he:"app"},"");return;}
+      if(showAdminRef.current){console.log("[BACK] branch: showAdmin");heBackDiag("showAdmin");setShowAdmin(false);window.history.pushState({he:"app"},"");return;}
+      if(showAdminLockRef.current){console.log("[BACK] branch: showAdminLock");heBackDiag("showAdminLock");setShowAdminLock(false);window.history.pushState({he:"app"},"");return;}
+      if(tabRef.current!=="feed"){console.log("[BACK] branch: tab -> feed");heBackDiag("tab->feed");setTab("feed");window.history.pushState({he:"app"},"");return;}
       console.log("[BACK] branch: no navigation state");
+      heBackDiag("no navigation state");
     }
     window.addEventListener("popstate",onPop);
     return()=>window.removeEventListener("popstate",onPop);
