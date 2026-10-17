@@ -2477,19 +2477,45 @@ function parseDeepLink(){
 }
 
 
+// [DIAG] Persistent navigation diagnostic log — survives app exit/relaunch,
+// unlike console.log. Observational only: writes to its own localStorage key,
+// wrapped in try/catch so a storage failure can never affect real navigation.
+function heLog(entry){
+  try{
+    const key="he_nav_diag_v2";
+    let arr=[];
+    try{arr=JSON.parse(localStorage.getItem(key)||"[]");}catch{arr=[];}
+    const lastSeq=arr.length?arr[arr.length-1].seq:0;
+    arr.push({seq:lastSeq+1,t:Date.now(),...entry});
+    if(arr.length>60)arr=arr.slice(-60);
+    localStorage.setItem(key,JSON.stringify(arr));
+  }catch(e){}
+}
+
 function App(){
-  // [DIAG] One-time boot readout of the persisted Back diagnostic — survives
-  // app exit/relaunch, unlike console.log. Read-only; touches nothing else.
+  // [DIAG] Boot handler. Runs once per app launch.
+  //  1. Prints + then CLEARS the old he_back_diag key (fresh sequence for this test).
+  //  2. If the URL contains ?clearnavdiag=1, clears the new he_nav_diag_v2 log too
+  //     (lets you start a clean run again without redeploying).
+  //  3. Writes an explicit "boot" marker so every app launch is visibly delimited.
+  //  4. Prints whatever is in he_nav_diag_v2 (i.e. what survived from the last run).
   useEffect(()=>{
     try{
-      const raw=localStorage.getItem("he_back_diag");
-      if(raw){
-        console.log("[BACK][BOOT] Persisted diagnostic from previous session (up to last 20 events):");
-        console.log(JSON.parse(raw));
-      } else {
-        console.log("[BACK][BOOT] No persisted Back diagnostic found.");
+      const old=localStorage.getItem("he_back_diag");
+      if(old){
+        console.log("[NAVDIAG][BOOT] Old he_back_diag found — printing once, then clearing it:");
+        console.log(JSON.parse(old));
+        localStorage.removeItem("he_back_diag");
       }
-    }catch(e){console.log("[BACK][BOOT] Failed to read diagnostic:",e);}
+      if(/[?&]clearnavdiag=1/.test(window.location.search)){
+        localStorage.removeItem("he_nav_diag_v2");
+        console.log("[NAVDIAG][BOOT] ?clearnavdiag=1 present — he_nav_diag_v2 cleared.");
+      }
+      const prev=localStorage.getItem("he_nav_diag_v2");
+      console.log("[NAVDIAG][BOOT] he_nav_diag_v2 contents from before this launch:");
+      console.log(prev?JSON.parse(prev):"(empty)");
+      heLog({kind:"boot",href:window.location.href,histLen:window.history.length,histState:window.history.state});
+    }catch(e){console.log("[NAVDIAG][BOOT] failed:",e);}
   },[]);
   const [authUser,setAuthUser]=useState(null);
   const [authError,setAuthError]=useState("");
@@ -2542,14 +2568,37 @@ function App(){
   const scoreCardRef=useRef(null);
   const showBlockedRef=useRef(false);
   const clearingRatingsRef=useRef(false); // blocks realtime re-fetch during category clear
+  // [DIAG] attribution refs — read only by the diagnostic logging below, never by navigation logic
+  const heChangeReasonRef=useRef(null);   // set to "back" by onPop right before it changes tracked state
+  const heNavStackMounted=useRef(false);
+  const heActiveChatMounted=useRef(false);
+  const heTabMounted=useRef(false);
 
-  useEffect(()=>{navStackRef.current=navStack;},[navStack]);
-  useEffect(()=>{activeChatRef.current=activeChat;},[activeChat]);
+  useEffect(()=>{
+    navStackRef.current=navStack;
+    const reason=!heNavStackMounted.current?"mount":(heChangeReasonRef.current==="back"?"back":"other");
+    heNavStackMounted.current=true;
+    heLog({kind:"state-change",state:"navStack",reason,navLen:navStack.length,nav:navStack.map(r=>({type:r&&r.type,key:r&&r._key}))});
+    heChangeReasonRef.current=null;
+  },[navStack]);
+  useEffect(()=>{
+    activeChatRef.current=activeChat;
+    const reason=!heActiveChatMounted.current?"mount":(heChangeReasonRef.current==="back"?"back":"other");
+    heActiveChatMounted.current=true;
+    heLog({kind:"state-change",state:"activeChat",reason,chat:!!activeChat,chatId:(activeChat&&activeChat.id)||null});
+    heChangeReasonRef.current=null;
+  },[activeChat]);
   useEffect(()=>{settingsRef.current=settings;},[settings]);
   useEffect(()=>{showNotifsRef.current=showNotifs;},[showNotifs]);
   useEffect(()=>{showAdminRef.current=showAdmin;},[showAdmin]);
   useEffect(()=>{showAdminLockRef.current=showAdminLock;},[showAdminLock]);
-  useEffect(()=>{tabRef.current=tab;},[tab]);
+  useEffect(()=>{
+    tabRef.current=tab;
+    const reason=!heTabMounted.current?"mount":(heChangeReasonRef.current==="back"?"back":"other");
+    heTabMounted.current=true;
+    heLog({kind:"state-change",state:"tab",reason,tab});
+    heChangeReasonRef.current=null;
+  },[tab]);
   useEffect(()=>{qrTRef.current=qrT;},[qrT]);
   useEffect(()=>{editProfileRef.current=editProfile;},[editProfile]);
   useEffect(()=>{photoRef.current=photo;},[photo]);
@@ -2559,31 +2608,23 @@ function App(){
   // ── Android / browser back button handler — reads from refs, never stale ──
   useEffect(()=>{
     window.history.pushState({he:"app"},"");
-    // [DIAG] Persistent Back diagnostic — survives app exit/relaunch, unlike console.log.
-    // Purely observational: reads existing refs, writes to its own localStorage key only.
-    // Wrapped in try/catch so a storage failure can never affect real navigation.
-    function heBackDiag(branch){
-      try{
-        const key="he_back_diag";
-        let arr=[];
-        try{arr=JSON.parse(localStorage.getItem(key)||"[]");}catch{arr=[];}
-        const lastN=arr.length?arr[arr.length-1].n:0;
-        arr.push({
-          n:lastN+1,
-          t:Date.now(),
-          navLen:navStackRef.current.length,
-          nav:navStackRef.current.map(r=>r&&r.type),
-          chat:!!activeChatRef.current,
-          chatId:(activeChatRef.current&&activeChatRef.current.id)||null,
-          tab:tabRef.current,
-          histLen:window.history.length,
-          branch,
-        });
-        if(arr.length>20)arr=arr.slice(-20);
-        localStorage.setItem(key,JSON.stringify(arr));
-      }catch(e){}
-    }
     function onPop(){
+      // [DIAG] Capture the "before" picture at the very top, before any condition is evaluated.
+      const dLenBefore=window.history.length;
+      const dStateBefore=window.history.state;
+      const dHref=window.location.href;
+      const dNav=navStackRef.current.map(r=>({type:r&&r.type,key:r&&r._key}));
+      const dChat=!!activeChatRef.current;
+      const dChatId=(activeChatRef.current&&activeChatRef.current.id)||null;
+      const dTab=tabRef.current;
+      // [DIAG] One persistent entry per popstate: the "before" picture + which branch + whether
+      // pushState ran + history.length right after that pushState. Observational only.
+      function dLog(branch,pushed){
+        heLog({kind:"popstate",branch,pushed,
+          histLenBefore:dLenBefore,histStateBefore:dStateBefore,
+          histLenAfterPush:pushed?window.history.length:null,
+          href:dHref,navLen:dNav.length,nav:dNav,chat:dChat,chatId:dChatId,tab:dTab});
+      }
       console.log("[BACK] fired");
       console.log("[BACK] navStack length:",navStackRef.current.length);
       console.log("[BACK] navStack:",navStackRef.current);
@@ -2591,20 +2632,20 @@ function App(){
       console.log("[BACK] tab:",tabRef.current);
       console.log("[BACK] history length:",window.history.length);
       // Priority: always close overlays before closing underlying screens
-      if(navStackRef.current.length){console.log("[BACK] branch: navStack");heBackDiag("navStack");popRoute();window.history.pushState({he:"app"},"");return;}
-      if(activeChatRef.current){console.log("[BACK] branch: activeChat");heBackDiag("activeChat");setActiveChat(null);window.history.pushState({he:"app"},"");return;}
-      if(qrTRef.current){console.log("[BACK] branch: qrT");heBackDiag("qrT");setQRT(null);window.history.pushState({he:"app"},"");return;}
-      if(settingsRef.current){console.log("[BACK] branch: settings");heBackDiag("settings");setSettings(false);window.history.pushState({he:"app"},"");return;}
-      if(editProfileRef.current){console.log("[BACK] branch: editProfile");heBackDiag("editProfile");setEditProfile(false);window.history.pushState({he:"app"},"");return;}
-      if(photoRef.current){console.log("[BACK] branch: photo");heBackDiag("photo");setPhoto(false);window.history.pushState({he:"app"},"");return;}
-      if(scoreCardRef.current){console.log("[BACK] branch: scoreCard");heBackDiag("scoreCard");setScoreCard(null);window.history.pushState({he:"app"},"");return;}
-      if(showBlockedRef.current){console.log("[BACK] branch: showBlocked");heBackDiag("showBlocked");setShowBlocked(false);window.history.pushState({he:"app"},"");return;}
-      if(showNotifsRef.current){console.log("[BACK] branch: showNotifs");heBackDiag("showNotifs");setShowNotifs(false);window.history.pushState({he:"app"},"");return;}
-      if(showAdminRef.current){console.log("[BACK] branch: showAdmin");heBackDiag("showAdmin");setShowAdmin(false);window.history.pushState({he:"app"},"");return;}
-      if(showAdminLockRef.current){console.log("[BACK] branch: showAdminLock");heBackDiag("showAdminLock");setShowAdminLock(false);window.history.pushState({he:"app"},"");return;}
-      if(tabRef.current!=="feed"){console.log("[BACK] branch: tab -> feed");heBackDiag("tab->feed");setTab("feed");window.history.pushState({he:"app"},"");return;}
+      if(navStackRef.current.length){console.log("[BACK] branch: navStack");heChangeReasonRef.current="back";popRoute();window.history.pushState({he:"app"},"");dLog("navStack",true);return;}
+      if(activeChatRef.current){console.log("[BACK] branch: activeChat");heChangeReasonRef.current="back";setActiveChat(null);window.history.pushState({he:"app"},"");dLog("activeChat",true);return;}
+      if(qrTRef.current){console.log("[BACK] branch: qrT");setQRT(null);window.history.pushState({he:"app"},"");dLog("qrT",true);return;}
+      if(settingsRef.current){console.log("[BACK] branch: settings");setSettings(false);window.history.pushState({he:"app"},"");dLog("settings",true);return;}
+      if(editProfileRef.current){console.log("[BACK] branch: editProfile");setEditProfile(false);window.history.pushState({he:"app"},"");dLog("editProfile",true);return;}
+      if(photoRef.current){console.log("[BACK] branch: photo");setPhoto(false);window.history.pushState({he:"app"},"");dLog("photo",true);return;}
+      if(scoreCardRef.current){console.log("[BACK] branch: scoreCard");setScoreCard(null);window.history.pushState({he:"app"},"");dLog("scoreCard",true);return;}
+      if(showBlockedRef.current){console.log("[BACK] branch: showBlocked");setShowBlocked(false);window.history.pushState({he:"app"},"");dLog("showBlocked",true);return;}
+      if(showNotifsRef.current){console.log("[BACK] branch: showNotifs");setShowNotifs(false);window.history.pushState({he:"app"},"");dLog("showNotifs",true);return;}
+      if(showAdminRef.current){console.log("[BACK] branch: showAdmin");setShowAdmin(false);window.history.pushState({he:"app"},"");dLog("showAdmin",true);return;}
+      if(showAdminLockRef.current){console.log("[BACK] branch: showAdminLock");setShowAdminLock(false);window.history.pushState({he:"app"},"");dLog("showAdminLock",true);return;}
+      if(tabRef.current!=="feed"){console.log("[BACK] branch: tab -> feed");heChangeReasonRef.current="back";setTab("feed");window.history.pushState({he:"app"},"");dLog("tab->feed",true);return;}
       console.log("[BACK] branch: no navigation state");
-      heBackDiag("no navigation state");
+      dLog("no navigation state",false);
     }
     window.addEventListener("popstate",onPop);
     return()=>window.removeEventListener("popstate",onPop);
